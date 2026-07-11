@@ -1,0 +1,207 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body {
+  background: #140e22;
+  color: #f3eeff;
+  font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+}
+
+.app {
+  position: relative;
+  height: 100%;
+}
+
+.canvas {
+  position: absolute !important;
+  inset: 0;
+}
+
+/* ── HUD ── */
+.hud {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.hud-chip {
+  background: rgba(20, 12, 40, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 17px;
+  white-space: nowrap;
+}
+
+.hp-wrap {
+  position: relative;
+  flex: 1;
+  height: 22px;
+  background: rgba(20, 12, 40, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.hp-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #ff5d7e, #ff8a5c);
+  transition: width 0.15s ease-out;
+}
+
+.hp-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.hit-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(255, 60, 80, 0.55) 100%);
+  pointer-events: none;
+  animation: flashFade 0.35s ease-out forwards;
+}
+
+@keyframes flashFade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ── 전체 화면 오버레이 ── */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+.title-screen {
+  background: radial-gradient(ellipse at 50% 30%, #2c2050 0%, #140e22 70%);
+}
+
+.draft-screen,
+.over-screen {
+  background: rgba(10, 6, 20, 0.78);
+}
+
+h1 {
+  font-size: clamp(44px, 10vw, 72px);
+  color: #c9b4ff;
+  text-shadow: 0 4px 0 #4a2f8f, 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+h2 {
+  font-size: clamp(24px, 6vw, 36px);
+}
+
+.tagline {
+  font-size: 18px;
+  color: #b9aede;
+}
+
+.howto {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 14px 20px;
+  font-size: 16px;
+  color: #d8cff2;
+}
+
+.best {
+  color: #ffd166;
+  font-size: 17px;
+}
+
+.big-btn {
+  font-family: inherit;
+  font-size: 22px;
+  color: #fff;
+  background: linear-gradient(180deg, #8f6bff, #6a3ee8);
+  border: none;
+  border-radius: 16px;
+  padding: 14px 44px;
+  cursor: pointer;
+  box-shadow: 0 6px 0 #4a2f8f;
+}
+
+.big-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 3px 0 #4a2f8f;
+}
+
+/* ── 보상 카드 ── */
+.cards {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.card {
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(30vw, 150px);
+  min-width: 108px;
+  padding: 18px 10px;
+  color: #f3eeff;
+  background: linear-gradient(180deg, #322558, #241a40);
+  border: 2px solid #6a4fd0;
+  border-radius: 16px;
+  cursor: pointer;
+}
+
+.card:active {
+  transform: scale(0.97);
+}
+
+.card-icon {
+  font-size: 34px;
+}
+
+.card-name {
+  font-size: 17px;
+  color: #ffd166;
+}
+
+.card-desc {
+  font-size: 13px;
+  color: #c9bfe8;
+}

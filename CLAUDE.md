@@ -1,0 +1,30 @@
+# 백층 던전 (Dungeon 100)
+
+매판 새로 생성되는 던전을 뚫고 100층까지 내려가는 **탑다운 3D 로그라이크** (three.js + react-three-fiber). 모바일 우선 웹앱 (React + Vite + TypeScript).
+**공개 저장소** — NAN 2026 (NHN Game × AI Hackathon) 사전과제 투트랙 프로젝트. 시크릿·내부 경로 커밋 금지.
+설계·로드맵: `docs/DESIGN.md` (주차별 계획 포함 — 작업 완료 시 체크 갱신).
+
+## 실행
+- `npm install` — 최초 1회
+- `npm run dev` — 개발 서버 (기본 포트 5175, `PORT` 환경변수로 변경 가능)
+- `npm run typecheck` — 타입 검사
+- `npm run build` — 프로덕션 빌드
+- 숨김 탭(헤드리스 프리뷰)에서는 크롬이 rAF를 멈춰 3D가 안 그려짐 — `?rafshim` 쿼리로 우회 (index.html의 개발용 심).
+- 배포: main 푸시 → `.github/workflows/deploy-pages.yml` → https://hakhyun-kim.github.io/dungeon100/
+
+## 구조
+- `src/App.tsx` — phase 상태 머신: `title` → `run` → `draft`(층 클리어, 보상 3택 1) → `run`(다음 층) / `over`(사망). HUD·타이틀·드래프트·게임오버는 캔버스 위 DOM 오버레이. 사망 판정은 hp useEffect. Canvas는 런 내내 유지, 층 전환은 DungeonScene key 리마운트.
+- `src/three/DungeonScene.tsx` — 층 하나의 씬+시뮬레이션. 지형·적·투사체 전부 InstancedMesh. 시뮬레이션은 useFrame에서 ref 기반(React 상태는 onDamage/onKill/onExit 이벤트만). 입력은 useMoveInput 훅 (키보드 + 전화면 터치 드래그 가상 스틱, button 위에서는 시작 안 함). pausedRef로 드래프트/게임오버 중 정지.
+- `src/lib/dungeon.ts` — 절차 생성. 방 흩뿌리기 + 폭 2 L자 복도 순차 연결(연결 보장). `GRID`=44셀, `CELL`=2. 충돌은 `canStand`(네 모서리 셀 검사). 시작 방 안전지대, 출구 인접 스폰 금지.
+- `src/lib/rng.ts` — mulberry32 시드 난수. **층 번호 = 시드** → 같은 층은 항상 같은 구조 (재현성).
+- `src/lib/upgrades.ts` — 스탯·보상 카드 풀. 드래프트는 `draftThree(rand)`.
+- `src/lib/store.ts` — useLocalStorage 훅. 키는 `d100-` 접두사 (`d100-best`).
+
+## 원칙
+- UI 문구는 한국어. 백엔드 없음 — localStorage만.
+- 외부 에셋 금지 — 절차 생성 지오메트리 + 캔버스/이모지 + Web Audio 합성으로 해결. 부득이 추가 시 출처·라이선스를 문서에 기록.
+- 게임 로직은 렌더와 분리된 순수 함수 지향 (밸런스 자동 시뮬레이터가 로드맵에 있음 — 헤드리스로 돌릴 수 있어야 함).
+- 커밋 기록이 심사 증빙 — 작업 단위마다 의미 있는 한국어 커밋 메시지로 커밋.
+
+## 관련
+- 자매 프로젝트(같은 해커톤 투트랙): 두 문 러너 — https://github.com/Hakhyun-Kim/door-runner (제출 안전판). 마감 1주 전 둘 중 제출작 선택.

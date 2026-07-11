@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1a1226" />
+    <title>백층 던전 — 100층까지 내려가라!</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // 개발 검증용: 숨김 탭에서는 rAF가 멈춰 3D가 안 그려지므로 ?rafshim으로 우회 (배포에는 영향 없음)
+      if (new URLSearchParams(location.search).has('rafshim')) {
+        (function () {
+          var ch = new MessageChannel();
+          var q = [];
+          var last = 0;
+          ch.port1.onmessage = function () {
+            var now = performance.now();
+            if (now - last < 15) {
+              ch.port2.postMessage(0);
+              return;
+            }
+            last = now;
+            var cbs = q;
+            q = [];
+            cbs.forEach(function (cb) {
+              cb(now);
+            });
+            if (q.length) ch.port2.postMessage(0);
+          };
+          window.requestAnimationFrame = function (cb) {
+            q.push(cb);
+            ch.port2.postMessage(0);
+            return q.length;
+          };
+          window.cancelAnimationFrame = function () {};
+        })();
+      }
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,29 @@
+# 백층 던전 (Dungeon 100)
+
+매판 새로 만들어지는 던전을 뚫고 **100층까지 내려가는 3D 로그라이크**.
+NAN 2026 (NHN Game × AI Hackathon) 사전과제를 위한 투트랙 프로젝트 중 하나입니다.
+
+> ### 🎮 바로 플레이: https://hakhyun-kim.github.io/dungeon100/
+> 설치·로그인 없이 브라우저(모바일/PC)에서 바로 실행됩니다.
+
+## 게임 방법
+
+- 층마다 **절차 생성**되는 방과 복도를 탐험하며 보라색 포털을 찾아 다음 층으로.
+- 이동 — 모바일: 화면 아무 곳이나 드래그(가상 스틱) · PC: `WASD`/방향키. 공격은 가까운 적 **자동 조준**.
+- 층을 돌파할 때마다 보상 카드 3장 중 1장을 골라 빌드를 쌓습니다 (공격력·연사·멀티샷·이속·체력·사거리).
+- 체력이 0이 되면 게임오버 — 도달 층수가 기록됩니다. 얼마나 깊이 내려갈 수 있나요?
+
+## 로컬 실행
+
+```bash
+npm install
+npm run dev   # http://localhost:5175
+```
+요구 사항: Node.js 20+. `npm run build` 프로덕션 빌드, `npm run typecheck` 타입 검사.
+
+## 기술 스택
+
+React 18 · TypeScript · Vite · three.js · @react-three/fiber
+백엔드 없음(localStorage) · 외부 에셋 없음 — 절차 생성 지오메트리, 시드 고정 난수(mulberry32) 기반 던전 생성 (폰트: [Jua](https://fonts.google.com/specimen/Jua), SIL OFL 1.1).
+
+설계 문서: [docs/DESIGN.md](docs/DESIGN.md)
