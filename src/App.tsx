@@ -6,10 +6,14 @@ import { BASE_STATS, UPGRADES, draftThree, type Stats, type Upgrade } from './li
 import { makeQuiz } from './lib/quiz';
 import { mulberry32 } from './lib/rng';
 import { useLocalStorage } from './lib/store';
+import { STORY_SLIDES, TOWN_FIRST, TOWN_REVISIT, type TownNode } from './lib/story';
 
-// doorrun: 보물상자에 닿으면 시작되는 "두 문 달리기" 미니게임 (통과해야만 아이템 획득)
-type Phase = 'title' | 'run' | 'doorrun' | 'quiz' | 'draft' | 'over';
-type QuizView = 'ok' | 'no';
+// 흐름: title → story(인트로) → town(마을 대화·선택) → run
+//  - 보물상자: run → doorrun(두 문 달리기, 최대 3연속 문) → quiz(결과/계속 선택) → run
+//  - 층 이동: run → portal(내려갈지 선택) → draft(보상 3택 1) → run(다음 층)
+type Phase = 'title' | 'story' | 'town' | 'run' | 'doorrun' | 'quiz' | 'portal' | 'draft' | 'over';
+type QuizView = 'ok' | 'no' | 'choice';
+const MAX_DOOR_ROUND = 3;
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('title');
@@ -19,18 +23,24 @@ export default function App() {
   const [kills, setKills] = useState(0);
   const [runId, setRunId] = useState(0);
   const [best, setBest] = useLocalStorage<number>('d100-best', 0);
+  const [storySeen, setStorySeen] = useLocalStorage<boolean>('d100-story', false);
   const [flash, setFlash] = useState(0);
   const [goldFlash, setGoldFlash] = useState(0);
   const [build, setBuild] = useState<Record<string, number>>({});
   const [quizSeq, setQuizSeq] = useState(0);
   const [quizView, setQuizView] = useState<QuizView>('no');
-  const [reward, setReward] = useState<Upgrade | null>(null);
+  const [rewards, setRewards] = useState<Upgrade[]>([]);
+  const [doorRound, setDoorRound] = useState(1);
+  const [storyIdx, setStoryIdx] = useState(0);
+  const [townIdx, setTownIdx] = useState(0);
+  const [townScript, setTownScript] = useState<TownNode[]>(TOWN_FIRST);
 
   const statsRef = useRef(stats);
   statsRef.current = stats;
   const pausedRef = useRef(false);
   pausedRef.current = phase !== 'run';
   const quizResultRef = useRef<QuizResult | null>(null);
+  const portalRetryRef = useRef(0);
 
   // 사망 판정은 hp 변화에 반응 (이벤트 콜백을 안정적으로 유지하기 위함)
   useEffect(() => {
@@ -45,19 +55,43 @@ export default function App() {
     [runId, floorNo],
   );
 
-  const quizSeed = runId * 104729 + floorNo * 131 + quizSeq * 17 + 5;
-  const quiz = useMemo(() => makeQuiz(quizSeed, floorNo), [quizSeed, floorNo]);
+  // 문(라운드)마다 새 문제 — 깊은 라운드일수록 어려운 문제 등급
+  const quizSeed = runId * 104729 + floorNo * 131 + quizSeq * 17 + doorRound * 7 + 5;
+  const quiz = useMemo(
+    () => makeQuiz(quizSeed, floorNo + (doorRound - 1) * 6),
+    [quizSeed, floorNo, doorRound],
+  );
 
-  const startRun = () => {
+  const enterDungeon = () => {
+    setStorySeen(true);
     setFloorNo(1);
     setStats(BASE_STATS);
     setHp(BASE_STATS.maxHp);
     setKills(0);
     setBuild({});
     setQuizSeq(0);
+    setDoorRound(1);
     quizResultRef.current = null;
+    portalRetryRef.current = 0;
     setRunId((id) => id + 1);
     setPhase('run');
+  };
+
+  const startAdventure = () => {
+    if (storySeen) {
+      setTownScript(TOWN_REVISIT);
+      setTownIdx(0);
+      setPhase('town');
+    } else {
+      setStoryIdx(0);
+      setPhase('story');
+    }
+  };
+
+  const goTown = (script: TownNode[]) => {
+    setTownScript(script);
+    setTownIdx(0);
+    setPhase('town');
   };
 
   const gainUpgrade = (u: Upgrade) => {
@@ -66,13 +100,37 @@ export default function App() {
     setBuild((b) => ({ ...b, [u.id]: (b[u.id] ?? 0) + 1 }));
   };
 
+  // 문을 통과한 수(tier)만큼 보물 지급 — 3문 완주는 전설 보물(전부 + 완전 회복)
+  const grantRewards = (tier: number) => {
+    const rand = mulberry32(quizSeed + 991);
+    const pool = [...UPGRADES];
+    const picks: Upgrade[] = [];
+    for (let i = 0; i < tier && pool.length > 0; i++) {
+      picks.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
+    }
+    const next = picks.reduce((s, u) => u.apply(s), stats);
+    setStats(next);
+    const healed = picks.filter((u) => u.id === 'hp').length * 25;
+    setHp((h) => (tier >= MAX_DOOR_ROUND ? next.maxHp : Math.min(next.maxHp, h + healed)));
+    setBuild((b) => {
+      const nb = { ...b };
+      picks.forEach((u) => (nb[u.id] = (nb[u.id] ?? 0) + 1));
+      return nb;
+    });
+    setRewards(picks);
+    setGoldFlash((f) => f + 1);
+  };
+
   const onDamage = useCallback((dmg: number) => {
     setFlash((f) => f + 1);
     setHp((h) => Math.max(0, h - dmg));
   }, []);
   const onKill = useCallback(() => setKills((k) => k + 1), []);
-  const onExit = useCallback(() => setPhase('draft'), []);
-  const onChest = useCallback(() => setPhase('doorrun'), []);
+  const onExit = useCallback(() => setPhase('portal'), []);
+  const onChest = useCallback(() => {
+    setDoorRound(1);
+    setPhase('doorrun');
+  }, []);
 
   const pickUpgrade = (u: Upgrade) => {
     gainUpgrade(u);
@@ -80,32 +138,49 @@ export default function App() {
     setPhase('run');
   };
 
-  // 두 문 달리기 결과 — 정답 문을 몸으로 통과했을 때만 보물 지급
+  // 두 문 달리기 결과 — 오답이면 그동안의 문도 전부 물거품 (빈손)
   const onDoorRunDone = (ok: boolean) => {
-    if (ok) {
-      const pick = UPGRADES[Math.floor(mulberry32(quizSeed + 99)() * UPGRADES.length)];
-      setReward(pick);
-      gainUpgrade(pick);
-      setGoldFlash((f) => f + 1);
+    if (!ok) {
+      setRewards([]);
+      setQuizView('no');
+    } else if (doorRound >= MAX_DOOR_ROUND) {
+      grantRewards(MAX_DOOR_ROUND);
       setQuizView('ok');
     } else {
-      setReward(null);
-      setQuizView('no');
+      setQuizView('choice');
     }
     setPhase('quiz');
   };
 
+  const takeRewardNow = () => {
+    grantRewards(doorRound);
+    setQuizView('ok');
+  };
+
+  const runDeeper = () => {
+    setDoorRound((r) => r + 1);
+    setPhase('doorrun');
+  };
+
   const continueFromQuiz = () => {
-    quizResultRef.current = { seq: quizSeq + 1, ok: quizView === 'ok' };
+    quizResultRef.current = { seq: quizSeq + 1, ok: rewards.length > 0 };
     setQuizSeq((s) => s + 1);
+    setDoorRound(1);
+    setPhase('run');
+  };
+
+  const stayOnFloor = () => {
+    portalRetryRef.current += 1;
     setPhase('run');
   };
 
   const hpRatio = Math.max(0, Math.min(1, hp / stats.maxHp));
+  const inGame = phase !== 'title' && phase !== 'story' && phase !== 'town';
+  const townNode = townScript[townIdx];
 
   return (
     <div className="app">
-      {phase !== 'title' && (
+      {inGame && (
         <Canvas className="canvas" camera={{ fov: 50, position: [0, 15.5, 9.5] }} dpr={[1, 2]}>
           <color attach="background" args={['#140e22']} />
           <fog attach="fog" args={['#140e22', 20, 44]} />
@@ -116,16 +191,19 @@ export default function App() {
             statsRef={statsRef}
             pausedRef={pausedRef}
             quizResultRef={quizResultRef}
+            portalRetryRef={portalRetryRef}
             onDamage={onDamage}
             onKill={onKill}
             onExit={onExit}
             onChest={onChest}
           />
-          {phase === 'doorrun' && <DoorRunScene quiz={quiz} onDone={onDoorRunDone} />}
+          {phase === 'doorrun' && (
+            <DoorRunScene key={doorRound} quiz={quiz} onDone={onDoorRunDone} />
+          )}
         </Canvas>
       )}
 
-      {phase !== 'title' && (
+      {inGame && (
         <div className="hud">
           <div className="hud-chip">🏰 {floorNo}층</div>
           <div className="hp-wrap">
@@ -139,7 +217,7 @@ export default function App() {
       )}
 
       {/* 현재 빌드 (획득한 아이템) */}
-      {phase !== 'title' && Object.keys(build).length > 0 && (
+      {inGame && Object.keys(build).length > 0 && (
         <div className="build-row">
           {UPGRADES.filter((u) => build[u.id]).map((u) => (
             <span key={u.id} className="build-chip">
@@ -156,35 +234,150 @@ export default function App() {
       {phase === 'title' && (
         <div className="screen title-screen">
           <h1>백층 던전</h1>
-          <p className="tagline">매판 새로 만들어지는 던전 — 100층까지 내려가라!</p>
+          <p className="tagline">책 속으로 떨어진 대학생의 귀환 대작전 — 100층까지 내려가라!</p>
           <div className="howto">
             <p>🕹️ 이동: 화면 드래그 (PC는 WASD/방향키)</p>
             <p>⚔️ 공격: 가까운 적을 자동으로 조준</p>
-            <p>🗝️ 보물상자에 닿으면 두 문 달리기 — 정답 문을 통과해야 아이템 획득!</p>
-            <p>🌀 보라색 포털에 닿으면 다음 층 + 보상 선택</p>
+            <p>🗝️ 보물상자 = 두 문 달리기! 깊이 달릴수록 좋은 보물</p>
+            <p>🌀 포털로 다음 층 — 내려갈지는 당신의 선택</p>
           </div>
           {best > 0 && <p className="best">최고 기록: {best}층</p>}
-          <button className="big-btn" onClick={startRun}>
-            던전 입장
+          <button className="big-btn" onClick={startAdventure}>
+            모험 시작
           </button>
+        </div>
+      )}
+
+      {phase === 'story' && (
+        <div className="screen story-screen" onClick={() => setStoryIdx((i) => Math.min(i + 1, STORY_SLIDES.length - 1))}>
+          <div className="story-icon">{STORY_SLIDES[storyIdx].icon}</div>
+          <p className="story-text">{STORY_SLIDES[storyIdx].text}</p>
+          <div className="story-btns">
+            {storyIdx < STORY_SLIDES.length - 1 ? (
+              <button
+                className="big-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setStoryIdx((i) => i + 1);
+                }}
+              >
+                다음 ▶
+              </button>
+            ) : (
+              <button
+                className="big-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goTown(TOWN_FIRST);
+                }}
+              >
+                마을로 가 본다
+              </button>
+            )}
+            <button
+              className="skip-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                goTown(TOWN_FIRST);
+              }}
+            >
+              건너뛰기 ⏭
+            </button>
+          </div>
+          <p className="story-page">
+            {storyIdx + 1} / {STORY_SLIDES.length}
+          </p>
+        </div>
+      )}
+
+      {phase === 'town' && townNode && (
+        <div className="screen town-screen">
+          <div className="town-sky">🌙</div>
+          <div className="town-scape">🏔️ 🏚️ ⛲ 🏘️ 🌲</div>
+          {townNode.kind === 'line' ? (
+            <div className="dialog-box" onClick={() => setTownIdx(townNode.next)}>
+              <div className="dialog-speaker">
+                <span className="dialog-icon">{townNode.icon}</span> {townNode.speaker}
+              </div>
+              <p className="dialog-text">{townNode.text}</p>
+              <span className="dialog-next">▼ 터치해서 계속</span>
+            </div>
+          ) : (
+            <div className="dialog-box">
+              <p className="dialog-text">{townNode.prompt}</p>
+              <div className="dialog-choices">
+                {townNode.options.map((o) => (
+                  <button
+                    key={o.label}
+                    className="choice-btn"
+                    onClick={() => (o.enter ? enterDungeon() : setTownIdx(o.next ?? townIdx))}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {phase === 'doorrun' && (
         <div className="doorrun-hint">
-          🚪 정답 문으로 달려요! (화면 왼쪽/오른쪽 꾹 또는 ←/→)
+          🚪 {doorRound}번째 문 / {MAX_DOOR_ROUND} — 정답 문으로 달려요! (화면 좌/우 꾹 또는 ←/→)
+        </div>
+      )}
+
+      {phase === 'portal' && (
+        <div className="screen quiz-screen">
+          <h2>🌀 아래로 내려가는 포털이 열려 있다</h2>
+          <p className="quiz-sub">다음 층은 더 위험하다. {floorNo + 1}층으로 내려가시겠습니까?</p>
+          <div className="dialog-choices">
+            <button className="choice-btn" onClick={() => setPhase('draft')}>
+              ⬇️ 내려간다
+            </button>
+            <button className="choice-btn" onClick={stayOnFloor}>
+              🕐 아직 이 층을 더 둘러볼래
+            </button>
+          </div>
         </div>
       )}
 
       {phase === 'quiz' && (
         <div className="screen quiz-screen">
-          {quizView === 'ok' && reward && (
+          {quizView === 'choice' && (
             <>
-              <h2>🎉 정답! 보물을 얻었다</h2>
-              <div className="card reward-pop">
-                <span className="card-icon">{reward.icon}</span>
-                <span className="card-name">{reward.name}</span>
-                <span className="card-desc">{reward.desc}</span>
+              <h2>🚪 {doorRound}번째 문 통과!</h2>
+              <p className="quiz-sub">
+                더 깊이 달릴수록 보물이 좋아진다… 하지만 틀리면 전부 빈손!
+              </p>
+              <div className="dialog-choices">
+                <button className="choice-btn" onClick={takeRewardNow}>
+                  🎁 여기서 보상 받기 — 아이템 {doorRound}개
+                </button>
+                <button className="choice-btn" onClick={runDeeper}>
+                  {doorRound + 1 >= MAX_DOOR_ROUND
+                    ? '🔥 마지막 문에 도전! (전설의 보물)'
+                    : '🔥 더 달린다!'}
+                </button>
+              </div>
+            </>
+          )}
+          {quizView === 'ok' && rewards.length > 0 && (
+            <>
+              <h2>
+                {rewards.length >= MAX_DOOR_ROUND ? '🏆 전설의 보물이다!' : '🎉 보물을 얻었다!'}
+              </h2>
+              {rewards.length >= MAX_DOOR_ROUND && (
+                <p className="quiz-sub">세 개의 문을 모두 통과! 체력도 가득 찼다.</p>
+              )}
+              <div className="cards">
+                {rewards.map((u, i) => (
+                  <div key={`${u.id}${i}`} className="card reward-pop">
+                    <span className="card-icon">{u.icon}</span>
+                    <span className="card-name">{u.name}</span>
+                    <span className="card-desc">{u.desc}</span>
+                  </div>
+                ))}
               </div>
               <button className="big-btn" onClick={continueFromQuiz}>
                 계속 탐험
@@ -194,7 +387,11 @@ export default function App() {
           {quizView === 'no' && (
             <>
               <h2>💨 아쉽다! 정답은 {quiz.answers[quiz.correct]}</h2>
-              <p className="quiz-sub">상자가 먼지가 되어 사라졌다…</p>
+              <p className="quiz-sub">
+                {doorRound > 1
+                  ? `${doorRound - 1}개의 문을 통과했지만… 보물은 전부 먼지가 되었다.`
+                  : '상자가 먼지가 되어 사라졌다…'}
+              </p>
               <button className="big-btn" onClick={continueFromQuiz}>
                 계속 탐험
               </button>
@@ -224,9 +421,15 @@ export default function App() {
           <p>
             처치 {kills} · 최고 기록 {Math.max(best, floorNo)}층
           </p>
-          <button className="big-btn" onClick={startRun}>
-            다시 도전
-          </button>
+          <p className="quiz-sub">눈을 떠 보니 마을 여관 침대 위였다. 던전의 마법일까.</p>
+          <div className="dialog-choices">
+            <button className="choice-btn" onClick={enterDungeon}>
+              ⚔️ 바로 다시 도전
+            </button>
+            <button className="choice-btn" onClick={() => goTown(TOWN_REVISIT)}>
+              🏘️ 마을에서 한숨 돌리기
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -55,6 +55,7 @@ function DungeonScene({
   statsRef,
   pausedRef,
   quizResultRef,
+  portalRetryRef,
   onDamage,
   onKill,
   onExit,
@@ -65,6 +66,7 @@ function DungeonScene({
   statsRef: React.MutableRefObject<Stats>;
   pausedRef: React.MutableRefObject<boolean>;
   quizResultRef: React.MutableRefObject<QuizResult | null>;
+  portalRetryRef: React.MutableRefObject<number>; // "아직 안 내려갈래" 선택 시 증가 → 포털 재무장
   onDamage: (dmg: number) => void;
   onKill: () => void;
   onExit: () => void;
@@ -110,6 +112,8 @@ function DungeonScene({
   );
   const fireTimer = useRef(0);
   const exited = useRef(false);
+  const portalRetrySeen = useRef(portalRetryRef.current);
+  const portalWaitLeave = useRef(false);
   const shake = useRef(0);
   const glowTimer = useRef(0);
   const sparkleTimer = useRef(0.4);
@@ -223,6 +227,8 @@ function DungeonScene({
         chestWorld: chestPos,
         chestState: chestState.current,
         exit: [exitX, exitZ],
+        exited: exited.current,
+        portalWaitLeave: portalWaitLeave.current,
         enemiesAlive: enemies.current.filter((e) => e.alive).length,
       }),
     };
@@ -261,6 +267,18 @@ function DungeonScene({
         }
         // 퀴즈 직후 바로 얻어맞지 않게 잠깐의 자비
         for (const e of enemies.current) e.hitCd = Math.max(e.hitCd, 0.9);
+      }
+    }
+
+    // ── "아직 안 내려갈래" — 포털에서 벗어나면 다시 물어볼 수 있게 재무장
+    if (portalRetryRef.current !== portalRetrySeen.current) {
+      portalRetrySeen.current = portalRetryRef.current;
+      portalWaitLeave.current = true;
+    }
+    if (portalWaitLeave.current) {
+      if (Math.hypot(p.position.x - exitX, p.position.z - exitZ) > 2.6) {
+        portalWaitLeave.current = false;
+        exited.current = false;
       }
     }
 
