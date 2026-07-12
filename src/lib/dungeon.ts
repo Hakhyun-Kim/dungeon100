@@ -21,7 +21,13 @@ export interface FloorMap {
   spawns: { x: number; y: number }[];
   chest: { x: number; y: number } | null; // 보물상자 (층당 1개, 두 문 달리기로 개봉)
   homeDoor: { x: number; y: number } | null; // 5층마다 나타나는 마을로 가는 문 (이유는 아무도 모른다)
+  trace: { x: number; y: number } | null; // 소녀의 흔적 (14·28·42·49층 — 56층 복선)
+  girl: { x: number; y: number } | null; // 56층, 이야기 속 소녀 '여백'의 찻자리
 }
+
+// 소녀의 흔적이 놓이는 층
+export const TRACE_FLOORS = [14, 28, 42, 49];
+export const GIRL_FLOOR = 56;
 
 export function isFloor(cells: Uint8Array, x: number, y: number): boolean {
   if (x < 0 || y < 0 || x >= GRID || y >= GRID) return false;
@@ -117,7 +123,34 @@ export function generateFloor(floorNo: number): FloorMap {
     }
   }
 
-  return { cells, rooms, start, exit, spawns, chest, homeDoor };
+  // 소녀의 흔적 / 56층의 소녀 — 시작·출구·상자를 피해 배치
+  const placeAway = (): { x: number; y: number } | null => {
+    for (let tries = 0; tries < 24; tries++) {
+      const r = rooms[Math.floor(rand() * rooms.length)];
+      const px = r.x + 1 + Math.floor(rand() * (r.w - 2));
+      const py = r.y + 1 + Math.floor(rand() * (r.h - 2));
+      if (Math.abs(px - exit.x) + Math.abs(py - exit.y) < 4) continue;
+      if (Math.abs(px - start.x) + Math.abs(py - start.y) < 3) continue;
+      if (chest && Math.abs(px - chest.x) + Math.abs(py - chest.y) < 3) continue;
+      if (homeDoor && Math.abs(px - homeDoor.x) + Math.abs(py - homeDoor.y) < 3) continue;
+      return { x: px, y: py };
+    }
+    return null;
+  };
+  const trace = TRACE_FLOORS.includes(floorNo) ? placeAway() : null;
+  const girl = floorNo === GIRL_FLOOR ? placeAway() : null;
+
+  // 소녀 주변은 안전지대 — 몬스터들이 그녀를 피해 다닌다 (28층 흔적의 복선과 일치)
+  const safeSpawns =
+    girl || trace
+      ? spawns.filter((sp) => {
+          if (girl && Math.abs(sp.x - girl.x) + Math.abs(sp.y - girl.y) < 5) return false;
+          if (trace && Math.abs(sp.x - trace.x) + Math.abs(sp.y - trace.y) < 3) return false;
+          return true;
+        })
+      : spawns;
+
+  return { cells, rooms, start, exit, spawns: safeSpawns, chest, homeDoor, trace, girl };
 }
 
 // 폭 2짜리 L자 복도

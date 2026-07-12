@@ -350,6 +350,107 @@ const TOWN_VISIT_LATER: TownNode[] = [
   },
 ];
 
+// ── 소녀의 흔적 (14·28·42·49층) — 56층으로 이어지는 복선
+export const TRACES: Record<number, { icon: string; text: string }> = {
+  14: {
+    icon: '🖍️',
+    text: '복도 구석, 색분필 낙서 — 웃는 얼굴과 꽃 한 송이.\n\n이 살벌한 던전에… 대체 누가?',
+  },
+  28: {
+    icon: '🕊️',
+    text: '작은 종이학이 가지런히 놓여 있다. 접은 지 얼마 안 된 듯 깨끗하다.\n\n…그러고 보니 이 주변만, 몬스터가 얼씬도 하지 않는다.',
+  },
+  42: {
+    icon: '💌',
+    text: '벽에 삐뚤빼뚤한 글씨:\n「내려오는 발소리, 다 들려요! 56층이에요. 차 마시러 오세요 🌼」\n\n…초대장?',
+  },
+  49: {
+    icon: '🫖',
+    text: '낡은 담요, 그리고 찻잔 두 개.\n하나는 아직 따뜻하다.\n\n— 가까워졌다.',
+  },
+};
+
+// ── 56층, 이야기 속 소녀 '여백' — 작가가 쓰다 만 등장인물 (17층 글귀의 회수)
+export const GIRL_SCRIPT: TownNode[] = [
+  {
+    kind: 'line',
+    icon: '👧',
+    speaker: '???',
+    text: '어…? 손님이다! 진짜 손님!\n42층 초대장 보고 온 거예요?',
+    next: 1,
+  },
+  {
+    kind: 'line',
+    icon: '🧑‍🎓',
+    speaker: '나',
+    text: '너, 여기서 뭐 하는 거야? 이 아래는 위험해!',
+    next: 2,
+  },
+  {
+    kind: 'line',
+    icon: '👧',
+    speaker: '소녀',
+    text: "위험하긴요. 몬스터들은 절 안 건드려요.\n전 '등장인물'이거든요. 그쪽 같은 '읽는 사람'이랑은 다르게요.",
+    next: 3,
+  },
+  {
+    kind: 'line',
+    icon: '👧',
+    speaker: '소녀',
+    text: "작가님이 절 쓰다가 멈추셨어요. 이름도 못 받았고요.\n그래서 다들 절 '여백'이라고 불러요. 페이지 사이 빈 곳에 사니까.",
+    next: 4,
+  },
+  {
+    kind: 'line',
+    icon: '👧',
+    speaker: '여백',
+    text: '그래서 뭐 어때요? 덕분에 전 이 책에서 제일 자유로운걸요.\n(활짝 웃는다)',
+    next: 5,
+  },
+  {
+    kind: 'line',
+    icon: '👧',
+    speaker: '여백',
+    text: "부탁 하나만요. 100층 문에 닿으면 작가님께 전해 주세요.\n— '마지막 장, 여기서 기다리고 있다'고.",
+    next: 6,
+  },
+  {
+    kind: 'line',
+    icon: '👧',
+    speaker: '여백',
+    text: '아, 이것도 가져가요. 손님 대접용으로 아껴 둔 건데,\n차랑은 영 안 어울려서.',
+    gift: 'item',
+    next: 7,
+  },
+  {
+    kind: 'choice',
+    prompt: '화로 위 주전자가 김을 뿜는다.',
+    options: [
+      { label: '🍵 차 한 잔 얻어 마신다', next: 8 },
+      { label: '⚔️ 이만 가 볼게, 고마워', action: 'return' },
+    ],
+  },
+  {
+    kind: 'line',
+    icon: '👧',
+    speaker: '여백',
+    text: '따뜻하죠? 여관 니나 언니 레시피예요.\n…언니도 절 기억하고 있을까요?',
+    gift: 'heal',
+    next: 9,
+  },
+  {
+    kind: 'choice',
+    prompt: '찻잔 바닥에 작게 쓰여 있다: 「다음 이야기에서 만나요」',
+    options: [{ label: '⚔️ 던전으로 돌아간다', action: 'return' }],
+  },
+];
+
+// 여백을 만났다면 엔딩에 한 장면이 더해진다
+export const ENDING_GIRL_EXTRA: { icon: string; text: string } = {
+  icon: '🌼',
+  text: '문이 닫히기 직전 — 페이지 사이에서\n누군가 폴짝폴짝 뛰며 손을 흔든 것 같았다.\n\n「다음 이야기에서 만나요!」',
+};
+
 // ── 엔딩 (100층 — 페이지의 수호자를 쓰러뜨리고 황금 문 앞에서)
 export const ENDING_ALONE: { icon: string; text: string }[] = [
   {

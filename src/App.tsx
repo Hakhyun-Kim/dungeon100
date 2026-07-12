@@ -16,6 +16,9 @@ import {
   MEMORIES,
   ENDING_ALONE,
   ENDING_TOGETHER,
+  ENDING_GIRL_EXTRA,
+  TRACES,
+  GIRL_SCRIPT,
   getLore,
   getDeathLore,
   townVisitScript,
@@ -53,6 +56,7 @@ type Phase =
   | 'lore'
   | 'homedoor'
   | 'shop'
+  | 'trace'
   | 'ending'
   | 'over';
 type QuizView = 'ok' | 'no' | 'choice';
@@ -71,7 +75,12 @@ export default function App() {
   const [coins, setCoins] = useLocalStorage<number>('d100-coins', 0);
   const [meta, setMeta] = useLocalStorage<Meta>('d100-meta', { dmg: 0, hp: 0, spd: 0 });
   const [deaths, setDeaths] = useLocalStorage<number>('d100-deaths', 0);
+  const [girlMet, setGirlMet] = useLocalStorage<boolean>('d100-girl', false);
   const [overLore, setOverLore] = useState('');
+  const [townScape, setTownScape] = useState<{ sky: string; scape: string }>({
+    sky: '🌙',
+    scape: '🏔️ 🏚️ ⛲ 🏘️ 🌲',
+  });
   const [flash, setFlash] = useState(0);
   const [goldFlash, setGoldFlash] = useState(0);
   const [build, setBuild] = useState<Record<string, number>>({});
@@ -82,7 +91,7 @@ export default function App() {
   const [storyIdx, setStoryIdx] = useState(0);
   const [townIdx, setTownIdx] = useState(0);
   const [townScript, setTownScript] = useState<TownNode[]>(TOWN_FIRST);
-  const [townMode, setTownMode] = useState<'pre' | 'visit'>('pre');
+  const [townMode, setTownMode] = useState<'pre' | 'visit' | 'girl'>('pre');
   const [giftName, setGiftName] = useState<string | null>(null);
   const [mode, setMode] = useState<DungeonMode>('kids');
   const [muted, setMutedState] = useState(isMuted());
@@ -111,7 +120,7 @@ export default function App() {
   const portalRetryRef = useRef(0);
   const homeRetryRef = useRef(0);
   const homeUsedRef = useRef(0);
-  const visitGiftGiven = useRef(false);
+  const visitGiftGiven = useRef<Set<number>>(new Set()); // 방문당 노드별 선물 1회
 
   // 사망 판정은 hp 변화에 반응 (이벤트 콜백을 안정적으로 유지하기 위함)
   useEffect(() => {
@@ -279,12 +288,17 @@ export default function App() {
     setPhase('story');
   };
 
-  const goTown = (script: TownNode[], mode: 'pre' | 'visit' = 'pre') => {
+  const goTown = (
+    script: TownNode[],
+    mode: 'pre' | 'visit' | 'girl' = 'pre',
+    scape?: { sky: string; scape: string },
+  ) => {
     setTownScript(script);
     setTownIdx(0);
     setTownMode(mode);
     setGiftName(null);
-    visitGiftGiven.current = false;
+    visitGiftGiven.current.clear();
+    setTownScape(scape ?? { sky: '🌙', scape: '🏔️ 🏚️ ⛲ 🏘️ 🌲' });
     setPhase('town');
   };
 
@@ -317,13 +331,13 @@ export default function App() {
     else sfx.treasure();
   };
 
-  // 마을 방문 선물 (대화 노드에 gift가 달려 있으면 1회 지급)
+  // 마을 방문 선물 (대화 노드에 gift가 달려 있으면 노드당 1회 지급)
   const townNode = townScript[townIdx];
   useEffect(() => {
-    if (phase !== 'town' || townMode !== 'visit') return;
+    if (phase !== 'town' || townMode === 'pre') return;
     if (!townNode || townNode.kind !== 'line' || !townNode.gift) return;
-    if (visitGiftGiven.current) return;
-    visitGiftGiven.current = true;
+    if (visitGiftGiven.current.has(townIdx)) return;
+    visitGiftGiven.current.add(townIdx);
     if (townNode.gift === 'heal') {
       setHp(stats.maxHp);
       setGiftName('🍲 체력 완전 회복');
@@ -383,6 +397,16 @@ export default function App() {
     setPhase('doorrun');
   }, []);
   const onHomeDoor = useCallback(() => setPhase('homedoor'), []);
+  const onTrace = useCallback(() => {
+    sfx.memory();
+    setPhase('trace');
+  }, []);
+  const onGirl = useCallback(() => {
+    sfx.gift();
+    setGirlMet(true);
+    goTown(GIRL_SCRIPT, 'girl', { sky: '✨', scape: '🕯️ 🫖 📚 🌼 🕯️' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const pickUpgrade = (u: Upgrade) => {
     sfx.pick();
@@ -517,6 +541,8 @@ export default function App() {
             onHomeDoor={onHomeDoor}
             onBossHp={onBossHp}
             onBossDown={onBossDown}
+            onTrace={onTrace}
+            onGirl={onGirl}
           />
           {phase === 'doorrun' && (
             <DoorRunScene key={doorRound} quiz={quiz} onDone={onDoorRunDone} />
@@ -709,9 +735,10 @@ export default function App() {
 
       {phase === 'town' && townNode && (
         <div className="screen town-screen">
-          <div className="town-sky">🌙</div>
-          <div className="town-scape">🏔️ 🏚️ ⛲ 🏘️ 🌲</div>
+          <div className="town-sky">{townScape.sky}</div>
+          <div className="town-scape">{townScape.scape}</div>
           {townMode === 'visit' && <div className="town-floor-chip">🔔 {floorNo}층의 문 → 마을</div>}
+          {townMode === 'girl' && <div className="town-floor-chip">🍵 {floorNo}층 — 페이지 사이의 찻자리</div>}
           {townNode.kind === 'line' ? (
             <div
               className="dialog-box"
@@ -932,7 +959,8 @@ export default function App() {
               </div>
             );
           }
-          const slides = endingVariant === 'alone' ? ENDING_ALONE : ENDING_TOGETHER;
+          const baseSlides = endingVariant === 'alone' ? ENDING_ALONE : ENDING_TOGETHER;
+          const slides = girlMet ? [...baseSlides, ENDING_GIRL_EXTRA] : baseSlides;
           if (endingIdx < slides.length) {
             const s = slides[endingIdx];
             return (
@@ -978,6 +1006,23 @@ export default function App() {
             </div>
           );
         })()}
+
+      {phase === 'trace' && TRACES[floorNo] && (
+        <div className="screen lore-screen">
+          <div className="story-icon">{TRACES[floorNo].icon}</div>
+          <p className="lore-label">{floorNo}층 — 누군가의 흔적</p>
+          <p className="lore-text">{TRACES[floorNo].text}</p>
+          <button
+            className="big-btn"
+            onClick={() => {
+              sfx.tap();
+              setPhase('run');
+            }}
+          >
+            …계속 가 보자
+          </button>
+        </div>
+      )}
 
       {phase === 'lore' && (
         <div className="screen lore-screen">

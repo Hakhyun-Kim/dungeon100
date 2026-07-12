@@ -110,6 +110,8 @@ function DungeonScene({
   onHomeDoor,
   onBossHp,
   onBossDown,
+  onTrace,
+  onGirl,
 }: {
   floorNo: number;
   hidden: boolean; // 두 문 달리기 미니게임 동안 던전을 숨기고 카메라를 양보
@@ -126,6 +128,8 @@ function DungeonScene({
   onHomeDoor: () => void;
   onBossHp: (hp: number, maxHp: number) => void;
   onBossDown: () => void;
+  onTrace: () => void; // 소녀의 흔적 발견
+  onGirl: () => void; // 56층 소녀와 만남
 }) {
   const floor = useMemo(() => generateFloor(floorNo), [floorNo]);
   const isBossFloor = floorNo % 10 === 0;
@@ -255,6 +259,18 @@ function DungeonScene({
     () => (floor.homeDoor ? cellToWorld(floor.homeDoor.x, floor.homeDoor.y) : null),
     [floor],
   );
+  const tracePos = useMemo(
+    () => (floor.trace ? cellToWorld(floor.trace.x, floor.trace.y) : null),
+    [floor],
+  );
+  const girlPos = useMemo(
+    () => (floor.girl ? cellToWorld(floor.girl.x, floor.girl.y) : null),
+    [floor],
+  );
+  const traceSeen = useRef(false);
+  const girlMet = useRef(false);
+  const traceRef = useRef<THREE.Group>(null);
+  const girlRef = useRef<THREE.Group>(null);
 
   // 파티클 분출 — 타격 스파크, 처치 폭발, 보물 개봉 등
   const burst = (x: number, y: number, z: number, color: string, n: number, speed: number) => {
@@ -348,6 +364,9 @@ function DungeonScene({
         portalWaitLeave: portalWaitLeave.current,
         homeWorld: homePos,
         homeState: homeState.current,
+        traceWorld: tracePos,
+        traceSeen: traceSeen.current,
+        girlWorld: girlPos,
         enemyTier,
         boss: boss.current ? { hp: boss.current.hp, alive: boss.current.alive } : null,
         enemiesAlive: enemies.current.filter((e) => e.alive).length,
@@ -694,6 +713,24 @@ function DungeonScene({
         }
       }
 
+      // ── 소녀의 흔적 발견 (1회)
+      if (tracePos && !traceSeen.current) {
+        if (Math.hypot(p.position.x - tracePos[0], p.position.z - tracePos[1]) < 1.0) {
+          traceSeen.current = true;
+          burst(tracePos[0], 0.8, tracePos[1], '#ffb3d1', 10, 1.2);
+          onTrace();
+        }
+      }
+
+      // ── 56층의 소녀 (다가가면 대화, 층당 1회)
+      if (girlPos && !girlMet.current) {
+        if (Math.hypot(p.position.x - girlPos[0], p.position.z - girlPos[1]) < 1.3) {
+          girlMet.current = true;
+          burst(girlPos[0], 1.0, girlPos[1], '#ffd9a8', 8, 1.0);
+          onGirl();
+        }
+      }
+
       // ── 상자 대기 반짝임
       if (chestState.current === 'idle' && chestPos) {
         sparkleTimer.current -= dt;
@@ -861,6 +898,18 @@ function DungeonScene({
       );
     }
 
+    // ── 흔적·소녀 연출
+    if (traceRef.current) {
+      const target = traceSeen.current ? 0.0001 : 1;
+      traceRef.current.scale.setScalar(
+        traceRef.current.scale.x + (target - traceRef.current.scale.x) * Math.min(1, dt * 8),
+      );
+      traceRef.current.position.y = Math.sin(t * 2.4) * 0.08;
+    }
+    if (girlRef.current) {
+      girlRef.current.position.y = Math.abs(Math.sin(t * 2)) * 0.04; // 콧노래 부르듯 들썩들썩
+    }
+
     // ── 마을 문 연출 (사용 후 소멸)
     const hd = homeDoorRef.current;
     if (hd) {
@@ -1020,6 +1069,61 @@ function DungeonScene({
         <sphereGeometry args={[0.22, 8, 8]} />
         <meshStandardMaterial color="#ff3d5e" emissive="#a01030" emissiveIntensity={1.4} />
       </instancedMesh>
+
+      {/* 소녀의 흔적 — 은은히 빛나는 꽃 한 송이 */}
+      {tracePos && (
+        <group ref={traceRef} position={[tracePos[0], 0, tracePos[1]]}>
+          <mesh position={[0, 0.35, 0]}>
+            <cylinderGeometry args={[0.04, 0.05, 0.7, 6]} />
+            <meshStandardMaterial color="#4f8a4a" />
+          </mesh>
+          <mesh position={[0, 0.78, 0]}>
+            <sphereGeometry args={[0.18, 10, 10]} />
+            <meshStandardMaterial color="#ffb3d1" emissive="#c95a86" emissiveIntensity={0.8} />
+          </mesh>
+          <pointLight color="#ffb3d1" intensity={0.9} distance={4} position={[0, 1, 0]} />
+        </group>
+      )}
+
+      {/* 56층의 소녀 '여백' — 찻자리와 촛불 */}
+      {girlPos && (
+        <group ref={girlRef} position={[girlPos[0], 0, girlPos[1]]}>
+          <mesh position={[0, 0.45, 0]}>
+            <boxGeometry args={[0.5, 0.55, 0.34]} />
+            <meshStandardMaterial color="#ff9ec4" />
+          </mesh>
+          <mesh position={[0, 0.95, 0]}>
+            <boxGeometry args={[0.42, 0.4, 0.4]} />
+            <meshStandardMaterial color="#ffe0c2" />
+          </mesh>
+          <mesh position={[-0.28, 0.98, 0]}>
+            <boxGeometry args={[0.12, 0.3, 0.12]} />
+            <meshStandardMaterial color="#6b4a2f" />
+          </mesh>
+          <mesh position={[0.28, 0.98, 0]}>
+            <boxGeometry args={[0.12, 0.3, 0.12]} />
+            <meshStandardMaterial color="#6b4a2f" />
+          </mesh>
+          <mesh position={[-0.09, 0.98, 0.21]}>
+            <boxGeometry args={[0.06, 0.08, 0.02]} />
+            <meshStandardMaterial color="#2a2333" />
+          </mesh>
+          <mesh position={[0.09, 0.98, 0.21]}>
+            <boxGeometry args={[0.06, 0.08, 0.02]} />
+            <meshStandardMaterial color="#2a2333" />
+          </mesh>
+          {/* 찻상 + 촛불빛 */}
+          <mesh position={[0.95, 0.22, 0]}>
+            <cylinderGeometry args={[0.42, 0.48, 0.44, 10]} />
+            <meshStandardMaterial color="#8a5a2b" />
+          </mesh>
+          <mesh position={[0.95, 0.5, 0]}>
+            <cylinderGeometry args={[0.09, 0.11, 0.14, 8]} />
+            <meshStandardMaterial color="#f4e8d2" />
+          </mesh>
+          <pointLight color="#ffd9a8" intensity={1.4} distance={6} position={[0.5, 1.3, 0.4]} />
+        </group>
+      )}
 
       {/* 출구 — 보통 층은 포털, 100층은 집으로 가는 황금 문 */}
       <group ref={portalRef} position={[exitX, 1.1, exitZ]}>
