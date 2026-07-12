@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import DungeonScene from './three/DungeonScene';
-import { BASE_STATS, draftThree, type Stats, type Upgrade } from './lib/upgrades';
+import DungeonScene, { type QuizResult } from './three/DungeonScene';
+import { BASE_STATS, UPGRADES, draftThree, type Stats, type Upgrade } from './lib/upgrades';
+import { makeQuiz } from './lib/quiz';
 import { mulberry32 } from './lib/rng';
 import { useLocalStorage } from './lib/store';
 
-type Phase = 'title' | 'run' | 'draft' | 'over';
+type Phase = 'title' | 'run' | 'quiz' | 'draft' | 'over';
+type QuizView = 'ask' | 'ok' | 'no';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('title');
@@ -16,11 +18,17 @@ export default function App() {
   const [runId, setRunId] = useState(0);
   const [best, setBest] = useLocalStorage<number>('d100-best', 0);
   const [flash, setFlash] = useState(0);
+  const [goldFlash, setGoldFlash] = useState(0);
+  const [build, setBuild] = useState<Record<string, number>>({});
+  const [quizSeq, setQuizSeq] = useState(0);
+  const [quizView, setQuizView] = useState<QuizView>('ask');
+  const [reward, setReward] = useState<Upgrade | null>(null);
 
   const statsRef = useRef(stats);
   statsRef.current = stats;
   const pausedRef = useRef(false);
   pausedRef.current = phase !== 'run';
+  const quizResultRef = useRef<QuizResult | null>(null);
 
   // 사망 판정은 hp 변화에 반응 (이벤트 콜백을 안정적으로 유지하기 위함)
   useEffect(() => {
@@ -35,13 +43,25 @@ export default function App() {
     [runId, floorNo],
   );
 
+  const quizSeed = runId * 104729 + floorNo * 131 + quizSeq * 17 + 5;
+  const quiz = useMemo(() => makeQuiz(quizSeed, floorNo), [quizSeed, floorNo]);
+
   const startRun = () => {
     setFloorNo(1);
     setStats(BASE_STATS);
     setHp(BASE_STATS.maxHp);
     setKills(0);
+    setBuild({});
+    setQuizSeq(0);
+    quizResultRef.current = null;
     setRunId((id) => id + 1);
     setPhase('run');
+  };
+
+  const gainUpgrade = (u: Upgrade) => {
+    setStats((s) => u.apply(s));
+    if (u.id === 'hp') setHp((h) => h + 25);
+    setBuild((b) => ({ ...b, [u.id]: (b[u.id] ?? 0) + 1 }));
   };
 
   const onDamage = useCallback((dmg: number) => {
@@ -50,11 +70,33 @@ export default function App() {
   }, []);
   const onKill = useCallback(() => setKills((k) => k + 1), []);
   const onExit = useCallback(() => setPhase('draft'), []);
+  const onChest = useCallback(() => {
+    setQuizView('ask');
+    setPhase('quiz');
+  }, []);
 
   const pickUpgrade = (u: Upgrade) => {
-    setStats((s) => u.apply(s));
-    if (u.id === 'hp') setHp((h) => h + 25);
+    gainUpgrade(u);
     setFloorNo((n) => n + 1);
+    setPhase('run');
+  };
+
+  const answerQuiz = (i: 0 | 1) => {
+    if (i === quiz.correct) {
+      const pick = UPGRADES[Math.floor(mulberry32(quizSeed + 99)() * UPGRADES.length)];
+      setReward(pick);
+      gainUpgrade(pick);
+      setGoldFlash((f) => f + 1);
+      setQuizView('ok');
+    } else {
+      setReward(null);
+      setQuizView('no');
+    }
+  };
+
+  const continueFromQuiz = () => {
+    quizResultRef.current = { seq: quizSeq + 1, ok: quizView === 'ok' };
+    setQuizSeq((s) => s + 1);
     setPhase('run');
   };
 
@@ -69,9 +111,11 @@ export default function App() {
             floorNo={floorNo}
             statsRef={statsRef}
             pausedRef={pausedRef}
+            quizResultRef={quizResultRef}
             onDamage={onDamage}
             onKill={onKill}
             onExit={onExit}
+            onChest={onChest}
           />
         </Canvas>
       )}
@@ -89,7 +133,20 @@ export default function App() {
         </div>
       )}
 
-      {flash > 0 && <div key={flash} className="hit-flash" />}
+      {/* 현재 빌드 (획득한 아이템) */}
+      {phase !== 'title' && Object.keys(build).length > 0 && (
+        <div className="build-row">
+          {UPGRADES.filter((u) => build[u.id]).map((u) => (
+            <span key={u.id} className="build-chip">
+              {u.icon}
+              {build[u.id] > 1 && <em>×{build[u.id]}</em>}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {flash > 0 && <div key={`f${flash}`} className="hit-flash" />}
+      {goldFlash > 0 && <div key={`g${goldFlash}`} className="hit-flash gold" />}
 
       {phase === 'title' && (
         <div className="screen title-screen">
@@ -98,12 +155,54 @@ export default function App() {
           <div className="howto">
             <p>🕹️ 이동: 화면 드래그 (PC는 WASD/방향키)</p>
             <p>⚔️ 공격: 가까운 적을 자동으로 조준</p>
+            <p>🗝️ 보물상자의 수수께끼를 풀면 아이템 획득</p>
             <p>🌀 보라색 포털에 닿으면 다음 층 + 보상 선택</p>
           </div>
           {best > 0 && <p className="best">최고 기록: {best}층</p>}
           <button className="big-btn" onClick={startRun}>
             던전 입장
           </button>
+        </div>
+      )}
+
+      {phase === 'quiz' && (
+        <div className="screen quiz-screen">
+          {quizView === 'ask' && (
+            <>
+              <p className="quiz-label">🗝️ 보물상자의 수수께끼</p>
+              <h2 className="quiz-q">{quiz.q}</h2>
+              <p className="quiz-sub">정답이 적힌 문을 열어요!</p>
+              <div className="doors">
+                {quiz.answers.map((a, i) => (
+                  <button key={i} className="door" onClick={() => answerQuiz(i as 0 | 1)}>
+                    <span className="door-answer">{a}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {quizView === 'ok' && reward && (
+            <>
+              <h2>🎉 정답! 보물을 얻었다</h2>
+              <div className="card reward-pop">
+                <span className="card-icon">{reward.icon}</span>
+                <span className="card-name">{reward.name}</span>
+                <span className="card-desc">{reward.desc}</span>
+              </div>
+              <button className="big-btn" onClick={continueFromQuiz}>
+                계속 탐험
+              </button>
+            </>
+          )}
+          {quizView === 'no' && (
+            <>
+              <h2>💨 아쉽다! 정답은 {quiz.answers[quiz.correct]}</h2>
+              <p className="quiz-sub">상자가 먼지가 되어 사라졌다…</p>
+              <button className="big-btn" onClick={continueFromQuiz}>
+                계속 탐험
+              </button>
+            </>
+          )}
         </div>
       )}
 

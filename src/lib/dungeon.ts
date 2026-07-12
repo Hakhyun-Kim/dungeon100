@@ -19,6 +19,7 @@ export interface FloorMap {
   start: { x: number; y: number };
   exit: { x: number; y: number };
   spawns: { x: number; y: number }[];
+  chest: { x: number; y: number } | null; // 보물상자 (층당 1개, 수수께끼로 개봉)
 }
 
 export function isFloor(cells: Uint8Array, x: number, y: number): boolean {
@@ -89,7 +90,19 @@ export function generateFloor(floorNo: number): FloorMap {
     }
   }
 
-  return { cells, rooms, start, exit, spawns };
+  // 보물상자 — 시작·출구 근처를 피해 배치
+  let chest: { x: number; y: number } | null = null;
+  const chestRooms = rooms.length >= 3 ? rooms.slice(1, -1) : rooms.slice(-1);
+  for (let tries = 0; tries < 24 && !chest; tries++) {
+    const r = chestRooms[Math.floor(rand() * chestRooms.length)];
+    const cx = r.x + 1 + Math.floor(rand() * (r.w - 2));
+    const cy = r.y + 1 + Math.floor(rand() * (r.h - 2));
+    if (Math.abs(cx - exit.x) + Math.abs(cy - exit.y) < 4) continue;
+    if (Math.abs(cx - start.x) + Math.abs(cy - start.y) < 3) continue;
+    chest = { x: cx, y: cy };
+  }
+
+  return { cells, rooms, start, exit, spawns, chest };
 }
 
 // 폭 2짜리 L자 복도

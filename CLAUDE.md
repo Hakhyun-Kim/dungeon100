@@ -13,12 +13,14 @@
 - 배포: main 푸시 → `.github/workflows/deploy-pages.yml` → https://hakhyun-kim.github.io/dungeon100/
 
 ## 구조
-- `src/App.tsx` — phase 상태 머신: `title` → `run` → `draft`(층 클리어, 보상 3택 1) → `run`(다음 층) / `over`(사망). HUD·타이틀·드래프트·게임오버는 캔버스 위 DOM 오버레이. 사망 판정은 hp useEffect. Canvas는 런 내내 유지, 층 전환은 DungeonScene key 리마운트.
-- `src/three/DungeonScene.tsx` — 층 하나의 씬+시뮬레이션. 지형·적·투사체 전부 InstancedMesh. 시뮬레이션은 useFrame에서 ref 기반(React 상태는 onDamage/onKill/onExit 이벤트만). 입력은 useMoveInput 훅 (키보드 + 전화면 터치 드래그 가상 스틱, button 위에서는 시작 안 함). pausedRef로 드래프트/게임오버 중 정지.
-- `src/lib/dungeon.ts` — 절차 생성. 방 흩뿌리기 + 폭 2 L자 복도 순차 연결(연결 보장). `GRID`=44셀, `CELL`=2. 충돌은 `canStand`(네 모서리 셀 검사). 시작 방 안전지대, 출구 인접 스폰 금지.
+- `src/App.tsx` — phase 상태 머신: `title` → `run` → `quiz`(보물상자 수수께끼) / `draft`(층 클리어, 보상 3택 1) → `run` / `over`(사망). HUD·빌드 칩·오버레이는 캔버스 위 DOM. 사망 판정은 hp useEffect. Canvas는 런 내내 유지, 층 전환은 DungeonScene key 리마운트. 퀴즈 결과는 quizResultRef(seq 증가)로 씬에 전달.
+- `src/three/DungeonScene.tsx` — 층 하나의 씬+시뮬레이션. 지형·적·투사체·파티클 전부 InstancedMesh. 시뮬레이션은 useFrame에서 ref 기반(React 상태는 onDamage/onKill/onExit/onChest 이벤트만). 타격감: 피격 흰색 번쩍(인스턴스 색)+넉백+스파크, 처치 폭발, 카메라 셰이크. 파워업 시각화: 멀티샷 궤도 구슬, 공격력별 투사체 크기·색, 체력별 몸집, 보물 획득 황금 잔광. 입력은 useMoveInput 훅 (키보드 + 터치 드래그, button 위에서는 시작 안 함). pausedRef로 퀴즈/드래프트/게임오버 중 정지. DEV 전용 `window.__d100`(teleport/state) — 자동 검증용.
+- `src/lib/dungeon.ts` — 절차 생성. 방 흩뿌리기 + 폭 2 L자 복도 순차 연결(연결 보장). `GRID`=44셀, `CELL`=2. 충돌은 `canStand`(네 모서리 셀 검사). 시작 방 안전지대, 출구 인접 스폰 금지, 층당 보물상자 1개(시작·출구에서 떨어진 곳).
+- `src/lib/quiz.ts` — 보물상자 수수께끼 생성 (두 문 러너 크로스오버). 층 깊이 비례 난이도의 산수 문제 + 근접 오답, 문제 은행 없음.
 - `src/lib/rng.ts` — mulberry32 시드 난수. **층 번호 = 시드** → 같은 층은 항상 같은 구조 (재현성).
-- `src/lib/upgrades.ts` — 스탯·보상 카드 풀. 드래프트는 `draftThree(rand)`.
+- `src/lib/upgrades.ts` — 스탯·보상 카드 풀. 드래프트는 `draftThree(rand)`, 보물 보상도 이 풀에서 지급.
 - `src/lib/store.ts` — useLocalStorage 훅. 키는 `d100-` 접두사 (`d100-best`).
+- `index.html` — `?rafshim` 심: 타이머 구동 rAF + ResizeObserver 폴링 폴리필 (숨김 탭 검증용 — 없으면 r3f가 부팅 못 함).
 
 ## 원칙
 - UI 문구는 한국어. 백엔드 없음 — localStorage만.
