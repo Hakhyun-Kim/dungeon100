@@ -1,7 +1,7 @@
 # 백층 던전 (Dungeon 100)
 
 매판 새로 생성되는 던전을 뚫고 100층까지 내려가는 **탑다운 3D 로그라이크** (three.js + react-three-fiber). 모바일 우선 웹앱 (React + Vite + TypeScript).
-**공개 저장소** — NAN 2026 (NHN Game × AI Hackathon) 사전과제 투트랙 프로젝트. 시크릿·내부 경로 커밋 금지.
+**공개 저장소** — NAN 2026 (NHN Game × AI Hackathon) 사전과제 **제출작(확정)**. 시크릿·내부 경로 커밋 금지.
 설계·로드맵: `docs/DESIGN.md` (주차별 계획 포함 — 작업 완료 시 체크 갱신).
 
 ## 문서 관리 원칙
@@ -60,4 +60,4 @@
 - 커밋 기록이 심사 증빙 — 작업 단위마다 의미 있는 한국어 커밋 메시지로 커밋.
 
 ## 관련
-- 자매 프로젝트(같은 해커톤 투트랙): 두 문 러너 — https://github.com/Hakhyun-Kim/door-runner (제출 안전판). 마감 1주 전 둘 중 제출작 선택.
+- 자매작(원작): 두 문 러너 — https://github.com/Hakhyun-Kim/door-runner. 그 두 문 달리기가 이 게임의 보물상자 미니게임(DoorRunScene)으로 **통합 완료**. **제출작은 백층 던전으로 확정**(2026-07-13).

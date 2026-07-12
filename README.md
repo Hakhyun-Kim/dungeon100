@@ -2,7 +2,7 @@
 
 『백층 던전의 비밀』을 읽다 잠든 2026년의 대학생 — 눈을 떠 보니 책 속 마을.
 집으로 돌아가는 유일한 길, 매판 새로 만들어지는 던전을 뚫고 **100층까지 내려가는 3D 로그라이크**.
-NAN 2026 (NHN Game × AI Hackathon) 사전과제를 위한 투트랙 프로젝트 중 하나입니다.
+**NAN 2026 (NHN Game × AI Hackathon) 사전과제 제출작**입니다. 자매작 「두 문 러너」의 두 문 달리기가 이 게임의 보물상자 미니게임으로 **통합되어 있습니다**.
 
 > ### 🎮 바로 플레이: https://hakhyun-kim.github.io/dungeon100/
 > 설치·로그인 없이 브라우저(모바일/PC)에서 바로 실행됩니다.
@@ -25,13 +25,12 @@ npm run dev   # http://localhost:5175
 ```
 요구 사항: Node.js 20+. `npm run build` 프로덕션 빌드, `npm run typecheck` 타입 검사.
 
-## 자매작 — 두 문 러너 (Two Door Runner)
+## 원작 — 두 문 러너 (Two Door Runner)
 
-보물상자 미니게임 "두 문 달리기"의 원작. **마찬가지로 AI(Claude Code)와 함께 만든 작품**입니다.
+보물상자 미니게임 "두 문 달리기"는 자매작 **두 문 러너**(초등 수학 러너, **마찬가지로 AI(Claude Code)로 제작**)의 핵심 메커닉을 이 게임에 **통합**한 것입니다. 두 문 러너의 "정답 문을 몸으로 열며 달리는" 경험이 백층 던전 안에서 그대로 재현됩니다.
 
-- 🎮 플레이: https://hakhyun-kim.github.io/door-runner/
-- 📦 저장소: https://github.com/Hakhyun-Kim/door-runner
-- 🔮 두 게임은 이후 **하나의 작품으로 통합할 계획**입니다 (백층 던전이 본편, 두 문 러너가 인게임 미니게임).
+- 🎮 두 문 러너 플레이: https://hakhyun-kim.github.io/door-runner/
+- 📦 두 문 러너 저장소: https://github.com/Hakhyun-Kim/door-runner
 
 ## 기술 스택
 

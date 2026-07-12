@@ -2,7 +2,7 @@
 
 > 행사: https://nan2026.nhn.com/ · 심사 계정: `dl_gameai_reviewer@nhn.com`
 > ⚠️ 접수 마감일: ____________ (확인 후 기입 — 마감 후 제출 내용 변경 불가)
-> 투트랙 중 하나 (자매작: [두 문 러너](https://github.com/Hakhyun-Kim/door-runner) — 마감 전 제출작 선택)
+> ✅ **제출작 확정: 백층 던전.** 자매작 「두 문 러너」의 두 문 달리기는 이 게임의 보물상자 미니게임으로 통합되어 있음 (원작 저장소: [door-runner](https://github.com/Hakhyun-Kim/door-runner)).
 
 ## 제출물 5종 현황
 
