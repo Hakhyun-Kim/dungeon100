@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Quiz } from '../lib/quiz';
+import { sfx } from '../lib/sound';
 import Hero from './Hero';
 import { makeTextTexture } from './textTexture';
 
@@ -83,6 +84,7 @@ export default function DoorRunScene({ quiz, onDone }: { quiz: Quiz; onDone: (ok
       state: () => ({
         mode: state.current.mode,
         char: charRef.current ? [charRef.current.position.x, charRef.current.position.z] : null,
+        q: quiz.q,
         correct: quiz.correct,
         doorX: quiz.correct === 0 ? -DOOR_X : DOOR_X,
       }),
@@ -139,9 +141,11 @@ export default function DoorRunScene({ quiz, onDone }: { quiz: Quiz; onDone: (ok
           s.timer = 0;
           if (chosen === quiz.correct) {
             s.mode = 'pass';
+            sfx.pass();
             burstConfetti(c.position.x, 1.2, c.position.z - 1);
           } else {
             s.mode = 'crash';
+            sfx.crash();
           }
         }
       }

@@ -3,9 +3,10 @@ import { Canvas } from '@react-three/fiber';
 import DungeonScene, { type QuizResult } from './three/DungeonScene';
 import DoorRunScene from './three/DoorRunScene';
 import { BASE_STATS, UPGRADES, draftThree, type Stats, type Upgrade } from './lib/upgrades';
-import { makeQuiz } from './lib/quiz';
+import { makeQuiz, type DungeonMode } from './lib/quiz';
 import { mulberry32 } from './lib/rng';
 import { useLocalStorage } from './lib/store';
+import { sfx, isMuted, setMuted } from './lib/sound';
 import {
   STORY_SLIDES,
   TOWN_FIRST,
@@ -58,6 +59,8 @@ export default function App() {
   const [townScript, setTownScript] = useState<TownNode[]>(TOWN_FIRST);
   const [townMode, setTownMode] = useState<'pre' | 'visit'>('pre');
   const [giftName, setGiftName] = useState<string | null>(null);
+  const [mode, setMode] = useState<DungeonMode>('kids');
+  const [muted, setMutedState] = useState(isMuted());
 
   const statsRef = useRef(stats);
   statsRef.current = stats;
@@ -82,16 +85,35 @@ export default function App() {
     [runId, floorNo],
   );
 
-  // 문(라운드)마다 새 문제 — 깊은 라운드일수록 어려운 문제 등급
+  // 문(라운드)마다 새 문제 — 깊은 라운드일수록 어려운 문제 등급, 던전 종류에 따라 수준 조절
   const quizSeed = runId * 104729 + floorNo * 131 + quizSeq * 17 + doorRound * 7 + 5;
   const quiz = useMemo(
-    () => makeQuiz(quizSeed, floorNo + (doorRound - 1) * 6),
-    [quizSeed, floorNo, doorRound],
+    () => makeQuiz(quizSeed, floorNo + (doorRound - 1) * 6, mode),
+    [quizSeed, floorNo, doorRound, mode],
   );
+
+  // phase 전환 효과음
+  useEffect(() => {
+    if (phase === 'doorrun') sfx.doorrun();
+    else if (phase === 'memory') sfx.memory();
+    else if (phase === 'lore') sfx.lore();
+    else if (phase === 'portal') sfx.portal();
+    else if (phase === 'homedoor') sfx.bell();
+    else if (phase === 'over') sfx.over();
+  }, [phase]);
+
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    setMutedState(next);
+    if (!next) sfx.tap();
+  };
 
   const memory = MEMORIES[memCount % MEMORIES.length];
 
-  const enterDungeon = () => {
+  const enterDungeon = (m?: DungeonMode) => {
+    if (m) setMode(m);
+    sfx.enter();
     setStorySeen(true);
     setFloorNo(1);
     setStats(BASE_STATS);
@@ -151,6 +173,8 @@ export default function App() {
     });
     setRewards(picks);
     setGoldFlash((f) => f + 1);
+    if (tier >= MAX_DOOR_ROUND) sfx.legend();
+    else sfx.treasure();
   };
 
   // 마을 방문 선물 (대화 노드에 gift가 달려 있으면 1회 지급)
@@ -169,14 +193,19 @@ export default function App() {
       setGiftName(`${u.icon} ${u.name} 획득`);
     }
     setGoldFlash((f) => f + 1);
+    sfx.gift();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, townMode, townNode]);
 
   const onDamage = useCallback((dmg: number) => {
+    sfx.hurt();
     setFlash((f) => f + 1);
     setHp((h) => Math.max(0, h - dmg));
   }, []);
-  const onKill = useCallback(() => setKills((k) => k + 1), []);
+  const onKill = useCallback(() => {
+    sfx.kill();
+    setKills((k) => k + 1);
+  }, []);
   const onExit = useCallback(() => setPhase('portal'), []);
   const onChest = useCallback(() => {
     setDoorRound(1);
@@ -185,6 +214,7 @@ export default function App() {
   const onHomeDoor = useCallback(() => setPhase('homedoor'), []);
 
   const pickUpgrade = (u: Upgrade) => {
+    sfx.pick();
     gainUpgrade(u);
     setFloorNo((n) => n + 1);
     setPhase('lore'); // 새 층에 도착하면 벽의 글귀부터
@@ -215,6 +245,7 @@ export default function App() {
   };
 
   const continueFromQuiz = () => {
+    sfx.tap();
     const gotReward = rewards.length > 0;
     quizResultRef.current = { seq: quizSeq + 1, ok: gotReward };
     setQuizSeq((s) => s + 1);
@@ -223,21 +254,25 @@ export default function App() {
   };
 
   const closeMemory = () => {
+    sfx.tap();
     setMemCount(memCount + 1);
     setPhase('run');
   };
 
   const stayOnFloor = () => {
+    sfx.tap();
     portalRetryRef.current += 1;
     setPhase('run');
   };
 
   const openHomeDoor = () => {
+    sfx.tap();
     homeUsedRef.current += 1;
     goTown(townVisitScript(floorNo), 'visit');
   };
 
   const skipHomeDoor = () => {
+    sfx.tap();
     homeRetryRef.current += 1;
     setPhase('run');
   };
@@ -275,7 +310,9 @@ export default function App() {
 
       {inGame && phase !== 'town' && (
         <div className="hud">
-          <div className="hud-chip">🏰 {floorNo}층</div>
+          <div className="hud-chip">
+            {mode === 'kids' ? '🎒' : '🧠'} {floorNo}층
+          </div>
           <div className="hp-wrap">
             <div className="hp-bar" style={{ width: `${hpRatio * 100}%` }} />
             <span className="hp-text">
@@ -283,6 +320,9 @@ export default function App() {
             </span>
           </div>
           <div className="hud-chip">💀 {kills}</div>
+          <button className="hud-chip mute-btn" onClick={toggleMute}>
+            {muted ? '🔇' : '🔊'}
+          </button>
         </div>
       )}
 
@@ -303,6 +343,9 @@ export default function App() {
 
       {phase === 'title' && (
         <div className="screen title-screen">
+          <button className="hud-chip mute-btn title-mute" onClick={toggleMute}>
+            {muted ? '🔇' : '🔊'}
+          </button>
           <h1>백층 던전</h1>
           <p className="tagline">책 속으로 떨어진 대학생의 귀환 대작전 — 100층까지 내려가라!</p>
           <div className="howto">
@@ -366,7 +409,13 @@ export default function App() {
           <div className="town-scape">🏔️ 🏚️ ⛲ 🏘️ 🌲</div>
           {townMode === 'visit' && <div className="town-floor-chip">🔔 {floorNo}층의 문 → 마을</div>}
           {townNode.kind === 'line' ? (
-            <div className="dialog-box" onClick={() => setTownIdx(townNode.next)}>
+            <div
+              className="dialog-box"
+              onClick={() => {
+                sfx.tap();
+                setTownIdx(townNode.next);
+              }}
+            >
               <div className="dialog-speaker">
                 <span className="dialog-icon">{townNode.icon}</span> {townNode.speaker}
               </div>
@@ -383,7 +432,8 @@ export default function App() {
                     key={o.label}
                     className="choice-btn"
                     onClick={() => {
-                      if (o.action === 'enter') enterDungeon();
+                      sfx.tap();
+                      if (o.action === 'enter') enterDungeon(o.mode);
                       else if (o.action === 'return') setPhase('run');
                       else setTownIdx(o.next ?? townIdx);
                     }}
@@ -408,7 +458,13 @@ export default function App() {
           <h2>🌀 아래로 내려가는 포털이 열려 있다</h2>
           <p className="quiz-sub">다음 층은 더 위험하다. {floorNo + 1}층으로 내려가시겠습니까?</p>
           <div className="dialog-choices">
-            <button className="choice-btn" onClick={() => setPhase('draft')}>
+            <button
+              className="choice-btn"
+              onClick={() => {
+                sfx.tap();
+                setPhase('draft');
+              }}
+            >
               ⬇️ 내려간다
             </button>
             <button className="choice-btn" onClick={stayOnFloor}>
@@ -512,7 +568,13 @@ export default function App() {
         <div className="screen lore-screen">
           <p className="lore-label">🕯️ {floorNo}층 — 벽에 긁어 쓴 글씨가 보인다</p>
           <p className="lore-text">{getLore(floorNo)}</p>
-          <button className="big-btn" onClick={() => setPhase('run')}>
+          <button
+            className="big-btn"
+            onClick={() => {
+              sfx.tap();
+              setPhase('run');
+            }}
+          >
             계속 내려간다
           </button>
         </div>
@@ -541,7 +603,7 @@ export default function App() {
           </p>
           <p className="quiz-sub">눈을 떠 보니 마을 여관 침대 위였다. 던전의 마법일까.</p>
           <div className="dialog-choices">
-            <button className="choice-btn" onClick={enterDungeon}>
+            <button className="choice-btn" onClick={() => enterDungeon()}>
               ⚔️ 바로 다시 도전
             </button>
             <button className="choice-btn" onClick={() => goTown(TOWN_REVISIT)}>

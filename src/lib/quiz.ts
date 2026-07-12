@@ -1,50 +1,95 @@
 import { mulberry32 } from './rng';
 
-// 보물상자의 수수께끼 — 두 문 러너의 "정답 문 고르기"를 미니게임으로 이식.
-// 문제 은행 없이 층 깊이에 따라 어려워지는 산수 문제를 절차 생성한다.
+// 두 문 달리기의 수수께끼 — 두 문 러너의 "정답 문 고르기"를 미니게임으로 이식.
+// 문제 은행 없이 절차 생성하며, 던전 종류(초등/어른)와 층 깊이에 따라 어려워진다.
+export type DungeonMode = 'kids' | 'adult';
+
 export interface Quiz {
   q: string;
   answers: [string, string]; // 왼쪽 문 / 오른쪽 문
   correct: 0 | 1;
 }
 
-export function makeQuiz(seed: number, floorNo: number): Quiz {
+export function makeQuiz(seed: number, level: number, mode: DungeonMode): Quiz {
   const rand = mulberry32(seed);
   const ri = (lo: number, hi: number) => lo + Math.floor(rand() * (hi - lo + 1));
 
   let q: string;
   let ans: number;
-  if (floorNo < 4) {
-    // 두 자리 덧셈/뺄셈
-    const a = ri(11, 49);
-    const b = ri(11, 49);
-    if (rand() < 0.5) {
-      q = `${a} + ${b}`;
-      ans = a + b;
+
+  if (mode === 'kids') {
+    // 🎒 초등학교 던전 — 초등 눈높이로 완만하게
+    if (level < 6) {
+      // 한 자리 덧셈/뺄셈 (받아올림 조금)
+      const a = ri(2, 9);
+      const b = ri(2, 9);
+      if (rand() < 0.5) {
+        q = `${a} + ${b}`;
+        ans = a + b;
+      } else {
+        const [x, y] = a >= b ? [a, b] : [b, a];
+        q = `${x} - ${y}`;
+        ans = x - y;
+      }
+    } else if (level < 12) {
+      // 두 자리 덧셈/뺄셈
+      const a = ri(11, 49);
+      const b = ri(11, 49);
+      if (rand() < 0.5) {
+        q = `${a} + ${b}`;
+        ans = a + b;
+      } else {
+        const [x, y] = a >= b ? [a, b] : [b, a];
+        q = `${x} - ${y}`;
+        ans = x - y;
+      }
+    } else if (level < 20) {
+      // 곱셈구구
+      const a = ri(2, 9);
+      const b = ri(2, 9);
+      q = `${a} × ${b}`;
+      ans = a * b;
     } else {
-      const [x, y] = a >= b ? [a, b] : [b, a];
-      q = `${x} - ${y}`;
-      ans = x - y;
+      // 두 자리 × 한 자리 (작게)
+      const a = ri(12, 29);
+      const b = ri(3, 6);
+      q = `${a} × ${b}`;
+      ans = a * b;
     }
-  } else if (floorNo < 10) {
-    // 곱셈구구
-    const a = ri(3, 9);
-    const b = ri(3, 9);
-    q = `${a} × ${b}`;
-    ans = a * b;
-  } else if (floorNo < 20) {
-    // 두 자리 × 한 자리
-    const a = ri(12, 39);
-    const b = ri(3, 9);
-    q = `${a} × ${b}`;
-    ans = a * b;
   } else {
-    // 혼합 연산
-    const a = ri(3, 9);
-    const b = ri(3, 9);
-    const c = ri(10, 60);
-    q = `${a} × ${b} + ${c}`;
-    ans = a * b + c;
+    // 🧠 어른 던전 — 암산 훈련 코스
+    if (level < 4) {
+      // 두 자리 덧셈/뺄셈 (큰 수)
+      const a = ri(23, 98);
+      const b = ri(17, 89);
+      if (rand() < 0.5) {
+        q = `${a} + ${b}`;
+        ans = a + b;
+      } else {
+        const [x, y] = a >= b ? [a, b] : [b, a];
+        q = `${x} - ${y}`;
+        ans = x - y;
+      }
+    } else if (level < 10) {
+      // 두 자리 × 한 자리
+      const a = ri(13, 39);
+      const b = ri(3, 9);
+      q = `${a} × ${b}`;
+      ans = a * b;
+    } else if (level < 20) {
+      // 혼합 연산
+      const a = ri(4, 9);
+      const b = ri(4, 9);
+      const c = ri(11, 79);
+      q = `${a} × ${b} + ${c}`;
+      ans = a * b + c;
+    } else {
+      // 두 자리 × 두 자리 (작은 범위)
+      const a = ri(11, 19);
+      const b = ri(11, 29);
+      q = `${a} × ${b}`;
+      ans = a * b;
+    }
   }
 
   // 오답은 실제로 헷갈릴 만한 근접값으로

@@ -30,12 +30,14 @@ export const STORY_SLIDES: StorySlide[] = [
   },
 ];
 
+import type { DungeonMode } from './quiz';
+
 export type TownNode =
   | { kind: 'line'; icon: string; speaker: string; text: string; next: number; gift?: 'item' | 'heal' }
   | {
       kind: 'choice';
       prompt: string;
-      options: { label: string; next?: number; action?: 'enter' | 'return' }[];
+      options: { label: string; next?: number; action?: 'enter' | 'return'; mode?: DungeonMode }[];
     };
 
 // 첫 방문 — 촌장에게 퀘스트를 받고 던전 입구까지
@@ -93,9 +95,11 @@ export const TOWN_FIRST: TownNode[] = [
   },
   {
     kind: 'choice',
-    prompt: '던전 입구에 섰다. 안쪽에서 서늘한 바람이 불어온다.',
+    prompt:
+      '던전 입구에 섰다. 문이 두 갈래로 갈라져 있다 — 왼쪽 문엔 크레용 낙서가, 오른쪽 문엔 어른의 필체가 새겨져 있다.',
     options: [
-      { label: '🕯️ 들어간다', action: 'enter' },
+      { label: '🎒 초등학교 던전 (쉬운 문제)', action: 'enter', mode: 'kids' },
+      { label: '🧠 어른 던전 (어려운 문제)', action: 'enter', mode: 'adult' },
       { label: '😮‍💨 잠깐, 마음의 준비가…', next: 9 },
     ],
   },
@@ -121,7 +125,8 @@ export const TOWN_REVISIT: TownNode[] = [
     kind: 'choice',
     prompt: '몸이 가뿐해졌다. 다시 던전으로?',
     options: [
-      { label: '⚔️ 들어간다', action: 'enter' },
+      { label: '🎒 초등학교 던전 (쉬운 문제)', action: 'enter', mode: 'kids' },
+      { label: '🧠 어른 던전 (어려운 문제)', action: 'enter', mode: 'adult' },
       { label: '🛏️ 조금만 더 쉬고…', next: 2 },
     ],
   },

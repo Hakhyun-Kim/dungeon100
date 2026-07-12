@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { CELL, canStand, cellToWorld, generateFloor, GRID, isFloor } from '../lib/dungeon';
 import type { Stats } from '../lib/upgrades';
+import { sfx } from '../lib/sound';
 import Hero from './Hero';
 
 // 층 하나의 3D 씬 + 시뮬레이션. 층이 바뀌면 부모가 key로 리마운트한다.
@@ -391,6 +392,7 @@ function DungeonScene({
             e.hp -= stats.damage;
             e.flash = 1;
             sh.alive = false;
+            sfx.hit();
             burst(e.x, 0.7, e.z, '#ffe08a', 4, 1.4);
             // 넉백 (벽은 통과 못 함)
             const kx = e.x + sh.dx * 0.4;

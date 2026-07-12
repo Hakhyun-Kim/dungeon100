@@ -19,7 +19,8 @@
 - `src/three/DoorRunScene.tsx` — **두 문 달리기 미니게임** (두 문 러너 인게임 재현). 자동 달리기 + 좌우 조작(useSteer: 화면 좌/우 꾹·←/→), 보라 게이트·유리 옆벽·문제판, 문 사이 벽 막힘, 몸으로 정답 문 통과 → onDone(true)·색종이 / 오답 💥 뒤로 넘어짐·정답 문 초록 표시 → onDone(false). 미니게임 동안 DungeonScene은 hidden(보임·카메라 양보). DEV 훅 `__d100run`(place/state), 시간 가속 `__d100speed`.
 - `src/three/Hero.tsx` — 공용 주인공 블록 캐릭터 (던전·미니게임 세계관 통일).
 - `src/three/textTexture.ts` — 한글 텍스트 → 캔버스 텍스처 (문제판·문 답, 두문러너 labels.ts 축소판).
-- `src/lib/quiz.ts` — 미니게임 문제 생성. 층 깊이 비례 난이도의 산수 문제 + 근접 오답, 문제 은행 없음. 미니게임 라운드가 깊어질수록 난이도 상향(층 환산 +6/라운드).
+- `src/lib/quiz.ts` — 미니게임 문제 생성. **던전 종류(DungeonMode: 'kids' 초등 / 'adult' 어른)** × 층 깊이로 난이도 결정 — kids: 한자리±→두자리±→곱셈구구→두자리×한자리 / adult: 두자리±→두자리×한자리→혼합→두자리×두자리. 근접 오답, 문제 은행 없음. 라운드 보정 +6/라운드. 던전 입구(마을 choice)에서 모드 선택, HUD에 🎒/🧠 표시.
+- `src/lib/sound.ts` — Web Audio 합성 효과음 16종 (파일 없음, 두문러너 방식 확장): tap/pick/hit(연사 제한)/kill/hurt/doorrun/pass/crash/treasure/legend/memory/lore/portal/bell/gift/over/enter. phase 전환음은 App useEffect, 타격·통과음은 씬에서 직접 호출. 음소거: localStorage `d100-muted` + HUD·타이틀 🔊 버튼.
 - `src/lib/story.ts` — 인트로 슬라이드·마을 대화(line/choice 노드, gift='item'|'heal')·회상 기억 12개(MEMORIES)·층별 벽의 글귀(getLore)·5층마다 마을 방문 스크립트(townVisitScript). **세계관: 던전=쓰이다 만 책, 마을=서문, 촌장=작가, 100층 문=뒤표지.** localStorage: `d100-story`(인트로 1회), `d100-mem`(되찾은 기억 수).
 - 새 층 도착 시 `lore` phase로 벽의 글귀 1개 노출, 보물 획득 후 `memory` phase로 기억 1개 복원. 5의 배수 층엔 마을 문(dungeon.ts homeDoor) — 방문은 층 유지(townMode 'visit'), 문은 1회용(homeUsedRef), 거절 시 재무장(homeRetryRef). 몬스터는 5층 단위 티어로 모양·색 변화(DungeonScene ENEMY_TIER_*).
 - `src/lib/rng.ts` — mulberry32 시드 난수. **층 번호 = 시드** → 같은 층은 항상 같은 구조 (재현성).
