@@ -103,8 +103,11 @@ export default function App() {
   const [endingVariant, setEndingVariant] = useState<'alone' | 'together' | null>(null);
   const [endingIdx, setEndingIdx] = useState(0);
 
-  // 디버그 (Shift+D): 항상 사용 가능 — 제출 직전 게이트 재도입 검토 (CLAUDE.md 다음 후보)
-  const debugAllowed = true;
+  // 디버그 (Shift+D): 개발 모드 또는 ?debug 쿼리에서만 (제출 심사자 오작동 방지)
+  const debugAllowed = useMemo(
+    () => import.meta.env.DEV || new URLSearchParams(location.search).has('debug'),
+    [],
+  );
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugFloor, setDebugFloor] = useState('');
 
