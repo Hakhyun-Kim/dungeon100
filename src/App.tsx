@@ -7,12 +7,15 @@ import { makeQuiz, type DungeonMode } from './lib/quiz';
 import { mulberry32 } from './lib/rng';
 import { useLocalStorage } from './lib/store';
 import { sfx, isMuted, setMuted } from './lib/sound';
+import { music } from './lib/music';
 import {
-  STORY_SLIDES,
+  STORY_NODES,
   TOWN_FIRST,
   TOWN_ENTRY,
   TOWN_REVISIT,
   MEMORIES,
+  ENDING_ALONE,
+  ENDING_TOGETHER,
   getLore,
   townVisitScript,
   type TownNode,
@@ -30,10 +33,12 @@ type Phase =
   | 'doorrun'
   | 'quiz'
   | 'memory'
+  | 'memfull'
   | 'portal'
   | 'draft'
   | 'lore'
   | 'homedoor'
+  | 'ending'
   | 'over';
 type QuizView = 'ok' | 'no' | 'choice';
 const MAX_DOOR_ROUND = 3;
@@ -62,9 +67,17 @@ export default function App() {
   const [giftName, setGiftName] = useState<string | null>(null);
   const [mode, setMode] = useState<DungeonMode>('kids');
   const [muted, setMutedState] = useState(isMuted());
+  const [bossHp, setBossHp] = useState(0);
+  const [bossMax, setBossMax] = useState(0);
+  const [storyAnswer, setStoryAnswer] = useState<'ok' | 'no' | null>(null);
+  const [memRewards, setMemRewards] = useState<Upgrade[]>([]);
+  const [endingVariant, setEndingVariant] = useState<'alone' | 'together' | null>(null);
+  const [endingIdx, setEndingIdx] = useState(0);
 
   const statsRef = useRef(stats);
   statsRef.current = stats;
+  const floorNoRef = useRef(floorNo);
+  floorNoRef.current = floorNo;
   const pausedRef = useRef(false);
   pausedRef.current = phase !== 'run';
   const quizResultRef = useRef<QuizResult | null>(null);
@@ -101,12 +114,71 @@ export default function App() {
     else if (phase === 'portal') sfx.portal();
     else if (phase === 'homedoor') sfx.bell();
     else if (phase === 'over') sfx.over();
+    else if (phase === 'ending') sfx.unlock();
   }, [phase]);
+
+  // BGM — 상황별 트랙 (던전은 깊이에 따라 템포·음색 변화, 보스 생존 중엔 보스 트랙)
+  useEffect(() => {
+    if (muted) {
+      music.stop();
+      return;
+    }
+    if (phase === 'title' || phase === 'story' || phase === 'ending' || phase === 'memfull') {
+      music.play('title');
+    } else if (phase === 'town') {
+      music.play('town');
+    } else if (phase === 'doorrun') {
+      music.play('doorrun');
+    } else if (phase === 'over') {
+      music.stop();
+    } else {
+      music.play(bossHp > 0 ? 'boss' : 'dungeon', Math.floor((floorNo - 1) / 5));
+    }
+  }, [phase, muted, floorNo, bossHp]);
+
+  // 위기 연출 — 체력 30% 미만이면 심장박동
+  const hpRatioNow = stats.maxHp > 0 ? hp / stats.maxHp : 1;
+  const lowHp =
+    phase !== 'title' && phase !== 'story' && phase !== 'town' && hp > 0 && hpRatioNow < 0.3;
+  useEffect(() => {
+    if (!lowHp || muted) return;
+    sfx.heartbeat();
+    const iv = setInterval(() => sfx.heartbeat(), 1000);
+    return () => clearInterval(iv);
+  }, [lowHp, muted]);
+
+  // 층/판이 바뀌면 보스 체력바 초기화 (보스 층이면 씬이 다시 보고함)
+  useEffect(() => {
+    setBossHp(0);
+    setBossMax(0);
+  }, [floorNo, runId]);
+
+  // 엔딩 진입 시 선택 초기화
+  useEffect(() => {
+    if (phase === 'ending') {
+      setEndingVariant(null);
+      setEndingIdx(0);
+      if (100 > best) setBest(100);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  // 개발 검증용 (프로덕션 제외): 층 점프
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    (window as unknown as Record<string, unknown>).__d100app = {
+      jump: (n: number) => {
+        setFloorNo(n);
+        setPhase('run');
+      },
+    };
+  }, []);
 
   const toggleMute = () => {
     const next = !muted;
     setMuted(next);
     setMutedState(next);
+    music.sync();
     if (!next) sfx.tap();
   };
 
@@ -214,7 +286,31 @@ export default function App() {
     sfx.kill();
     setKills((k) => k + 1);
   }, []);
-  const onExit = useCallback(() => setPhase('portal'), []);
+  // 100층의 출구는 포털이 아니라 집으로 가는 문 — 엔딩으로
+  const onExit = useCallback(
+    () => setPhase(floorNoRef.current >= 100 ? 'ending' : 'portal'),
+    [],
+  );
+  const onBossHp = useCallback((hpNow: number, maxHp: number) => {
+    setBossHp(hpNow);
+    setBossMax(maxHp);
+  }, []);
+  const quizSeedRef = useRef(quizSeed);
+  quizSeedRef.current = quizSeed;
+  // 보스 처치 — 확정 보물 1개 + 회복 30, 포털 봉인 해제
+  const onBossDown = useCallback(() => {
+    const pick = UPGRADES[Math.floor(mulberry32(quizSeedRef.current + 777)() * UPGRADES.length)];
+    const next = pick.apply(statsRef.current);
+    setStats(next);
+    setHp((h) => Math.min(next.maxHp, h + 30 + (pick.id === 'hp' ? 25 : 0)));
+    setBuild((b) => ({ ...b, [pick.id]: (b[pick.id] ?? 0) + 1 }));
+    setRewards([pick]);
+    setGoldFlash((f) => f + 1);
+    sfx.legend();
+    sfx.unlock();
+    setQuizView('ok');
+    setPhase('quiz');
+  }, []);
   const onChest = useCallback(() => {
     setDoorRound(1);
     setPhase('doorrun');
@@ -263,8 +359,31 @@ export default function App() {
 
   const closeMemory = () => {
     sfx.tap();
-    setMemCount(memCount + 1);
-    setPhase('run');
+    const newCount = memCount + 1;
+    setMemCount(newCount);
+    if (newCount === MEMORIES.length) {
+      // 열두 개의 기억을 모두 되찾음 — 완성 보상
+      const rand = mulberry32(runId * 53 + 12);
+      const pool = [...UPGRADES];
+      const picks: Upgrade[] = [];
+      for (let i = 0; i < 2 && pool.length > 0; i++) {
+        picks.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
+      }
+      const next = picks.reduce((s, u) => u.apply(s), stats);
+      setStats(next);
+      setHp(next.maxHp);
+      setBuild((b) => {
+        const nb = { ...b };
+        picks.forEach((u) => (nb[u.id] = (nb[u.id] ?? 0) + 1));
+        return nb;
+      });
+      setMemRewards(picks);
+      setGoldFlash((f) => f + 1);
+      sfx.legend();
+      setPhase('memfull');
+    } else {
+      setPhase('run');
+    }
   };
 
   const stayOnFloor = () => {
@@ -309,6 +428,8 @@ export default function App() {
             onExit={onExit}
             onChest={onChest}
             onHomeDoor={onHomeDoor}
+            onBossHp={onBossHp}
+            onBossDown={onBossDown}
           />
           {phase === 'doorrun' && (
             <DoorRunScene key={doorRound} quiz={quiz} onDone={onDoorRunDone} />
@@ -346,8 +467,19 @@ export default function App() {
         </div>
       )}
 
+      {/* 보스 체력바 */}
+      {inGame && phase !== 'town' && bossMax > 0 && bossHp > 0 && (
+        <div className="boss-bar-wrap">
+          <span className="boss-label">📖 페이지의 수호자</span>
+          <div className="boss-bar-outer">
+            <div className="boss-bar" style={{ width: `${(bossHp / bossMax) * 100}%` }} />
+          </div>
+        </div>
+      )}
+
       {flash > 0 && <div key={`f${flash}`} className="hit-flash" />}
       {goldFlash > 0 && <div key={`g${goldFlash}`} className="hit-flash gold" />}
+      {lowHp && <div className="low-hp" />}
 
       {phase === 'title' && (
         <div className="screen title-screen">
@@ -374,47 +506,80 @@ export default function App() {
         </div>
       )}
 
-      {phase === 'story' && (
-        <div className="screen story-screen" onClick={() => setStoryIdx((i) => Math.min(i + 1, STORY_SLIDES.length - 1))}>
-          <div className="story-icon">{STORY_SLIDES[storyIdx].icon}</div>
-          <p className="story-text">{STORY_SLIDES[storyIdx].text}</p>
-          <div className="story-btns">
-            {storyIdx < STORY_SLIDES.length - 1 ? (
-              <button
-                className="big-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setStoryIdx((i) => i + 1);
-                }}
-              >
-                다음 ▶
-              </button>
-            ) : (
-              <button
-                className="big-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  goTown(TOWN_FIRST);
-                }}
-              >
-                마을로 가 본다
-              </button>
-            )}
-            <button
-              className="skip-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                goTown(TOWN_FIRST);
-              }}
-            >
-              건너뛰기 ⏭
-            </button>
-          </div>
-          <p className="story-page">
-            {storyIdx + 1} / {STORY_SLIDES.length}
-          </p>
-        </div>
-      )}
+      {phase === 'story' &&
+        (() => {
+          const node = STORY_NODES[storyIdx];
+          const isLast = storyIdx >= STORY_NODES.length - 1;
+          const advance = () => {
+            sfx.tap();
+            setStoryAnswer(null);
+            if (isLast) goTown(TOWN_FIRST);
+            else setStoryIdx((i) => i + 1);
+          };
+          const quizPending = node.kind === 'quiz' && storyAnswer === null;
+          return (
+            <div className="screen story-screen" onClick={() => !quizPending && advance()}>
+              <div className="story-icon">{node.icon}</div>
+              {node.kind === 'slide' && <p className="story-text">{node.text}</p>}
+              {node.kind === 'quiz' && storyAnswer === null && (
+                <>
+                  <p className="story-text">{node.intro}</p>
+                  <h2 className="story-quiz-q">{node.q}</h2>
+                  <div className="dialog-choices story-quiz-choices">
+                    {node.answers.map((a, i) => (
+                      <button
+                        key={a}
+                        className="choice-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (i === node.correct) {
+                            sfx.pass();
+                            setStoryAnswer('ok');
+                          } else {
+                            sfx.crash();
+                            setStoryAnswer('no');
+                          }
+                        }}
+                      >
+                        🚪 {a}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {node.kind === 'quiz' && storyAnswer !== null && (
+                <p className="story-text">{storyAnswer === 'ok' ? node.okText : node.noText}</p>
+              )}
+              <div className="story-btns">
+                {!quizPending && (
+                  <button
+                    className="big-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      advance();
+                    }}
+                  >
+                    {isLast ? '마을로 가 본다' : '다음 ▶'}
+                  </button>
+                )}
+                <button
+                  className="skip-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    sfx.tap();
+                    setStoryAnswer(null);
+                    goTown(TOWN_FIRST);
+                  }}
+                >
+                  건너뛰기 ⏭
+                </button>
+              </div>
+              <p className="story-page">
+                {storyIdx + 1} / {STORY_NODES.length}
+              </p>
+            </div>
+          );
+        })()}
 
       {phase === 'town' && townNode && (
         <div className="screen town-screen">
@@ -576,6 +741,116 @@ export default function App() {
           </button>
         </div>
       )}
+
+      {phase === 'memfull' && (
+        <div className="screen memory-screen">
+          <div className="memory-icon">💫</div>
+          <h2 className="memory-title">모든 기억을 되찾았다!</h2>
+          <p className="memory-text">
+            열두 개의 기억이 가슴 속에서 빛난다.{'\n'}이제 이 던전이 앗아갈 수 있는 것은, 아무것도
+            없다.
+          </p>
+          <div className="cards">
+            {memRewards.map((u, i) => (
+              <div key={`${u.id}${i}`} className="card reward-pop">
+                <span className="card-icon">{u.icon}</span>
+                <span className="card-name">{u.name}</span>
+                <span className="card-desc">{u.desc}</span>
+              </div>
+            ))}
+          </div>
+          <p className="memory-count">체력도 가득 찼다</p>
+          <button
+            className="big-btn"
+            onClick={() => {
+              sfx.tap();
+              setPhase('run');
+            }}
+          >
+            힘이 차오른다!
+          </button>
+        </div>
+      )}
+
+      {phase === 'ending' &&
+        (() => {
+          if (endingVariant === null) {
+            return (
+              <div className="screen ending-screen">
+                <div className="story-icon">🚪</div>
+                <h2>황금빛 문이 열려 있다</h2>
+                <p className="story-text">
+                  100층 — 페이지의 수호자는 쓰러졌고,{'\n'}이 문을 넘으면, 집이다.
+                </p>
+                <div className="dialog-choices story-quiz-choices">
+                  <button
+                    className="choice-btn"
+                    onClick={() => {
+                      sfx.tap();
+                      setEndingVariant('alone');
+                    }}
+                  >
+                    🚶 혼자 문을 연다
+                  </button>
+                  <button
+                    className="choice-btn"
+                    onClick={() => {
+                      sfx.tap();
+                      setEndingVariant('together');
+                    }}
+                  >
+                    👵 촌장을 데리러 간다
+                  </button>
+                </div>
+              </div>
+            );
+          }
+          const slides = endingVariant === 'alone' ? ENDING_ALONE : ENDING_TOGETHER;
+          if (endingIdx < slides.length) {
+            const s = slides[endingIdx];
+            return (
+              <div
+                className="screen ending-screen"
+                onClick={() => {
+                  sfx.tap();
+                  setEndingIdx((i) => i + 1);
+                }}
+              >
+                <div className="story-icon">{s.icon}</div>
+                <p className="story-text">{s.text}</p>
+                <button
+                  className="big-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    sfx.tap();
+                    setEndingIdx((i) => i + 1);
+                  }}
+                >
+                  다음 ▶
+                </button>
+              </div>
+            );
+          }
+          return (
+            <div className="screen ending-screen">
+              <h1 className="ending-title">— 끝 —</h1>
+              <p className="story-text">
+                🏰 100층 완주 · 💀 처치 {kills} · 💭 되찾은 기억{' '}
+                {Math.min(memCount, MEMORIES.length)} / {MEMORIES.length}
+              </p>
+              <p className="quiz-sub">당신이 이 책의 마지막 장을 썼다.</p>
+              <button
+                className="big-btn"
+                onClick={() => {
+                  sfx.tap();
+                  setPhase('title');
+                }}
+              >
+                처음부터
+              </button>
+            </div>
+          );
+        })()}
 
       {phase === 'lore' && (
         <div className="screen lore-screen">

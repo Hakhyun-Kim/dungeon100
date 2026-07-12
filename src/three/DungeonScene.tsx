@@ -26,6 +26,30 @@ interface Shot {
   alive: boolean;
 }
 
+// 10층마다 등장하는 보스 "페이지의 수호자"
+interface Boss {
+  x: number;
+  z: number;
+  hp: number;
+  maxHp: number;
+  alive: boolean;
+  hitCd: number;
+  fireTimer: number;
+  flash: number;
+}
+
+interface EShot {
+  x: number;
+  z: number;
+  dx: number;
+  dz: number;
+  left: number;
+  alive: boolean;
+}
+
+const MAX_ESHOTS = 32;
+const ESHOT_SPEED = 6.5;
+
 interface Particle {
   x: number;
   y: number;
@@ -68,6 +92,8 @@ function DungeonScene({
   onExit,
   onChest,
   onHomeDoor,
+  onBossHp,
+  onBossDown,
 }: {
   floorNo: number;
   hidden: boolean; // 두 문 달리기 미니게임 동안 던전을 숨기고 카메라를 양보
@@ -82,8 +108,11 @@ function DungeonScene({
   onExit: () => void;
   onChest: () => void;
   onHomeDoor: () => void;
+  onBossHp: (hp: number, maxHp: number) => void;
+  onBossDown: () => void;
 }) {
   const floor = useMemo(() => generateFloor(floorNo), [floorNo]);
+  const isBossFloor = floorNo % 10 === 0;
   const input = useMoveInput();
 
   const playerRef = useRef<THREE.Group>(null);
@@ -153,6 +182,48 @@ function DungeonScene({
 
   const [startX, startZ] = useMemo(() => cellToWorld(floor.start.x, floor.start.y), [floor]);
   const [exitX, exitZ] = useMemo(() => cellToWorld(floor.exit.x, floor.exit.y), [floor]);
+
+  // 보스 (10층마다) — 출구를 지키고 있으며, 쓰러뜨려야 포털이 열린다
+  const boss = useRef<Boss | null>(
+    isBossFloor
+      ? {
+          x: exitX,
+          z: exitZ,
+          hp: 150 + floorNo * 25,
+          maxHp: 150 + floorNo * 25,
+          alive: true,
+          hitCd: 0,
+          fireTimer: 1.5,
+          flash: 0,
+        }
+      : null,
+  );
+  const bossDead = useRef(!isBossFloor);
+  const bossMeshRef = useRef<THREE.Mesh>(null);
+  const bossMatRef = useRef<THREE.MeshStandardMaterial>(null);
+  const eshots = useRef<EShot[]>(
+    Array.from({ length: MAX_ESHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, alive: false })),
+  );
+  const eshotMeshRef = useRef<THREE.InstancedMesh>(null);
+
+  // 보스 체력바 초기 보고
+  useEffect(() => {
+    if (boss.current) onBossHp(boss.current.hp, boss.current.maxHp);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const killBoss = () => {
+    const b = boss.current;
+    if (!b || !b.alive) return;
+    b.alive = false;
+    bossDead.current = true;
+    burst(b.x, 1.2, b.z, '#c06bff', 24, 2.6);
+    burst(b.x, 1.6, b.z, '#ffffff', 12, 1.8);
+    shake.current = Math.min(0.6, shake.current + 0.5);
+    for (const sh of eshots.current) sh.alive = false;
+    onBossHp(0, b.maxHp);
+    onBossDown();
+  };
   const chestPos = useMemo(
     () => (floor.chest ? cellToWorld(floor.chest.x, floor.chest.y) : null),
     [floor],
@@ -255,8 +326,18 @@ function DungeonScene({
         homeWorld: homePos,
         homeState: homeState.current,
         enemyTier,
+        boss: boss.current ? { hp: boss.current.hp, alive: boss.current.alive } : null,
         enemiesAlive: enemies.current.filter((e) => e.alive).length,
       }),
+      hitBoss: (n: number) => {
+        const b = boss.current;
+        if (b && b.alive) {
+          b.hp -= n;
+          onBossHp(Math.max(0, b.hp), b.maxHp);
+          if (b.hp <= 0) killBoss();
+        }
+      },
+      killEnemies: () => enemies.current.forEach((e) => (e.alive = false)),
     };
   }, [chestPos, homePos, enemyTier, exitX, exitZ]);
 
@@ -386,6 +467,18 @@ function DungeonScene({
           sh.alive = false;
           continue;
         }
+        // 보스 명중
+        const bh = boss.current;
+        if (bh && bh.alive && Math.hypot(bh.x - sh.x, bh.z - sh.z) < 1.4) {
+          bh.hp -= stats.damage;
+          bh.flash = 1;
+          sh.alive = false;
+          sfx.hit();
+          burst(sh.x, 0.9, sh.z, '#e0b3ff', 4, 1.4);
+          onBossHp(Math.max(0, bh.hp), bh.maxHp);
+          if (bh.hp <= 0) killBoss();
+          continue;
+        }
         for (const e of enemies.current) {
           if (!e.alive) continue;
           if (Math.hypot(e.x - sh.x, e.z - sh.z) < 0.62) {
@@ -432,6 +525,63 @@ function DungeonScene({
         }
       }
 
+      // ── 보스 (10층마다): 느리게 추격 + 방사형 탄막
+      const bAi = boss.current;
+      if (bAi && bAi.alive) {
+        bAi.hitCd -= dt;
+        bAi.fireTimer -= dt;
+        const bx = p.position.x - bAi.x;
+        const bz = p.position.z - bAi.z;
+        const bd = Math.hypot(bx, bz);
+        if (bd < 16 && bd > 0.001) {
+          const nx = bAi.x + (bx / bd) * 1.8 * dt;
+          const nz = bAi.z + (bz / bd) * 1.8 * dt;
+          if (canStand(floor.cells, nx, bAi.z, 0.9)) bAi.x = nx;
+          if (canStand(floor.cells, bAi.x, nz, 0.9)) bAi.z = nz;
+          if (bAi.fireTimer <= 0) {
+            bAi.fireTimer = 2.4;
+            for (let k = 0; k < 8; k++) {
+              const slot = eshots.current.find((s2) => !s2.alive);
+              if (!slot) break;
+              const ang = (k / 8) * Math.PI * 2 + t;
+              slot.x = bAi.x;
+              slot.z = bAi.z;
+              slot.dx = Math.sin(ang);
+              slot.dz = Math.cos(ang);
+              slot.left = 15;
+              slot.alive = true;
+            }
+            sfx.roar();
+          }
+        }
+        if (bd < 1.6 && bAi.hitCd <= 0) {
+          bAi.hitCd = 1.0;
+          shake.current = Math.min(0.6, shake.current + 0.35);
+          burst(p.position.x, 0.8, p.position.z, '#ff4d5e', 8, 1.8);
+          onDamage(12 + Math.round(floorNo * 0.5));
+        }
+      }
+
+      // ── 보스 탄막 (플레이어 피격)
+      for (const es of eshots.current) {
+        if (!es.alive) continue;
+        es.x += es.dx * ESHOT_SPEED * dt;
+        es.z += es.dz * ESHOT_SPEED * dt;
+        es.left -= ESHOT_SPEED * dt;
+        const ecx = Math.floor(es.x / CELL + GRID / 2);
+        const ecz = Math.floor(es.z / CELL + GRID / 2);
+        if (es.left <= 0 || !isFloor(floor.cells, ecx, ecz)) {
+          es.alive = false;
+          continue;
+        }
+        if (Math.hypot(es.x - p.position.x, es.z - p.position.z) < 0.55) {
+          es.alive = false;
+          shake.current = Math.min(0.6, shake.current + 0.25);
+          burst(p.position.x, 0.8, p.position.z, '#ff4d5e', 5, 1.4);
+          onDamage(7 + Math.round(floorNo * 0.4));
+        }
+      }
+
       // ── 보물상자 접촉 → 수수께끼
       if (chestState.current === 'idle' && chestPos) {
         if (Math.hypot(p.position.x - chestPos[0], p.position.z - chestPos[1]) < 1.05) {
@@ -457,8 +607,12 @@ function DungeonScene({
         }
       }
 
-      // ── 출구 포털
-      if (!exited.current && Math.hypot(p.position.x - exitX, p.position.z - exitZ) < 1.3) {
+      // ── 출구 포털 (보스 층에서는 보스를 쓰러뜨려야 열린다)
+      if (
+        !exited.current &&
+        bossDead.current &&
+        Math.hypot(p.position.x - exitX, p.position.z - exitZ) < 1.3
+      ) {
         exited.current = true;
         onExit();
       }
@@ -544,6 +698,50 @@ function DungeonScene({
       });
       pm.instanceMatrix.needsUpdate = true;
       if (pm.instanceColor) pm.instanceColor.needsUpdate = true;
+    }
+
+    // ── 보스 렌더 (피격 번쩍 + 부유)
+    const bR = boss.current;
+    const bm = bossMeshRef.current;
+    if (bm && bR) {
+      if (bR.alive) {
+        bR.flash = Math.max(0, bR.flash - dt * 5);
+        bm.position.set(bR.x, 1.35 + Math.sin(t * 2.2) * 0.15, bR.z);
+        bm.rotation.y = t * 0.8;
+        bm.scale.setScalar(1 + bR.flash * 0.12);
+        if (bossMatRef.current) {
+          palette.tmp.copy(palette.enemyBase).lerp(palette.white, bR.flash);
+          bossMatRef.current.color.copy(palette.tmp);
+        }
+      } else {
+        bm.scale.setScalar(0.0001);
+      }
+    }
+
+    // ── 보스 탄막 렌더
+    const esm = eshotMeshRef.current;
+    if (esm) {
+      eshots.current.forEach((es, i) => {
+        if (es.alive) {
+          dummy.position.set(es.x, 0.8, es.z);
+          dummy.scale.set(1, 1, 1);
+        } else {
+          dummy.position.set(0, -10, 0);
+          dummy.scale.set(0.0001, 0.0001, 0.0001);
+        }
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        esm.setMatrixAt(i, dummy.matrix);
+      });
+      esm.instanceMatrix.needsUpdate = true;
+    }
+
+    // ── 포털 봉인: 보스 생존 중엔 숨김, 처치 시 자라나며 등장
+    if (portalRef.current) {
+      const target = bossDead.current ? 1 : 0.0001;
+      portalRef.current.scale.setScalar(
+        portalRef.current.scale.x + (target - portalRef.current.scale.x) * Math.min(1, dt * 5),
+      );
     }
 
     // ── 마을 문 연출 (사용 후 소멸)
@@ -692,13 +890,43 @@ function DungeonScene({
         </group>
       )}
 
-      {/* 출구 포털 */}
-      <group ref={portalRef} position={[exitX, 1.1, exitZ]}>
-        <mesh>
-          <torusGeometry args={[0.85, 0.14, 12, 40]} />
-          <meshStandardMaterial color="#8f6bff" emissive="#7a4dff" emissiveIntensity={1.4} />
+      {/* 보스 — 페이지의 수호자 (10층마다, 출구를 지킨다) */}
+      {isBossFloor && (
+        <mesh ref={bossMeshRef} position={[exitX, 1.35, exitZ]}>
+          <dodecahedronGeometry args={[1.5]} />
+          <meshStandardMaterial ref={bossMatRef} emissive="#3c1060" emissiveIntensity={0.8} />
         </mesh>
-        <pointLight color="#9a6bff" intensity={2.4} distance={9} />
+      )}
+
+      {/* 보스 탄막 */}
+      <instancedMesh ref={eshotMeshRef} args={[undefined, undefined, MAX_ESHOTS]} frustumCulled={false}>
+        <sphereGeometry args={[0.22, 8, 8]} />
+        <meshStandardMaterial color="#ff3d5e" emissive="#a01030" emissiveIntensity={1.4} />
+      </instancedMesh>
+
+      {/* 출구 — 보통 층은 포털, 100층은 집으로 가는 황금 문 */}
+      <group ref={portalRef} position={[exitX, 1.1, exitZ]}>
+        {floorNo >= 100 ? (
+          <>
+            <mesh position={[0, 0.7, 0]}>
+              <boxGeometry args={[1.7, 3.4, 0.26]} />
+              <meshStandardMaterial color="#ffd166" emissive="#c98f1e" emissiveIntensity={0.9} />
+            </mesh>
+            <mesh position={[0, 2.5, 0]}>
+              <boxGeometry args={[2.1, 0.3, 0.4]} />
+              <meshStandardMaterial color="#a8781f" />
+            </mesh>
+            <pointLight color="#ffe9a0" intensity={3} distance={11} />
+          </>
+        ) : (
+          <>
+            <mesh>
+              <torusGeometry args={[0.85, 0.14, 12, 40]} />
+              <meshStandardMaterial color="#8f6bff" emissive="#7a4dff" emissiveIntensity={1.4} />
+            </mesh>
+            <pointLight color="#9a6bff" intensity={2.4} distance={9} />
+          </>
+        )}
       </group>
     </group>
   );

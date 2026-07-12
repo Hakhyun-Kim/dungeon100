@@ -4,12 +4,25 @@
 **공개 저장소** — NAN 2026 (NHN Game × AI Hackathon) 사전과제 투트랙 프로젝트. 시크릿·내부 경로 커밋 금지.
 설계·로드맵: `docs/DESIGN.md` (주차별 계획 포함 — 작업 완료 시 체크 갱신).
 
+## 문서 관리 원칙
+- **작업을 마칠 때마다** 이 문서(구조·규칙 변경분)와 `docs/DESIGN.md`(체크리스트·시스템 설명)를 갱신할 것.
+- 아래 "다음 후보" 섹션을 항상 최신으로 유지 — 끝낸 항목은 지우고, 새로 떠오른 아이디어를 우선순위와 함께 추가.
+
+## 다음 후보 (우선순위)
+1. **56층의 소녀 이벤트** — 벽의 글귀(17층) 떡밥 회수. 56층에서 등장인물 소녀와 대화 이벤트 (자기가 등장인물임을 아는 캐릭터, 중반 스토리 목표).
+2. **적 타입 추가** — 원거리(투사체)·돌진·탱커 2~3종, 티어 색·형태와 조합.
+3. **메타 성장** — 사망 시 코인 → 영구 업그레이드 (localStorage `d100-coins`/`d100-meta`). 로그라이크 리텐션 핵심.
+4. **밸런스 자동 시뮬레이터** — `__pump`+`__d100fixdt` 하네스로 자동 봇 N판 → 사망 층 분포 리포트 (AI 활용 문서 하이라이트).
+5. **미니맵·데미지 숫자** — 탐험 편의 + 타격 피드백 강화.
+6. **층 테마 색 변화** — 10층 단위 바닥·벽·안개 팔레트 교체 (절차 생성이라 저비용).
+7. **제출 준비** — 플레이 영상 촬영(SUBMISSION.md 가이드), 문서 PDF 변환, 마감일 기입.
+
 ## 실행
 - `npm install` — 최초 1회
 - `npm run dev` — 개발 서버 (기본 포트 5175, `PORT` 환경변수로 변경 가능)
 - `npm run typecheck` — 타입 검사
 - `npm run build` — 프로덕션 빌드
-- 숨김 탭(헤드리스 프리뷰)에서는 크롬이 rAF를 멈춰 3D가 안 그려짐 — `?rafshim` 쿼리로 우회 (index.html의 개발용 심: 타이머 rAF + ResizeObserver 폴리필 + **`window.__pump(n)` 동기 프레임 구동**). 크롬 집중 스로틀링(오래 숨겨진 탭, 타이머 분당 1회)에서는 타이머가 다 죽으므로 자동 검증은 `__pump` + `__d100fixdt`(고정 dt) + MessageChannel 틱(스로틀 안 됨)으로 구동할 것. 클릭 후 React 렌더는 태스크 경계가 필요 — 같은 evaluate 안에서는 MessageChannel 왕복(tick) 후 DOM을 읽어야 함.
+- 숨김 탭(헤드리스 프리뷰)에서는 크롬이 rAF를 멈춰 3D가 안 그려짐 — `?rafshim` 쿼리로 우회 (index.html의 개발용 심: 타이머 rAF + ResizeObserver 폴리필 + **`window.__pump(n)` 동기 프레임 구동**). 크롬 집중 스로틀링(오래 숨겨진 탭, 타이머 분당 1회)에서는 타이머가 다 죽으므로 자동 검증은 `__pump` + `__d100fixdt`(고정 dt) + MessageChannel 틱(스로틀 안 됨)으로 구동할 것. 클릭 후 React 렌더는 태스크 경계가 필요 — 같은 evaluate 안에서는 MessageChannel 왕복(tick) 후 DOM을 읽어야 함. DEV 훅: `__d100`(teleport/state/hitBoss/killEnemies), `__d100run`(place/state), `__d100app`(jump — 층 점프). r3f 부팅은 클릭 루프보다 느릴 수 있으니 `window.__d100` 등장까지 넉넉히 대기할 것.
 - 배포: main 푸시 → `.github/workflows/deploy-pages.yml` → https://hakhyun-kim.github.io/dungeon100/
 
 ## 구조
@@ -20,7 +33,13 @@
 - `src/three/Hero.tsx` — 공용 주인공 블록 캐릭터 (던전·미니게임 세계관 통일).
 - `src/three/textTexture.ts` — 한글 텍스트 → 캔버스 텍스처 (문제판·문 답, 두문러너 labels.ts 축소판).
 - `src/lib/quiz.ts` — 미니게임 문제 생성. **던전 종류(DungeonMode: 'kids' 초등 / 'adult' 어른)** × 층 깊이로 난이도 결정 — kids: 한자리±→두자리±→곱셈구구→두자리×한자리 / adult: 두자리±→두자리×한자리→혼합→두자리×두자리. 근접 오답, 문제 은행 없음. 라운드 보정 +6/라운드. 던전 입구(마을 choice)에서 모드 선택, HUD에 🎒/🧠 표시.
-- `src/lib/sound.ts` — Web Audio 합성 효과음 16종 (파일 없음, 두문러너 방식 확장): tap/pick/hit(연사 제한)/kill/hurt/doorrun/pass/crash/treasure/legend/memory/lore/portal/bell/gift/over/enter. phase 전환음은 App useEffect, 타격·통과음은 씬에서 직접 호출. 음소거: localStorage `d100-muted` + HUD·타이틀 🔊 버튼.
+- `src/lib/sound.ts` — Web Audio 합성 효과음 19종 (파일 없음): tap/pick/hit(연사 제한)/kill/hurt/doorrun/pass/crash/treasure/legend/memory/lore/portal/bell/gift/over/enter/heartbeat/roar/unlock. phase 전환음은 App useEffect, 타격·통과음은 씬에서 직접 호출. 음소거: localStorage `d100-muted` + HUD·타이틀 🔊 버튼. `getAc()`로 AudioContext를 music.ts와 공유.
+- `src/lib/music.ts` — **절차 생성 BGM** (파일 없음, 16분음표 스텝 시퀀서 + 룩어헤드 스케줄링): title(패드)/town(왈츠)/dungeon(깊이별 템포·옥타브 변화)/doorrun(질주)/boss(오스티나토). App useEffect가 phase·보스 생존·층 티어에 따라 트랙 전환. 음소거 토글 시 `music.sync()`.
+- **보스 "페이지의 수호자"** (10층마다, DungeonScene) — 출구를 지키며 포털 봉인(처치 전 포털 숨김·비활성). 느린 추격 + 8방향 방사 탄막(eshots 풀) + 강한 접촉 피해. 처치 시 확정 보물 1개 + 회복 30 + 봉인 해제 연출. HUD에 보스 체력바. hp = 150+층×25.
+- **엔딩 (100층)** — 100층 출구는 황금 문. 접촉 시 `ending` phase: 혼자 나가기 / 촌장(작가)과 함께 나가기 선택 → 각각 다른 에필로그(story.ts ENDING_*) → 통계 화면. 100층에도 보스 있음(최종전 후 문).
+- **기억 완성 보상** — 12번째 기억 회수 시 `memfull` phase: 아이템 2개 + 완전 회복.
+- **위기 연출** — HP 30% 미만: 붉은 비네트 펄스 + 심장박동음(1초 간격).
+- **인터랙티브 인트로** — STORY_NODES에 quiz 노드(책이 "7×8=?"을 물음, 정답/오답 모두 빨려 들어가는 개그). 배경 클릭 진행은 퀴즈 미답변 중 잠금.
 - `src/lib/story.ts` — 인트로 슬라이드·마을 대화(line/choice 노드, gift='item'|'heal')·회상 기억 12개(MEMORIES)·층별 벽의 글귀(getLore)·5층마다 마을 방문 스크립트(townVisitScript). **세계관: 던전=쓰이다 만 책, 마을=서문, 촌장=작가, 100층 문=뒤표지.** localStorage: `d100-story`(인트로 1회), `d100-mem`(되찾은 기억 수).
 - 새 층 도착 시 `lore` phase로 벽의 글귀 1개 노출, 보물 획득 후 `memory` phase로 기억 1개 복원. 5의 배수 층엔 마을 문(dungeon.ts homeDoor) — 방문은 층 유지(townMode 'visit'), 문은 1회용(homeUsedRef), 거절 시 재무장(homeRetryRef). 몬스터는 5층 단위 티어로 모양·색 변화(DungeonScene ENEMY_TIER_*).
 - `src/lib/rng.ts` — mulberry32 시드 난수. **층 번호 = 시드** → 같은 층은 항상 같은 구조 (재현성).

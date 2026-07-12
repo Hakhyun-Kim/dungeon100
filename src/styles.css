@@ -307,6 +307,78 @@ body {
   max-width: 420px;
 }
 
+/* ── 보스 체력바 ── */
+.boss-bar-wrap {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 42px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(78vw, 420px);
+  text-align: center;
+  pointer-events: none;
+}
+
+.boss-label {
+  font-size: 14px;
+  color: #e0b3ff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.boss-bar-outer {
+  margin-top: 4px;
+  height: 12px;
+  background: rgba(20, 12, 40, 0.75);
+  border: 1px solid rgba(224, 179, 255, 0.4);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.boss-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #c06bff, #ff3d5e);
+  transition: width 0.12s ease-out;
+}
+
+/* ── 위기 연출 (체력 30% 미만) ── */
+.low-hp {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 52%, rgba(120, 0, 20, 0.5) 100%);
+  animation: lowHpPulse 1s ease-in-out infinite;
+}
+
+@keyframes lowHpPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── 인트로 퀴즈 · 엔딩 ── */
+.story-quiz-q {
+  font-size: clamp(36px, 9vw, 56px);
+  color: #ffd166;
+}
+
+.story-quiz-choices {
+  max-width: 340px;
+}
+
+.ending-screen {
+  background: radial-gradient(ellipse at 50% 30%, #3d3418 0%, #120e08 75%);
+  cursor: pointer;
+}
+
+.ending-title {
+  color: #ffd166;
+  font-size: clamp(40px, 9vw, 64px);
+  text-shadow: 0 4px 0 #6b5312, 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
 /* ── 회상 (되찾은 기억) ── */
 .memory-screen {
   background: radial-gradient(ellipse at 50% 30%, #4a3a2a 0%, #17110c 75%);

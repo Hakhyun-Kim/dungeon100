@@ -2,29 +2,53 @@
 // 세계관: 이 던전은 '쓰이다 만 책'이다. 마을은 서문, 100층의 문은 뒤표지.
 // 보물은 잊어버린 집의 기억을 되돌려주고, 5층마다 책갈피(마을 문)가 꽂힌다.
 
-export interface StorySlide {
-  icon: string;
-  text: string;
-}
+// 인트로 — 중간에 책이 직접 문제를 내는 인터랙티브 장면이 있다 (답과 무관하게 빨려 들어가는 개그)
+export type StoryNode =
+  | { kind: 'slide'; icon: string; text: string }
+  | {
+      kind: 'quiz';
+      icon: string;
+      intro: string;
+      q: string;
+      answers: [string, string];
+      correct: 0 | 1;
+      okText: string;
+      noText: string;
+    };
 
-export const STORY_SLIDES: StorySlide[] = [
+export const STORY_NODES: StoryNode[] = [
   {
+    kind: 'slide',
     icon: '📚',
     text: '2026년, 대한민국. 기말고사가 끝난 밤.\n나는 도서관에서 빌린 낡은 책을 읽고 있었다.\n제목은 — 『백층 던전의 비밀』.',
   },
   {
+    kind: 'slide',
     icon: '🕯️',
-    text: '"백 개의 층을 내려간 자, 어떤 문이든 열 수 있다."\n\n…웬 판타지 설정집이 이렇게 디테일하지?\n라고 생각한 것이 그날 밤의 마지막 기억이다.',
+    text: '"백 개의 층을 내려간 자, 어떤 문이든 열 수 있다."\n\n…웬 판타지 설정집이 이렇게 디테일하지?\n라고 생각한 순간이었다.',
   },
   {
+    kind: 'quiz',
+    icon: '❓',
+    intro: '책의 글자들이 꿈틀거리더니, 페이지 한가운데에 질문이 떠올랐다.\n\n「대답하라, 읽는 자여.」',
+    q: '7 × 8 = ?',
+    answers: ['54', '56'],
+    correct: 1,
+    okText: '「…정답. 자격이 있군.」\n\n글자들이 소용돌이치며 나를 책 속으로 끌어당겼다!',
+    noText: '「…아쉽군. 하지만 배짱은 마음에 든다.」\n\n글자들이 웃으며 나를 책 속으로 끌어당겼다! (어차피 끌려간다)',
+  },
+  {
+    kind: 'slide',
     icon: '🌄',
     text: '눈을 떴을 때, 천장이 낯설었다.\n정확히는 — 천장이 없었다.\n\n책 43쪽 삽화에서 본 그 마을이, 눈앞에 있었다.',
   },
   {
+    kind: 'slide',
     icon: '🩳',
     text: '주머니엔 지갑도, 폰도, 충전기도 없다.\n있는 건 어제 입고 잔 잠옷뿐.\n\n[ 현재 스탯 — 힘: 0 · 돈: 0 · 당황: 100 ]',
   },
   {
+    kind: 'slide',
     icon: '🏔️',
     text: '그리고 마을 뒤편에는,\n책 표지에 그려져 있던 바로 그 던전이\n시커먼 입을 벌리고 있었다.',
   },
@@ -321,6 +345,41 @@ const TOWN_VISIT_LATER: TownNode[] = [
     kind: 'choice',
     prompt: '마을이 처음 왔을 때보다… 조금 밝아진 것 같다.',
     options: [{ label: '⚔️ 던전으로 돌아간다', action: 'return' }],
+  },
+];
+
+// ── 엔딩 (100층 — 페이지의 수호자를 쓰러뜨리고 황금 문 앞에서)
+export const ENDING_ALONE: { icon: string; text: string }[] = [
+  {
+    icon: '🚪',
+    text: '문고리에 손을 얹자, 등 뒤 멀리서 마을의 종소리가 들렸다.\n\n…돌아보지 않았다.',
+  },
+  {
+    icon: '🛏️',
+    text: '눈을 뜨니 익숙한 천장.\n책상 위엔 『백층 던전의 비밀』이 얌전히 덮여 있었다.',
+  },
+  {
+    icon: '📖',
+    text: '…그런데 책이, 어쩐지 얇아진 것 같았다.\n마지막 장을 펼치자 이렇게 쓰여 있었다.\n\n「그는 혼자 문을 나섰다. 마을에는 아직, 종소리가 울린다.」',
+  },
+];
+
+export const ENDING_TOGETHER: { icon: string; text: string }[] = [
+  {
+    icon: '👵',
+    text: '"할머니! 같이 가요. 마지막 장은 같이 쓰는 거예요."\n\n촌장은 한참 나를 바라보다가, 펜을 내려놓듯 웃었다.',
+  },
+  {
+    icon: '🚪',
+    text: '두 사람이 함께 문을 밀자,\n백 개의 층이 한 페이지씩 넘어가는 소리가 났다.',
+  },
+  {
+    icon: '📖',
+    text: '눈을 뜨니 익숙한 천장.\n책상 위 책의 마지막 장엔 이렇게 쓰여 있었다.\n\n「그리고 두 사람은 함께 문을 나섰다. — 끝」',
+  },
+  {
+    icon: '🔔',
+    text: '창밖 어딘가에서,\n은은한 종소리가 들린 것 같았다.',
   },
 ];
 

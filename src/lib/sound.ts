@@ -14,6 +14,11 @@ function ac(): AudioContext | null {
   }
 }
 
+// music.ts 등 다른 모듈이 같은 AudioContext를 공유
+export function getAc(): AudioContext | null {
+  return ac();
+}
+
 export const isMuted = () => {
   try {
     return localStorage.getItem('d100-muted') === '1';
@@ -211,6 +216,28 @@ export const sfx = {
       tone(c, 392, 0, 0.12, 'triangle', 0.1);
       tone(c, 523.25, 0.1, 0.12, 'triangle', 0.1);
       tone(c, 659.25, 0.2, 0.24, 'triangle', 0.12);
+    });
+  },
+  // 위기의 심장박동 (쿵-쿵)
+  heartbeat() {
+    play((c) => {
+      tone(c, 58, 0, 0.12, 'sine', 0.16, 40);
+      tone(c, 52, 0.16, 0.14, 'sine', 0.12, 38);
+    });
+  },
+  // 보스 등장 포효 (낮게 우르릉)
+  roar() {
+    play((c) => {
+      tone(c, 90, 0, 0.7, 'sawtooth', 0.09, 55);
+      noise(c, 0, 0.5, 0.07, 220);
+    });
+  },
+  // 봉인 해제 (포털 열림)
+  unlock() {
+    play((c) => {
+      tone(c, 659.25, 0, 0.12, 'triangle', 0.1);
+      tone(c, 987.77, 0.1, 0.14, 'triangle', 0.1);
+      tone(c, 1318.5, 0.22, 0.3, 'sine', 0.09);
     });
   },
 };
