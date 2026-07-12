@@ -328,17 +328,18 @@ function useSteer() {
 
     const update = () => {
       let x = 0;
-      if (keys.has('arrowleft') || keys.has('a')) x -= 1;
-      if (keys.has('arrowright') || keys.has('d')) x += 1;
+      if (keys.has('ArrowLeft') || keys.has('KeyA')) x -= 1;
+      if (keys.has('ArrowRight') || keys.has('KeyD')) x += 1;
       if (x === 0) x = touch;
       dir.current = x;
     };
     const down = (e: KeyboardEvent) => {
-      keys.add(e.key.toLowerCase());
+      if (e.shiftKey) return; // Shift+D(디버그) 등과 충돌 방지
+      keys.add(e.code);
       update();
     };
     const up = (e: KeyboardEvent) => {
-      keys.delete(e.key.toLowerCase());
+      keys.delete(e.code);
       update();
     };
     const pdown = (e: PointerEvent) => {

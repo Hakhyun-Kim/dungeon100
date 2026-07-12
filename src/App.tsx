@@ -8,6 +8,7 @@ import { mulberry32 } from './lib/rng';
 import { useLocalStorage } from './lib/store';
 import { sfx, isMuted, setMuted } from './lib/sound';
 import { music } from './lib/music';
+import { shareCard } from './lib/shareCard';
 import {
   STORY_NODES,
   TOWN_FIRST,
@@ -102,11 +103,8 @@ export default function App() {
   const [endingVariant, setEndingVariant] = useState<'alone' | 'together' | null>(null);
   const [endingIdx, setEndingIdx] = useState(0);
 
-  // 디버그 (Shift+D): 개발 모드 또는 ?debug 쿼리에서만
-  const debugAllowed = useMemo(
-    () => import.meta.env.DEV || new URLSearchParams(location.search).has('debug'),
-    [],
-  );
+  // 디버그 (Shift+D): 항상 사용 가능 — 제출 직전 게이트 재도입 검토 (CLAUDE.md 다음 후보)
+  const debugAllowed = true;
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugFloor, setDebugFloor] = useState('');
 
@@ -213,17 +211,79 @@ export default function App() {
     };
   }, []);
 
-  // 디버그 단축키: Shift+D 열고 닫기, Esc 닫기
+  // 디버그 단축키: Shift+D 열고 닫기, Esc 닫기 (한/영 입력 상태와 무관하게 e.code 사용)
   useEffect(() => {
     if (!debugAllowed) return;
     const h = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
-      if (e.key.toLowerCase() === 'd' && e.shiftKey) setDebugOpen((o) => !o);
-      else if (e.key === 'Escape') setDebugOpen(false);
+      if (e.code === 'KeyD' && e.shiftKey) {
+        e.preventDefault();
+        setDebugOpen((o) => !o);
+      } else if (e.key === 'Escape') {
+        setDebugOpen(false);
+      }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [debugAllowed]);
+
+  // 오버레이 키보드 선택 — 마우스 없이 화살표/숫자/Enter로 즉시 선택
+  //  · 두 갈래 선택(두 문 보상, 포털, 마을 문 등): ←/↑ = 첫 번째, →/↓ = 두 번째
+  //  · 3장 카드(드래프트): ← / ↑↓ / → 또는 1·2·3
+  //  · 진행 버튼(계속 탐험 등): Enter/Space/→
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if (debugOpen) return;
+      const k = e.key;
+      const isEnter = k === 'Enter' || k === ' ';
+      const isLeft = k === 'ArrowLeft';
+      const isRight = k === 'ArrowRight';
+      const isUp = k === 'ArrowUp';
+      const isDown = k === 'ArrowDown';
+      const num = ['1', '2', '3', '4'].indexOf(k);
+      if (!isEnter && !isLeft && !isRight && !isUp && !isDown && num < 0) return;
+
+      const buttons = (sel: string) =>
+        [...document.querySelectorAll<HTMLButtonElement>(sel)].filter((b) => !b.disabled);
+      const click = (b?: HTMLButtonElement) => {
+        if (b) {
+          e.preventDefault();
+          b.click();
+        }
+      };
+      // 두 갈래/여러 갈래 선택지
+      const choices = buttons('.screen .dialog-choices .choice-btn, .story-quiz-choices .choice-btn');
+      if (choices.length >= 2) {
+        if (num >= 0) return click(choices[num]);
+        if (isLeft || isUp) return click(choices[0]);
+        if (isRight || isDown) return click(choices[1]);
+        return;
+      }
+      // 드래프트 카드 3장
+      const cards = buttons('.draft-screen .card');
+      if (cards.length >= 2) {
+        if (num >= 0) return click(cards[num]);
+        if (isLeft) return click(cards[0]);
+        if (isUp || isDown) return click(cards[1]);
+        if (isRight) return click(cards[cards.length - 1]);
+        return;
+      }
+      // 진행 버튼 하나 (계속 탐험, 가슴에 담는다, 다음 등)
+      const primary = buttons('.screen .big-btn');
+      if (primary.length >= 1 && (isEnter || isRight)) return click(primary[0]);
+      // 마을 대사 진행
+      if (phase === 'town' && (isEnter || isRight)) {
+        const dlg = document.querySelector<HTMLElement>('.town-screen .dialog-box');
+        if (dlg && dlg.querySelector('.dialog-next')) {
+          e.preventDefault();
+          dlg.click();
+        }
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [phase, debugOpen]);
 
   const debugJump = (n: number) => {
     if (!Number.isFinite(n)) return;
@@ -1003,6 +1063,23 @@ export default function App() {
               >
                 처음부터
               </button>
+              <button
+                className="skip-btn"
+                onClick={() => {
+                  sfx.tap();
+                  void shareCard({
+                    floor: 100,
+                    kills,
+                    mem: memCount,
+                    memMax: MEMORIES.length,
+                    best,
+                    mode,
+                    cleared: true,
+                  });
+                }}
+              >
+                📸 완주 카드 저장
+              </button>
             </div>
           );
         })()}
@@ -1071,6 +1148,15 @@ export default function App() {
               🏘️ 마을에서 한숨 돌리기 (대장간 🛠️)
             </button>
           </div>
+          <button
+            className="skip-btn"
+            onClick={() => {
+              sfx.tap();
+              void shareCard({ floor: floorNo, kills, mem: memCount, memMax: MEMORIES.length, best, mode });
+            }}
+          >
+            📸 기록 카드 저장
+          </button>
         </div>
       )}
 

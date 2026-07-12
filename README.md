@@ -25,6 +25,14 @@ npm run dev   # http://localhost:5175
 ```
 요구 사항: Node.js 20+. `npm run build` 프로덕션 빌드, `npm run typecheck` 타입 검사.
 
+## 자매작 — 두 문 러너 (Two Door Runner)
+
+보물상자 미니게임 "두 문 달리기"의 원작. **마찬가지로 AI(Claude Code)와 함께 만든 작품**입니다.
+
+- 🎮 플레이: https://hakhyun-kim.github.io/door-runner/
+- 📦 저장소: https://github.com/Hakhyun-Kim/door-runner
+- 🔮 두 게임은 이후 **하나의 작품으로 통합할 계획**입니다 (백층 던전이 본편, 두 문 러너가 인게임 미니게임).
+
 ## 기술 스택
 
 React 18 · TypeScript · Vite · three.js · @react-three/fiber

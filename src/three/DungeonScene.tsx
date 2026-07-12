@@ -272,6 +272,54 @@ function DungeonScene({
   const traceRef = useRef<THREE.Group>(null);
   const girlRef = useRef<THREE.Group>(null);
 
+  // 나침반 화살표 (플레이어 주위를 돌며 목표 방향 표시)
+  const portalArrowRef = useRef<THREE.Group>(null);
+  const chestArrowRef = useRef<THREE.Group>(null);
+  const homeArrowRef = useRef<THREE.Group>(null);
+  const girlArrowRef = useRef<THREE.Group>(null);
+
+  // 데미지 숫자 (캔버스 스프라이트 풀)
+  const DMG_POOL = 14;
+  const dmgNums = useRef(
+    Array.from({ length: DMG_POOL }, () => ({ x: 0, y: 0, z: 0, ttl: 0, max: 0.7, alive: false })),
+  );
+  const dmgCanvases = useMemo(
+    () =>
+      Array.from({ length: DMG_POOL }, () => {
+        const c = document.createElement('canvas');
+        c.width = 128;
+        c.height = 64;
+        return c;
+      }),
+    [],
+  );
+  const dmgTextures = useMemo(
+    () => dmgCanvases.map((c) => new THREE.CanvasTexture(c)),
+    [dmgCanvases],
+  );
+  const dmgSprites = useRef<(THREE.Sprite | null)[]>(Array.from({ length: DMG_POOL }, () => null));
+  const spawnDmg = (x: number, z: number, val: number, color = '#ffe08a') => {
+    const i = dmgNums.current.findIndex((d) => !d.alive);
+    if (i < 0) return;
+    const d = dmgNums.current[i];
+    d.x = x + (Math.random() - 0.5) * 0.4;
+    d.z = z;
+    d.y = 1.15;
+    d.ttl = d.max;
+    d.alive = true;
+    const ctx = dmgCanvases[i].getContext('2d')!;
+    ctx.clearRect(0, 0, 128, 64);
+    ctx.font = "44px 'Jua', sans-serif";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(20,10,30,0.85)';
+    ctx.strokeText(String(val), 64, 34);
+    ctx.fillStyle = color;
+    ctx.fillText(String(val), 64, 34);
+    dmgTextures[i].needsUpdate = true;
+  };
+
   // 파티클 분출 — 타격 스파크, 처치 폭발, 보물 개봉 등
   const burst = (x: number, y: number, z: number, color: string, n: number, speed: number) => {
     const c = new THREE.Color(color);
@@ -524,6 +572,7 @@ function DungeonScene({
           sh.alive = false;
           sfx.hit();
           burst(sh.x, 0.9, sh.z, '#e0b3ff', 4, 1.4);
+          spawnDmg(bh.x, bh.z, Math.round(stats.damage));
           onBossHp(Math.max(0, bh.hp), bh.maxHp);
           if (bh.hp <= 0) killBoss();
           continue;
@@ -536,6 +585,7 @@ function DungeonScene({
             sh.alive = false;
             sfx.hit();
             burst(e.x, 0.7, e.z, '#ffe08a', 4, 1.4);
+            spawnDmg(e.x, e.z, Math.round(stats.damage));
             // 넉백 (탱커는 밀리지 않음, 벽은 통과 못 함)
             if (e.type !== 'tank') {
               const kx = e.x + sh.dx * 0.4;
@@ -898,6 +948,61 @@ function DungeonScene({
       );
     }
 
+    // ── 데미지 숫자 (떠오르며 사라짐)
+    dmgNums.current.forEach((d, i) => {
+      const sp = dmgSprites.current[i];
+      if (!sp) return;
+      if (d.alive) {
+        d.ttl -= dt;
+        if (d.ttl <= 0) {
+          d.alive = false;
+          sp.visible = false;
+          return;
+        }
+        d.y += 1.7 * dt;
+        sp.visible = true;
+        sp.position.set(d.x, d.y, d.z);
+        const a = d.ttl / d.max;
+        (sp.material as THREE.SpriteMaterial).opacity = Math.min(1, a * 1.6);
+      } else {
+        sp.visible = false;
+      }
+    });
+
+    // ── 나침반 화살표 (멀리 있는 목표의 방향을 플레이어 곁에 표시)
+    const aimArrow = (
+      ref: React.RefObject<THREE.Group>,
+      target: [number, number] | null,
+      active: boolean,
+      orbit: number,
+    ) => {
+      const g = ref.current;
+      if (!g) return;
+      if (!target || !active || hiddenRef.current) {
+        g.visible = false;
+        return;
+      }
+      const dx = target[0] - p.position.x;
+      const dz = target[1] - p.position.z;
+      const dd = Math.hypot(dx, dz);
+      if (dd < 7) {
+        g.visible = false;
+        return;
+      }
+      g.visible = true;
+      const ang = Math.atan2(dx, dz);
+      g.position.set(
+        p.position.x + Math.sin(ang) * orbit,
+        0.14 + Math.sin(t * 3) * 0.05,
+        p.position.z + Math.cos(ang) * orbit,
+      );
+      g.rotation.y = ang;
+    };
+    aimArrow(portalArrowRef, [exitX, exitZ], true, 1.9);
+    aimArrow(chestArrowRef, chestPos, chestState.current === 'idle', 2.35);
+    aimArrow(homeArrowRef, homePos, homeState.current === 'idle', 2.8);
+    aimArrow(girlArrowRef, girlPos, !girlMet.current, 3.25);
+
     // ── 흔적·소녀 연출
     if (traceRef.current) {
       const target = traceSeen.current ? 0.0001 : 1;
@@ -1125,6 +1230,44 @@ function DungeonScene({
         </group>
       )}
 
+      {/* 나침반 화살표 — 포털(보라)·상자(금)·마을 문(주황)·소녀(분홍) */}
+      <group ref={portalArrowRef} visible={false}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[0.16, 0.5, 6]} />
+          <meshStandardMaterial color="#9a6bff" emissive="#7a4dff" emissiveIntensity={1.2} transparent opacity={0.85} />
+        </mesh>
+      </group>
+      <group ref={chestArrowRef} visible={false}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[0.14, 0.44, 6]} />
+          <meshStandardMaterial color="#ffd166" emissive="#c98f1e" emissiveIntensity={1.1} transparent opacity={0.85} />
+        </mesh>
+      </group>
+      <group ref={homeArrowRef} visible={false}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[0.14, 0.44, 6]} />
+          <meshStandardMaterial color="#ffcf8a" emissive="#a06a33" emissiveIntensity={1.0} transparent opacity={0.85} />
+        </mesh>
+      </group>
+      <group ref={girlArrowRef} visible={false}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[0.14, 0.44, 6]} />
+          <meshStandardMaterial color="#ff9ec4" emissive="#c95a86" emissiveIntensity={1.0} transparent opacity={0.85} />
+        </mesh>
+      </group>
+
+      {/* 데미지 숫자 스프라이트 */}
+      {dmgTextures.map((tex, i) => (
+        <sprite
+          key={i}
+          ref={(s) => (dmgSprites.current[i] = s)}
+          visible={false}
+          scale={[1.0, 0.5, 1]}
+        >
+          <spriteMaterial map={tex} transparent depthWrite={false} />
+        </sprite>
+      ))}
+
       {/* 출구 — 보통 층은 포털, 100층은 집으로 가는 황금 문 */}
       <group ref={portalRef} position={[exitX, 1.1, exitZ]}>
         {floorNo >= 100 ? (
@@ -1154,6 +1297,7 @@ function DungeonScene({
 }
 
 // 키보드(WASD/방향키) + 터치 드래그(가상 스틱) 입력 → 정규화된 이동 벡터
+// e.code 기반이라 한/영 입력 상태와 무관. Shift 조합(디버그 키 등)은 무시.
 function useMoveInput() {
   const dir = useRef({ x: 0, z: 0 });
   useEffect(() => {
@@ -1163,10 +1307,10 @@ function useMoveInput() {
     const update = () => {
       let x = 0;
       let z = 0;
-      if (keys.has('arrowleft') || keys.has('a')) x -= 1;
-      if (keys.has('arrowright') || keys.has('d')) x += 1;
-      if (keys.has('arrowup') || keys.has('w')) z -= 1;
-      if (keys.has('arrowdown') || keys.has('s')) z += 1;
+      if (keys.has('ArrowLeft') || keys.has('KeyA')) x -= 1;
+      if (keys.has('ArrowRight') || keys.has('KeyD')) x += 1;
+      if (keys.has('ArrowUp') || keys.has('KeyW')) z -= 1;
+      if (keys.has('ArrowDown') || keys.has('KeyS')) z += 1;
       if (drag.active) {
         const dx = drag.x - drag.ox;
         const dy = drag.y - drag.oy;
@@ -1186,11 +1330,12 @@ function useMoveInput() {
     };
 
     const down = (e: KeyboardEvent) => {
-      keys.add(e.key.toLowerCase());
+      if (e.shiftKey) return; // Shift+D(디버그) 등과 충돌 방지
+      keys.add(e.code);
       update();
     };
     const up = (e: KeyboardEvent) => {
-      keys.delete(e.key.toLowerCase());
+      keys.delete(e.code);
       update();
     };
     const pdown = (e: PointerEvent) => {

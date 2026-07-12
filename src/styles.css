@@ -30,7 +30,7 @@ body {
   inset: 0;
 }
 
-/* ── HUD ── */
+/* ── HUD (오버레이보다 위 — 음소거 버튼이 항상 눌리게) ── */
 .hud {
   position: absolute;
   top: max(10px, env(safe-area-inset-top));
@@ -40,6 +40,7 @@ body {
   align-items: center;
   gap: 10px;
   pointer-events: none;
+  z-index: 50;
 }
 
 .hud-chip {
@@ -96,6 +97,7 @@ body {
   background: radial-gradient(ellipse at center, transparent 55%, rgba(255, 60, 80, 0.55) 100%);
   pointer-events: none;
   animation: flashFade 0.35s ease-out forwards;
+  z-index: 60;
 }
 
 .hit-flash.gold {
@@ -148,6 +150,12 @@ body {
   gap: 14px;
   padding: 24px;
   text-align: center;
+  z-index: 30;
+}
+
+/* 디버그 창은 항상 최상위 */
+.debug-screen {
+  z-index: 70;
 }
 
 .title-screen {
