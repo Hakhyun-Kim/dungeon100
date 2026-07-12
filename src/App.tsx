@@ -17,9 +17,23 @@ import {
   ENDING_ALONE,
   ENDING_TOGETHER,
   getLore,
+  getDeathLore,
   townVisitScript,
   type TownNode,
 } from './lib/story';
+
+// 대장간 영구 강화 (죽어도 유지 — localStorage d100-meta)
+interface Meta {
+  dmg: number;
+  hp: number;
+  spd: number;
+}
+const SHOP_ITEMS: { key: keyof Meta; icon: string; name: string; desc: string; max: number }[] = [
+  { key: 'dmg', icon: '⚔️', name: '공격 단련', desc: '시작 공격력 +2', max: 5 },
+  { key: 'hp', icon: '💖', name: '생명 단련', desc: '시작 체력 +15', max: 5 },
+  { key: 'spd', icon: '👟', name: '신속 단련', desc: '시작 이동 +0.4', max: 5 },
+];
+const shopCost = (lv: number) => (lv + 1) * 25;
 
 // 흐름: title → story(인트로) → town(마을) → run
 //  - 보물상자: run → doorrun(두 문 달리기, 최대 3연속) → quiz(결과) → memory(되찾은 기억) → run
@@ -38,6 +52,7 @@ type Phase =
   | 'draft'
   | 'lore'
   | 'homedoor'
+  | 'shop'
   | 'ending'
   | 'over';
 type QuizView = 'ok' | 'no' | 'choice';
@@ -53,6 +68,10 @@ export default function App() {
   const [best, setBest] = useLocalStorage<number>('d100-best', 0);
   const [storySeen, setStorySeen] = useLocalStorage<boolean>('d100-story', false);
   const [memCount, setMemCount] = useLocalStorage<number>('d100-mem', 0);
+  const [coins, setCoins] = useLocalStorage<number>('d100-coins', 0);
+  const [meta, setMeta] = useLocalStorage<Meta>('d100-meta', { dmg: 0, hp: 0, spd: 0 });
+  const [deaths, setDeaths] = useLocalStorage<number>('d100-deaths', 0);
+  const [overLore, setOverLore] = useState('');
   const [flash, setFlash] = useState(0);
   const [goldFlash, setGoldFlash] = useState(0);
   const [build, setBuild] = useState<Record<string, number>>({});
@@ -91,8 +110,11 @@ export default function App() {
     if (phase === 'run' && hp <= 0) {
       setPhase('over');
       if (floorNo > best) setBest(floorNo);
+      setOverLore(getDeathLore(deaths)); // 죽을수록 위화감이 커진다
+      setDeaths(deaths + 1);
     }
-  }, [hp, phase, floorNo, best, setBest]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hp, phase]);
 
   const draft = useMemo(
     () => draftThree(mulberry32(runId * 7919 + floorNo * 131 + 7)),
@@ -189,9 +211,17 @@ export default function App() {
     sfx.enter();
     setStorySeen(true);
     setFloorNo(1);
-    setStats(BASE_STATS);
-    setHp(BASE_STATS.maxHp);
+    // 대장간 영구 강화 반영
+    const startStats: Stats = {
+      ...BASE_STATS,
+      damage: BASE_STATS.damage + meta.dmg * 2,
+      maxHp: BASE_STATS.maxHp + meta.hp * 15,
+      speed: BASE_STATS.speed + meta.spd * 0.4,
+    };
+    setStats(startStats);
+    setHp(startStats.maxHp);
     setKills(0);
+    setOverLore('');
     setBuild({});
     setQuizSeq(0);
     setDoorRound(1);
@@ -282,10 +312,15 @@ export default function App() {
     setFlash((f) => f + 1);
     setHp((h) => Math.max(0, h - dmg));
   }, []);
-  const onKill = useCallback(() => {
-    sfx.kill();
-    setKills((k) => k + 1);
-  }, []);
+  const onKill = useCallback(
+    (bounty: number) => {
+      sfx.kill();
+      setKills((k) => k + 1);
+      setCoins((c) => c + bounty);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   // 100층의 출구는 포털이 아니라 집으로 가는 문 — 엔딩으로
   const onExit = useCallback(
     () => setPhase(floorNoRef.current >= 100 ? 'ending' : 'portal'),
@@ -297,7 +332,7 @@ export default function App() {
   }, []);
   const quizSeedRef = useRef(quizSeed);
   quizSeedRef.current = quizSeed;
-  // 보스 처치 — 확정 보물 1개 + 회복 30, 포털 봉인 해제
+  // 보스 처치 — 확정 보물 1개 + 회복 30 + 코인 25, 포털 봉인 해제
   const onBossDown = useCallback(() => {
     const pick = UPGRADES[Math.floor(mulberry32(quizSeedRef.current + 777)() * UPGRADES.length)];
     const next = pick.apply(statsRef.current);
@@ -305,11 +340,13 @@ export default function App() {
     setHp((h) => Math.min(next.maxHp, h + 30 + (pick.id === 'hp' ? 25 : 0)));
     setBuild((b) => ({ ...b, [pick.id]: (b[pick.id] ?? 0) + 1 }));
     setRewards([pick]);
+    setCoins((c) => c + 25);
     setGoldFlash((f) => f + 1);
     sfx.legend();
     sfx.unlock();
     setQuizView('ok');
     setPhase('quiz');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const onChest = useCallback(() => {
     setDoorRound(1);
@@ -392,6 +429,21 @@ export default function App() {
     setPhase('run');
   };
 
+  const buyUpgrade = (key: keyof Meta) => {
+    const item = SHOP_ITEMS.find((i) => i.key === key);
+    if (!item) return;
+    const lv = meta[key];
+    const cost = shopCost(lv);
+    if (lv >= item.max || coins < cost) {
+      sfx.tap();
+      return;
+    }
+    setCoins((c) => c - cost);
+    setMeta({ ...meta, [key]: lv + 1 });
+    setGoldFlash((f) => f + 1);
+    sfx.treasure();
+  };
+
   const openHomeDoor = () => {
     sfx.tap();
     homeUsedRef.current += 1;
@@ -405,7 +457,12 @@ export default function App() {
   };
 
   const hpRatio = Math.max(0, Math.min(1, hp / stats.maxHp));
-  const inGame = !(phase === 'title' || phase === 'story' || (phase === 'town' && townMode === 'pre'));
+  const inGame = !(
+    phase === 'title' ||
+    phase === 'story' ||
+    phase === 'shop' ||
+    (phase === 'town' && townMode === 'pre')
+  );
 
   return (
     <div className="app">
@@ -449,6 +506,7 @@ export default function App() {
             </span>
           </div>
           <div className="hud-chip">💀 {kills}</div>
+          <div className="hud-chip">🪙 {coins}</div>
           <button className="hud-chip mute-btn" onClick={toggleMute}>
             {muted ? '🔇' : '🔊'}
           </button>
@@ -613,6 +671,7 @@ export default function App() {
                       sfx.tap();
                       if (o.action === 'enter') enterDungeon(o.mode);
                       else if (o.action === 'return') setPhase('run');
+                      else if (o.action === 'shop') setPhase('shop');
                       else setTownIdx(o.next ?? townIdx);
                     }}
                   >
@@ -889,14 +948,61 @@ export default function App() {
           <p>
             처치 {kills} · 최고 기록 {Math.max(best, floorNo)}층
           </p>
-          <p className="quiz-sub">눈을 떠 보니 마을 여관 침대 위였다. 던전의 마법일까.</p>
+          <p className="over-lore">{overLore}</p>
+          <p className="quiz-sub">🪙 {coins} — 코인은 사라지지 않았다. 이야기도, 이어진다.</p>
           <div className="dialog-choices">
             <button className="choice-btn" onClick={() => enterDungeon()}>
               ⚔️ 바로 다시 도전
             </button>
             <button className="choice-btn" onClick={() => goTown(TOWN_REVISIT)}>
-              🏘️ 마을에서 한숨 돌리기
+              🏘️ 마을에서 한숨 돌리기 (대장간 🛠️)
             </button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'shop' && (
+        <div className="screen town-screen">
+          <div className="town-sky">🌙</div>
+          <div className="town-scape">🔥 ⚒️ 🛠️ 🧱</div>
+          <div className="dialog-box">
+            <div className="dialog-speaker">
+              <span className="dialog-icon">🧔</span> 대장장이 무크
+            </div>
+            <p className="dialog-text">
+              "죽어도 몸에 남는 단련이지. 코인만 있으면 몇 번이고 벼려 주마."
+            </p>
+            <p className="shop-coins">보유 🪙 {coins}</p>
+            <div className="dialog-choices">
+              {SHOP_ITEMS.map((it) => {
+                const lv = meta[it.key];
+                const maxed = lv >= it.max;
+                const cost = shopCost(lv);
+                return (
+                  <button
+                    key={it.key}
+                    className="choice-btn shop-item"
+                    disabled={maxed || coins < cost}
+                    onClick={() => buyUpgrade(it.key)}
+                  >
+                    <span>
+                      {it.icon} {it.name} Lv.{lv}
+                      {maxed ? ' (최대)' : ''}
+                    </span>
+                    <span className="shop-cost">{maxed ? '단련 완료' : `${it.desc} · 🪙 ${cost}`}</span>
+                  </button>
+                );
+              })}
+              <button
+                className="choice-btn"
+                onClick={() => {
+                  sfx.tap();
+                  setPhase('town');
+                }}
+              >
+                ↩️ 마을로 돌아간다
+              </button>
+            </div>
           </div>
         </div>
       )}

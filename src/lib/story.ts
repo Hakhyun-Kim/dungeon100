@@ -61,7 +61,7 @@ export type TownNode =
   | {
       kind: 'choice';
       prompt: string;
-      options: { label: string; next?: number; action?: 'enter' | 'return'; mode?: DungeonMode }[];
+      options: { label: string; next?: number; action?: 'enter' | 'return' | 'shop'; mode?: DungeonMode }[];
     };
 
 // 첫 방문 — 촌장에게 퀘스트를 받고 던전 입구까지
@@ -151,6 +151,7 @@ export const TOWN_ENTRY: TownNode[] = [
     options: [
       { label: '🎒 초등학교 던전 (쉬운 문제)', action: 'enter', mode: 'kids' },
       { label: '🧠 어른 던전 (어려운 문제)', action: 'enter', mode: 'adult' },
+      { label: '🛠️ 무크의 대장간 — 영구 강화 (🪙)', action: 'shop' },
       { label: '🚶 잠깐 마을 구경 좀…', next: 2 },
     ],
   },
@@ -178,6 +179,7 @@ export const TOWN_REVISIT: TownNode[] = [
     options: [
       { label: '🎒 초등학교 던전 (쉬운 문제)', action: 'enter', mode: 'kids' },
       { label: '🧠 어른 던전 (어려운 문제)', action: 'enter', mode: 'adult' },
+      { label: '🛠️ 무크의 대장간 — 영구 강화 (🪙)', action: 'shop' },
       { label: '🛏️ 조금만 더 쉬고…', next: 2 },
     ],
   },
@@ -382,6 +384,26 @@ export const ENDING_TOGETHER: { icon: string; text: string }[] = [
     text: '창밖 어딘가에서,\n은은한 종소리가 들린 것 같았다.',
   },
 ];
+
+// ── 죽음의 위화감 — 죽을수록 "다시 쓰이고 있다"는 사실을 눈치챈다
+const DEATH_LORE: string[] = [
+  '…어라. 방금 분명히 쓰러졌는데.\n하나도 아프지가 않다…?',
+  '또 여관 침대다. 이불까지 곱게 덮여 있다.\n누가 옮겨 주는 거지? 아니, 그보다 — 왜 상처가 하나도 없지?',
+  '죽는 순간, 어렴풋이 들었다.\n사락 — 페이지가 넘어가는 소리.',
+  '니나에게 물어봤다. "저 어제… 죽지 않았어요?"\n니나는 웃기만 했다. "주인공은 안 죽어요. 다시 쓰일 뿐이죠."',
+  '이제 알겠다. 이 책이 나를 다시 쓰고 있는 거다.\n몇 번이고. 이야기가 끝을 볼 때까지.',
+];
+const DEATH_LORE_LATER: string[] = [
+  '익숙한 천장, 익숙한 부활.\n…익숙해진다는 게 조금 무섭다.',
+  '이번엔 쓰러지는 소리까지 기억난다.\n점점 선명해진다. 끝이 가까워서일까.',
+  '촌장이 말했다.\n"몇 번을 다시 쓰여도, 이야기는 앞으로만 간단다."',
+];
+
+export function getDeathLore(deaths: number): string {
+  return deaths < DEATH_LORE.length
+    ? DEATH_LORE[deaths]
+    : DEATH_LORE_LATER[(deaths - DEATH_LORE.length) % DEATH_LORE_LATER.length];
+}
 
 export function townVisitScript(floorNo: number): TownNode[] {
   const tier = Math.floor(floorNo / 5);

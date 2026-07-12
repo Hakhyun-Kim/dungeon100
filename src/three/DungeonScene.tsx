@@ -7,6 +7,9 @@ import { sfx } from '../lib/sound';
 import Hero from './Hero';
 
 // 층 하나의 3D 씬 + 시뮬레이션. 층이 바뀌면 부모가 key로 리마운트한다.
+// 적 타입: chaser(추격) / shooter(원거리 견제) / dasher(조준 후 돌진) / tank(느리고 단단)
+type EType = 'chaser' | 'shooter' | 'dasher' | 'tank';
+
 interface Enemy {
   x: number;
   z: number;
@@ -15,6 +18,19 @@ interface Enemy {
   hitCd: number;
   wobble: number;
   flash: number; // 피격 시 1 → 0으로 감쇠 (흰색 번쩍)
+  type: EType;
+  ai: number; // 타입별 타이머 (발사 쿨다운, 돌진 단계 시간 등)
+  mode: number; // dasher: 0 접근 / 1 조준 / 2 돌진 / 3 숨 고르기
+  adx: number; // 돌진 방향
+  adz: number;
+}
+
+function pickEnemyType(floorNo: number): EType {
+  const r = Math.random();
+  if (floorNo >= 3 && r < 0.22) return 'shooter';
+  if (floorNo >= 5 && r < 0.4) return 'dasher';
+  if (floorNo >= 7 && r < 0.53) return 'tank';
+  return 'chaser';
 }
 
 interface Shot {
@@ -104,7 +120,7 @@ function DungeonScene({
   homeRetryRef: React.MutableRefObject<number>; // 마을 문 "나중에" 선택 시 증가 → 문 재무장
   homeUsedRef: React.MutableRefObject<number>; // 마을 방문 완료 시 증가 → 문 소멸
   onDamage: (dmg: number) => void;
-  onKill: () => void;
+  onKill: (bounty: number) => void; // bounty = 코인 (탱커 3, 그 외 1)
   onExit: () => void;
   onChest: () => void;
   onHomeDoor: () => void;
@@ -130,14 +146,21 @@ function DungeonScene({
   const enemies = useRef<Enemy[]>(
     floor.spawns.map((s) => {
       const [wx, wz] = cellToWorld(s.x, s.y);
+      const type = pickEnemyType(floorNo);
+      const baseHp = 18 + floorNo * 7;
       return {
         x: wx,
         z: wz,
-        hp: 18 + floorNo * 7,
+        hp: type === 'tank' ? baseHp * 2.8 : type === 'shooter' ? baseHp * 0.8 : baseHp,
         alive: true,
         hitCd: 0,
         wobble: Math.random() * 6,
         flash: 0,
+        type,
+        ai: Math.random() * 1.5,
+        mode: 0,
+        adx: 0,
+        adz: 0,
       };
     }),
   );
@@ -328,6 +351,13 @@ function DungeonScene({
         enemyTier,
         boss: boss.current ? { hp: boss.current.hp, alive: boss.current.alive } : null,
         enemiesAlive: enemies.current.filter((e) => e.alive).length,
+        enemyTypes: enemies.current.reduce(
+          (acc, e) => {
+            acc[e.type] = (acc[e.type] ?? 0) + 1;
+            return acc;
+          },
+          {} as Record<string, number>,
+        ),
       }),
       hitBoss: (n: number) => {
         const b = boss.current;
@@ -487,23 +517,25 @@ function DungeonScene({
             sh.alive = false;
             sfx.hit();
             burst(e.x, 0.7, e.z, '#ffe08a', 4, 1.4);
-            // 넉백 (벽은 통과 못 함)
-            const kx = e.x + sh.dx * 0.4;
-            const kz = e.z + sh.dz * 0.4;
-            if (canStand(floor.cells, kx, e.z, 0.38)) e.x = kx;
-            if (canStand(floor.cells, e.x, kz, 0.38)) e.z = kz;
+            // 넉백 (탱커는 밀리지 않음, 벽은 통과 못 함)
+            if (e.type !== 'tank') {
+              const kx = e.x + sh.dx * 0.4;
+              const kz = e.z + sh.dz * 0.4;
+              if (canStand(floor.cells, kx, e.z, 0.38)) e.x = kx;
+              if (canStand(floor.cells, e.x, kz, 0.38)) e.z = kz;
+            }
             if (e.hp <= 0) {
               e.alive = false;
               burst(e.x, 0.7, e.z, '#ff5d7e', 12, 2.0);
               shake.current = Math.min(0.6, shake.current + 0.1);
-              onKill();
+              onKill(e.type === 'tank' ? 3 : 1); // 코인 보상
             }
             break;
           }
         }
       }
 
-      // ── 적 추격 + 접촉 피해
+      // ── 적 AI (타입별) + 접촉 피해
       const espeed = 2.3 + Math.min(2, floorNo * 0.06);
       for (const e of enemies.current) {
         if (!e.alive) continue;
@@ -511,17 +543,81 @@ function DungeonScene({
         const ex = p.position.x - e.x;
         const ez = p.position.z - e.z;
         const dist = Math.hypot(ex, ez);
-        if (dist < AGGRO && dist > 0.001) {
-          const nx = e.x + (ex / dist) * espeed * dt;
-          const nz = e.z + (ez / dist) * espeed * dt;
+        const ux = dist > 0.001 ? ex / dist : 0;
+        const uz = dist > 0.001 ? ez / dist : 0;
+        const walk = (dx: number, dz: number, spd: number) => {
+          const nx = e.x + dx * spd * dt;
+          const nz = e.z + dz * spd * dt;
           if (canStand(floor.cells, nx, e.z, 0.38)) e.x = nx;
           if (canStand(floor.cells, e.x, nz, 0.38)) e.z = nz;
+        };
+
+        if (e.type === 'shooter') {
+          // 거리를 유지하며 조준 사격
+          e.ai -= dt;
+          if (dist < AGGRO + 3) {
+            if (dist < 4.5) walk(-ux, -uz, 2.0);
+            else if (dist > 8.5) walk(ux, uz, 1.9);
+            if (dist < 11 && e.ai <= 0) {
+              e.ai = 2.3;
+              const slot = eshots.current.find((s2) => !s2.alive);
+              if (slot) {
+                slot.x = e.x;
+                slot.z = e.z;
+                slot.dx = ux;
+                slot.dz = uz;
+                slot.left = 13;
+                slot.alive = true;
+              }
+            }
+          }
+        } else if (e.type === 'dasher') {
+          // 접근 → 조준(부풀기) → 돌진 → 숨 고르기
+          if (e.mode === 0) {
+            if (dist < AGGRO) {
+              walk(ux, uz, 2.6);
+              if (dist < 6.5) {
+                e.mode = 1;
+                e.ai = 0.55;
+              }
+            }
+          } else if (e.mode === 1) {
+            e.ai -= dt;
+            if (e.ai <= 0) {
+              e.mode = 2;
+              e.ai = 0.5;
+              e.adx = ux;
+              e.adz = uz;
+            }
+          } else if (e.mode === 2) {
+            e.ai -= dt;
+            walk(e.adx, e.adz, 9.5);
+            if (e.ai <= 0) {
+              e.mode = 3;
+              e.ai = 1.1;
+            }
+          } else {
+            e.ai -= dt;
+            if (e.ai <= 0) e.mode = 0;
+          }
+        } else {
+          // chaser / tank — 우직하게 접근
+          const spd = e.type === 'tank' ? 1.5 : espeed;
+          if (dist < AGGRO) walk(ux, uz, spd);
         }
-        if (dist < 0.85 && e.hitCd <= 0) {
-          e.hitCd = 0.8;
+
+        const touchR = e.type === 'tank' ? 1.05 : 0.85;
+        if (dist < touchR && e.hitCd <= 0) {
+          e.hitCd = e.type === 'dasher' && e.mode === 2 ? 0.6 : 0.8;
+          const dmg =
+            e.type === 'tank'
+              ? Math.round((6 + floorNo) * 1.5)
+              : e.type === 'dasher' && e.mode === 2
+                ? 8 + floorNo
+                : 6 + floorNo;
           shake.current = Math.min(0.6, shake.current + 0.3);
           burst(p.position.x, 0.8, p.position.z, '#ff4d5e', 6, 1.6);
-          onDamage(6 + floorNo);
+          onDamage(dmg);
         }
       }
 
@@ -644,9 +740,30 @@ function DungeonScene({
           e.flash = Math.max(0, e.flash - dt * 6);
           dummy.position.set(e.x, 0.55 + Math.sin(t * 4 + e.wobble) * 0.1, e.z);
           dummy.rotation.set(0, t * 1.5 + e.wobble, 0);
+          // 타입별 실루엣·색: 탱커 크고 어둡게, 슈터 작고 밝게, 대셔 길쭉하게
+          let sx = 1;
+          let sy = 1;
+          let sz = 1;
+          palette.tmp.copy(palette.enemyBase);
+          if (e.type === 'tank') {
+            sx = sy = sz = 1.55;
+            palette.tmp.multiplyScalar(0.62);
+          } else if (e.type === 'shooter') {
+            sx = sy = sz = 0.82;
+            palette.tmp.lerp(palette.shotTiers[0], 0.4);
+          } else if (e.type === 'dasher') {
+            sx = 0.72;
+            sz = 0.72;
+            sy = 1.28;
+            if (e.mode === 1) sy = 1.28 + Math.sin(t * 26) * 0.18; // 조준 중 부들부들
+            if (e.mode === 2) {
+              sz = 1.4;
+              sy = 0.85;
+            }
+          }
           const squash = 1 + e.flash * 0.25; // 맞는 순간 살짝 부풀며 번쩍
-          dummy.scale.set(squash, squash, squash);
-          palette.tmp.copy(palette.enemyBase).lerp(palette.white, e.flash);
+          dummy.scale.set(sx * squash, sy * squash, sz * squash);
+          palette.tmp.lerp(palette.white, e.flash);
           em.setColorAt(i, palette.tmp);
         } else {
           dummy.position.set(0, -10, 0);

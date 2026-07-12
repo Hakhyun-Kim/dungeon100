@@ -307,6 +307,38 @@ body {
   max-width: 420px;
 }
 
+/* ── 대장간 · 죽음 로어 ── */
+.shop-coins {
+  margin-top: 8px;
+  font-size: 17px;
+  color: #ffd166;
+}
+
+.shop-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shop-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.shop-cost {
+  font-size: 13px;
+  color: #c9bfe8;
+}
+
+.over-lore {
+  white-space: pre-line;
+  font-size: clamp(15px, 4.2vw, 18px);
+  line-height: 1.65;
+  color: #d9ccff;
+  max-width: 520px;
+  text-shadow: 0 0 12px rgba(143, 107, 255, 0.3);
+}
+
 /* ── 보스 체력바 ── */
 .boss-bar-wrap {
   position: absolute;
