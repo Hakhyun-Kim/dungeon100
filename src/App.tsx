@@ -10,6 +10,7 @@ import { sfx, isMuted, setMuted } from './lib/sound';
 import {
   STORY_SLIDES,
   TOWN_FIRST,
+  TOWN_ENTRY,
   TOWN_REVISIT,
   MEMORIES,
   getLore,
@@ -131,12 +132,19 @@ export default function App() {
   };
 
   const startAdventure = () => {
+    sfx.tap();
     if (storySeen) {
-      goTown(TOWN_REVISIT);
+      goTown(TOWN_ENTRY);
     } else {
       setStoryIdx(0);
       setPhase('story');
     }
+  };
+
+  const replayStory = () => {
+    sfx.tap();
+    setStoryIdx(0);
+    setPhase('story');
   };
 
   const goTown = (script: TownNode[], mode: 'pre' | 'visit' = 'pre') => {
@@ -358,6 +366,11 @@ export default function App() {
           <button className="big-btn" onClick={startAdventure}>
             모험 시작
           </button>
+          {storySeen && (
+            <button className="skip-btn" onClick={replayStory}>
+              📖 스토리 다시 보기
+            </button>
+          )}
         </div>
       )}
 

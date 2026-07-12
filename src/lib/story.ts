@@ -112,6 +112,33 @@ export const TOWN_FIRST: TownNode[] = [
   },
 ];
 
+// 새 세션 입장 — 스토리를 이미 본 플레이어의 빠른 입구 (게임오버 직후가 아닐 때)
+export const TOWN_ENTRY: TownNode[] = [
+  {
+    kind: 'line',
+    icon: '👵',
+    speaker: '촌장',
+    text: '왔구먼! 오늘도 던전이 입을 벌리고 기다린다. 어느 쪽 문으로 들어갈 텐가?',
+    next: 1,
+  },
+  {
+    kind: 'choice',
+    prompt: '던전 입구 — 왼쪽 문엔 크레용 낙서, 오른쪽 문엔 어른의 필체.',
+    options: [
+      { label: '🎒 초등학교 던전 (쉬운 문제)', action: 'enter', mode: 'kids' },
+      { label: '🧠 어른 던전 (어려운 문제)', action: 'enter', mode: 'adult' },
+      { label: '🚶 잠깐 마을 구경 좀…', next: 2 },
+    ],
+  },
+  {
+    kind: 'line',
+    icon: '👵',
+    speaker: '촌장',
+    text: '구경할 건 없어. 우물이 전부야.',
+    next: 1,
+  },
+];
+
 // 재방문 — 게임오버 후 마을에서 쉬어 갈 때
 export const TOWN_REVISIT: TownNode[] = [
   {
