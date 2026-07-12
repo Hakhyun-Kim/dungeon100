@@ -15,19 +15,28 @@
       // 개발 검증용: 숨김 탭에서는 rAF가 멈춰 3D가 안 그려지므로 ?rafshim으로 우회 (배포에는 영향 없음)
       if (new URLSearchParams(location.search).has('rafshim')) {
         (function () {
-          // 타이머 구동 rAF — 숨김 탭에서는 ~1fps로 클램프되지만 CPU를 점유하지 않아
-          // 자동 검증(CDP)이 굶지 않는다. 보이는 탭에서는 심 없이 진짜 rAF를 쓰면 됨.
+          // 타이머 구동 rAF — 숨김 탭에서는 스로틀되지만 CPU를 점유하지 않는다.
+          // 크롬 집중 스로틀링(분당 1회)까지 걸린 경우를 위해, 검증 스크립트가
+          // window.__pump(n)으로 프레임을 동기 구동할 수 있다 (결정적 스텝 실행).
           var q = [];
-          function pump() {
-            var now = performance.now();
+          var vnow = 0;
+          function runFrame() {
+            vnow += 16.7;
             var cbs = q;
             q = [];
             cbs.forEach(function (cb) {
-              cb(now);
+              cb(vnow);
             });
+          }
+          function pump() {
+            runFrame();
             setTimeout(pump, 16);
           }
           setTimeout(pump, 16);
+          window.__pump = function (n) {
+            if (window.__roFlush) window.__roFlush();
+            for (var i = 0; i < (n || 1); i++) runFrame();
+          };
           window.requestAnimationFrame = function (cb) {
             q.push(cb);
             return q.length;
@@ -35,9 +44,21 @@
           window.cancelAnimationFrame = function () {};
 
           // 숨김 탭에서는 ResizeObserver 알림도 오지 않아 r3f 캔버스가 부팅하지 못함 → 폴링 폴리필
+          // (집중 스로틀링 대비로 __pump가 __roFlush를 동기 호출할 수 있게 인스턴스를 모아 둔다)
+          var ROS = [];
+          window.__roFlush = function () {
+            ROS.forEach(function (ro) {
+              if (!ro._els.length) return;
+              var entries = ro._els.map(function (el) {
+                return { target: el, contentRect: el.getBoundingClientRect() };
+              });
+              ro._cb(entries, ro);
+            });
+          };
           var RO = function (cb) {
             this._els = [];
             this._cb = cb;
+            ROS.push(this);
             var self = this;
             this._iv = setInterval(function () {
               if (!self._els.length) return;

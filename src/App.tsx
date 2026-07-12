@@ -6,12 +6,33 @@ import { BASE_STATS, UPGRADES, draftThree, type Stats, type Upgrade } from './li
 import { makeQuiz } from './lib/quiz';
 import { mulberry32 } from './lib/rng';
 import { useLocalStorage } from './lib/store';
-import { STORY_SLIDES, TOWN_FIRST, TOWN_REVISIT, type TownNode } from './lib/story';
+import {
+  STORY_SLIDES,
+  TOWN_FIRST,
+  TOWN_REVISIT,
+  MEMORIES,
+  getLore,
+  townVisitScript,
+  type TownNode,
+} from './lib/story';
 
-// 흐름: title → story(인트로) → town(마을 대화·선택) → run
-//  - 보물상자: run → doorrun(두 문 달리기, 최대 3연속 문) → quiz(결과/계속 선택) → run
-//  - 층 이동: run → portal(내려갈지 선택) → draft(보상 3택 1) → run(다음 층)
-type Phase = 'title' | 'story' | 'town' | 'run' | 'doorrun' | 'quiz' | 'portal' | 'draft' | 'over';
+// 흐름: title → story(인트로) → town(마을) → run
+//  - 보물상자: run → doorrun(두 문 달리기, 최대 3연속) → quiz(결과) → memory(되찾은 기억) → run
+//  - 층 이동: run → portal(내려갈지 선택) → draft(보상 3택 1) → lore(벽의 글귀) → run(다음 층)
+//  - 5층마다: run → homedoor(마을 문 선택) → town(방문 — 층 유지) → run
+type Phase =
+  | 'title'
+  | 'story'
+  | 'town'
+  | 'run'
+  | 'doorrun'
+  | 'quiz'
+  | 'memory'
+  | 'portal'
+  | 'draft'
+  | 'lore'
+  | 'homedoor'
+  | 'over';
 type QuizView = 'ok' | 'no' | 'choice';
 const MAX_DOOR_ROUND = 3;
 
@@ -24,6 +45,7 @@ export default function App() {
   const [runId, setRunId] = useState(0);
   const [best, setBest] = useLocalStorage<number>('d100-best', 0);
   const [storySeen, setStorySeen] = useLocalStorage<boolean>('d100-story', false);
+  const [memCount, setMemCount] = useLocalStorage<number>('d100-mem', 0);
   const [flash, setFlash] = useState(0);
   const [goldFlash, setGoldFlash] = useState(0);
   const [build, setBuild] = useState<Record<string, number>>({});
@@ -34,6 +56,8 @@ export default function App() {
   const [storyIdx, setStoryIdx] = useState(0);
   const [townIdx, setTownIdx] = useState(0);
   const [townScript, setTownScript] = useState<TownNode[]>(TOWN_FIRST);
+  const [townMode, setTownMode] = useState<'pre' | 'visit'>('pre');
+  const [giftName, setGiftName] = useState<string | null>(null);
 
   const statsRef = useRef(stats);
   statsRef.current = stats;
@@ -41,6 +65,9 @@ export default function App() {
   pausedRef.current = phase !== 'run';
   const quizResultRef = useRef<QuizResult | null>(null);
   const portalRetryRef = useRef(0);
+  const homeRetryRef = useRef(0);
+  const homeUsedRef = useRef(0);
+  const visitGiftGiven = useRef(false);
 
   // 사망 판정은 hp 변화에 반응 (이벤트 콜백을 안정적으로 유지하기 위함)
   useEffect(() => {
@@ -62,6 +89,8 @@ export default function App() {
     [quizSeed, floorNo, doorRound],
   );
 
+  const memory = MEMORIES[memCount % MEMORIES.length];
+
   const enterDungeon = () => {
     setStorySeen(true);
     setFloorNo(1);
@@ -73,24 +102,27 @@ export default function App() {
     setDoorRound(1);
     quizResultRef.current = null;
     portalRetryRef.current = 0;
+    homeRetryRef.current = 0;
+    homeUsedRef.current = 0;
     setRunId((id) => id + 1);
     setPhase('run');
   };
 
   const startAdventure = () => {
     if (storySeen) {
-      setTownScript(TOWN_REVISIT);
-      setTownIdx(0);
-      setPhase('town');
+      goTown(TOWN_REVISIT);
     } else {
       setStoryIdx(0);
       setPhase('story');
     }
   };
 
-  const goTown = (script: TownNode[]) => {
+  const goTown = (script: TownNode[], mode: 'pre' | 'visit' = 'pre') => {
     setTownScript(script);
     setTownIdx(0);
+    setTownMode(mode);
+    setGiftName(null);
+    visitGiftGiven.current = false;
     setPhase('town');
   };
 
@@ -100,7 +132,7 @@ export default function App() {
     setBuild((b) => ({ ...b, [u.id]: (b[u.id] ?? 0) + 1 }));
   };
 
-  // 문을 통과한 수(tier)만큼 보물 지급 — 3문 완주는 전설 보물(전부 + 완전 회복)
+  // 통과한 문 수(tier)만큼 보물 지급 — 3문 완주는 전설 보물(전부 + 완전 회복)
   const grantRewards = (tier: number) => {
     const rand = mulberry32(quizSeed + 991);
     const pool = [...UPGRADES];
@@ -121,6 +153,25 @@ export default function App() {
     setGoldFlash((f) => f + 1);
   };
 
+  // 마을 방문 선물 (대화 노드에 gift가 달려 있으면 1회 지급)
+  const townNode = townScript[townIdx];
+  useEffect(() => {
+    if (phase !== 'town' || townMode !== 'visit') return;
+    if (!townNode || townNode.kind !== 'line' || !townNode.gift) return;
+    if (visitGiftGiven.current) return;
+    visitGiftGiven.current = true;
+    if (townNode.gift === 'heal') {
+      setHp(stats.maxHp);
+      setGiftName('🍲 체력 완전 회복');
+    } else {
+      const u = UPGRADES[Math.floor(mulberry32(runId * 31 + floorNo * 7 + 11)() * UPGRADES.length)];
+      gainUpgrade(u);
+      setGiftName(`${u.icon} ${u.name} 획득`);
+    }
+    setGoldFlash((f) => f + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, townMode, townNode]);
+
   const onDamage = useCallback((dmg: number) => {
     setFlash((f) => f + 1);
     setHp((h) => Math.max(0, h - dmg));
@@ -131,11 +182,12 @@ export default function App() {
     setDoorRound(1);
     setPhase('doorrun');
   }, []);
+  const onHomeDoor = useCallback(() => setPhase('homedoor'), []);
 
   const pickUpgrade = (u: Upgrade) => {
     gainUpgrade(u);
     setFloorNo((n) => n + 1);
-    setPhase('run');
+    setPhase('lore'); // 새 층에 도착하면 벽의 글귀부터
   };
 
   // 두 문 달리기 결과 — 오답이면 그동안의 문도 전부 물거품 (빈손)
@@ -163,9 +215,15 @@ export default function App() {
   };
 
   const continueFromQuiz = () => {
-    quizResultRef.current = { seq: quizSeq + 1, ok: rewards.length > 0 };
+    const gotReward = rewards.length > 0;
+    quizResultRef.current = { seq: quizSeq + 1, ok: gotReward };
     setQuizSeq((s) => s + 1);
     setDoorRound(1);
+    setPhase(gotReward ? 'memory' : 'run'); // 보물 = 기억 하나가 돌아온다
+  };
+
+  const closeMemory = () => {
+    setMemCount(memCount + 1);
     setPhase('run');
   };
 
@@ -174,9 +232,18 @@ export default function App() {
     setPhase('run');
   };
 
+  const openHomeDoor = () => {
+    homeUsedRef.current += 1;
+    goTown(townVisitScript(floorNo), 'visit');
+  };
+
+  const skipHomeDoor = () => {
+    homeRetryRef.current += 1;
+    setPhase('run');
+  };
+
   const hpRatio = Math.max(0, Math.min(1, hp / stats.maxHp));
-  const inGame = phase !== 'title' && phase !== 'story' && phase !== 'town';
-  const townNode = townScript[townIdx];
+  const inGame = !(phase === 'title' || phase === 'story' || (phase === 'town' && townMode === 'pre'));
 
   return (
     <div className="app">
@@ -192,10 +259,13 @@ export default function App() {
             pausedRef={pausedRef}
             quizResultRef={quizResultRef}
             portalRetryRef={portalRetryRef}
+            homeRetryRef={homeRetryRef}
+            homeUsedRef={homeUsedRef}
             onDamage={onDamage}
             onKill={onKill}
             onExit={onExit}
             onChest={onChest}
+            onHomeDoor={onHomeDoor}
           />
           {phase === 'doorrun' && (
             <DoorRunScene key={doorRound} quiz={quiz} onDone={onDoorRunDone} />
@@ -203,7 +273,7 @@ export default function App() {
         </Canvas>
       )}
 
-      {inGame && (
+      {inGame && phase !== 'town' && (
         <div className="hud">
           <div className="hud-chip">🏰 {floorNo}층</div>
           <div className="hp-wrap">
@@ -217,7 +287,7 @@ export default function App() {
       )}
 
       {/* 현재 빌드 (획득한 아이템) */}
-      {inGame && Object.keys(build).length > 0 && (
+      {inGame && phase !== 'town' && Object.keys(build).length > 0 && (
         <div className="build-row">
           {UPGRADES.filter((u) => build[u.id]).map((u) => (
             <span key={u.id} className="build-chip">
@@ -241,7 +311,7 @@ export default function App() {
             <p>🗝️ 보물상자 = 두 문 달리기! 깊이 달릴수록 좋은 보물</p>
             <p>🌀 포털로 다음 층 — 내려갈지는 당신의 선택</p>
           </div>
-          {best > 0 && <p className="best">최고 기록: {best}층</p>}
+          {best > 0 && <p className="best">최고 기록: {best}층 · 되찾은 기억 {Math.min(memCount, MEMORIES.length)}개</p>}
           <button className="big-btn" onClick={startAdventure}>
             모험 시작
           </button>
@@ -294,12 +364,14 @@ export default function App() {
         <div className="screen town-screen">
           <div className="town-sky">🌙</div>
           <div className="town-scape">🏔️ 🏚️ ⛲ 🏘️ 🌲</div>
+          {townMode === 'visit' && <div className="town-floor-chip">🔔 {floorNo}층의 문 → 마을</div>}
           {townNode.kind === 'line' ? (
             <div className="dialog-box" onClick={() => setTownIdx(townNode.next)}>
               <div className="dialog-speaker">
                 <span className="dialog-icon">{townNode.icon}</span> {townNode.speaker}
               </div>
               <p className="dialog-text">{townNode.text}</p>
+              {townNode.gift && giftName && <p className="dialog-gift">🎁 {giftName}!</p>}
               <span className="dialog-next">▼ 터치해서 계속</span>
             </div>
           ) : (
@@ -310,7 +382,11 @@ export default function App() {
                   <button
                     key={o.label}
                     className="choice-btn"
-                    onClick={() => (o.enter ? enterDungeon() : setTownIdx(o.next ?? townIdx))}
+                    onClick={() => {
+                      if (o.action === 'enter') enterDungeon();
+                      else if (o.action === 'return') setPhase('run');
+                      else setTownIdx(o.next ?? townIdx);
+                    }}
                   >
                     {o.label}
                   </button>
@@ -337,6 +413,25 @@ export default function App() {
             </button>
             <button className="choice-btn" onClick={stayOnFloor}>
               🕐 아직 이 층을 더 둘러볼래
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'homedoor' && (
+        <div className="screen quiz-screen">
+          <h2>🔔 어디선가 은은한 종소리…</h2>
+          <p className="quiz-sub">
+            따뜻한 빛이 새어 나오는 나무 문이다. 마을로 이어지는 것 같다.
+            <br />
+            (5층마다 나타난다는 그 문인가? 왜 있는지는 아무도 모른다.)
+          </p>
+          <div className="dialog-choices">
+            <button className="choice-btn" onClick={openHomeDoor}>
+              🚪 문을 연다 — 마을에 들른다
+            </button>
+            <button className="choice-btn" onClick={skipHomeDoor}>
+              🕯️ 지금은 던전에 집중한다
             </button>
           </div>
         </div>
@@ -397,6 +492,29 @@ export default function App() {
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {phase === 'memory' && (
+        <div className="screen memory-screen">
+          <p className="memory-label">보물의 빛이 스며들자, 잊고 있던 기억이 하나 돌아왔다</p>
+          <div className="memory-icon">{memory.icon}</div>
+          <h2 className="memory-title">{memory.title}</h2>
+          <p className="memory-text">{memory.text}</p>
+          <p className="memory-count">되찾은 기억 {Math.min(memCount + 1, MEMORIES.length)} / {MEMORIES.length}</p>
+          <button className="big-btn" onClick={closeMemory}>
+            가슴에 담는다
+          </button>
+        </div>
+      )}
+
+      {phase === 'lore' && (
+        <div className="screen lore-screen">
+          <p className="lore-label">🕯️ {floorNo}층 — 벽에 긁어 쓴 글씨가 보인다</p>
+          <p className="lore-text">{getLore(floorNo)}</p>
+          <button className="big-btn" onClick={() => setPhase('run')}>
+            계속 내려간다
+          </button>
         </div>
       )}
 

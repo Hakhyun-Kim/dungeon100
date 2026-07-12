@@ -19,7 +19,8 @@ export interface FloorMap {
   start: { x: number; y: number };
   exit: { x: number; y: number };
   spawns: { x: number; y: number }[];
-  chest: { x: number; y: number } | null; // 보물상자 (층당 1개, 수수께끼로 개봉)
+  chest: { x: number; y: number } | null; // 보물상자 (층당 1개, 두 문 달리기로 개봉)
+  homeDoor: { x: number; y: number } | null; // 5층마다 나타나는 마을로 가는 문 (이유는 아무도 모른다)
 }
 
 export function isFloor(cells: Uint8Array, x: number, y: number): boolean {
@@ -102,7 +103,21 @@ export function generateFloor(floorNo: number): FloorMap {
     chest = { x: cx, y: cy };
   }
 
-  return { cells, rooms, start, exit, spawns, chest };
+  // 5층마다 마을로 돌아가는 문 (책갈피)
+  let homeDoor: { x: number; y: number } | null = null;
+  if (floorNo % 5 === 0) {
+    for (let tries = 0; tries < 24 && !homeDoor; tries++) {
+      const r = rooms[Math.floor(rand() * rooms.length)];
+      const hx = r.x + 1 + Math.floor(rand() * (r.w - 2));
+      const hy = r.y + 1 + Math.floor(rand() * (r.h - 2));
+      if (Math.abs(hx - exit.x) + Math.abs(hy - exit.y) < 4) continue;
+      if (Math.abs(hx - start.x) + Math.abs(hy - start.y) < 3) continue;
+      if (chest && Math.abs(hx - chest.x) + Math.abs(hy - chest.y) < 3) continue;
+      homeDoor = { x: hx, y: hy };
+    }
+  }
+
+  return { cells, rooms, start, exit, spawns, chest, homeDoor };
 }
 
 // 폭 2짜리 L자 복도

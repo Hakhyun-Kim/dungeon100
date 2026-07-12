@@ -294,6 +294,92 @@ body {
   max-width: 420px;
 }
 
+/* ── 회상 (되찾은 기억) ── */
+.memory-screen {
+  background: radial-gradient(ellipse at 50% 30%, #4a3a2a 0%, #17110c 75%);
+}
+
+.memory-label {
+  font-size: 15px;
+  color: #d8b98a;
+}
+
+.memory-icon {
+  font-size: 64px;
+  filter: drop-shadow(0 0 22px rgba(255, 209, 102, 0.55));
+  animation: memGlow 2.4s ease-in-out infinite;
+}
+
+@keyframes memGlow {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+.memory-title {
+  color: #ffd166;
+  font-size: clamp(24px, 6vw, 32px);
+}
+
+.memory-text {
+  white-space: pre-line;
+  font-size: clamp(16px, 4.4vw, 20px);
+  line-height: 1.7;
+  color: #f4e8d2;
+  max-width: 540px;
+}
+
+.memory-count {
+  font-size: 13px;
+  color: #a98f68;
+}
+
+/* ── 벽의 글귀 (로어) ── */
+.lore-screen {
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(60, 48, 90, 0.5) 0%, transparent 70%),
+    linear-gradient(180deg, #171126 0%, #0d0918 100%);
+}
+
+.lore-label {
+  font-size: 15px;
+  color: #9c8fc4;
+}
+
+.lore-text {
+  white-space: pre-line;
+  font-size: clamp(17px, 4.8vw, 22px);
+  line-height: 1.75;
+  color: #d9ccff;
+  max-width: 560px;
+  text-shadow: 0 0 14px rgba(143, 107, 255, 0.35);
+}
+
+/* ── 마을 방문 (5층마다) ── */
+.town-floor-chip {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 12, 40, 0.8);
+  border: 1px solid rgba(255, 209, 102, 0.4);
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 14px;
+  color: #ffe9b3;
+}
+
+.dialog-gift {
+  margin-top: 8px;
+  font-size: 16px;
+  color: #ffd166;
+  animation: rewardPop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
 /* ── 두 문 달리기 미니게임 조작 힌트 ── */
 .doorrun-hint {
   position: absolute;

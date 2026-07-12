@@ -110,9 +110,10 @@ export default function DoorRunScene({ quiz, onDone }: { quiz: Quiz; onDone: (ok
   };
 
   useFrame((frameState, delta) => {
-    const speedScale =
-      (import.meta.env.DEV && Number((window as unknown as Record<string, unknown>).__d100speed)) || 1;
-    const dt = Math.min(delta, 0.05) * speedScale;
+    const devWin = window as unknown as Record<string, unknown>;
+    const fixdt = import.meta.env.DEV ? Number(devWin.__d100fixdt) || 0 : 0;
+    const speedScale = (import.meta.env.DEV && Number(devWin.__d100speed)) || 1;
+    const dt = fixdt > 0 ? fixdt : Math.min(delta, 0.05) * speedScale;
     const t = frameState.clock.elapsedTime;
     const s = state.current;
     const c = charRef.current;

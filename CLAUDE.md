@@ -9,7 +9,7 @@
 - `npm run dev` — 개발 서버 (기본 포트 5175, `PORT` 환경변수로 변경 가능)
 - `npm run typecheck` — 타입 검사
 - `npm run build` — 프로덕션 빌드
-- 숨김 탭(헤드리스 프리뷰)에서는 크롬이 rAF를 멈춰 3D가 안 그려짐 — `?rafshim` 쿼리로 우회 (index.html의 개발용 심).
+- 숨김 탭(헤드리스 프리뷰)에서는 크롬이 rAF를 멈춰 3D가 안 그려짐 — `?rafshim` 쿼리로 우회 (index.html의 개발용 심: 타이머 rAF + ResizeObserver 폴리필 + **`window.__pump(n)` 동기 프레임 구동**). 크롬 집중 스로틀링(오래 숨겨진 탭, 타이머 분당 1회)에서는 타이머가 다 죽으므로 자동 검증은 `__pump` + `__d100fixdt`(고정 dt) + MessageChannel 틱(스로틀 안 됨)으로 구동할 것. 클릭 후 React 렌더는 태스크 경계가 필요 — 같은 evaluate 안에서는 MessageChannel 왕복(tick) 후 DOM을 읽어야 함.
 - 배포: main 푸시 → `.github/workflows/deploy-pages.yml` → https://hakhyun-kim.github.io/dungeon100/
 
 ## 구조
@@ -20,7 +20,8 @@
 - `src/three/Hero.tsx` — 공용 주인공 블록 캐릭터 (던전·미니게임 세계관 통일).
 - `src/three/textTexture.ts` — 한글 텍스트 → 캔버스 텍스처 (문제판·문 답, 두문러너 labels.ts 축소판).
 - `src/lib/quiz.ts` — 미니게임 문제 생성. 층 깊이 비례 난이도의 산수 문제 + 근접 오답, 문제 은행 없음. 미니게임 라운드가 깊어질수록 난이도 상향(층 환산 +6/라운드).
-- `src/lib/story.ts` — 인트로 슬라이드·마을 대화 스크립트 (line/choice 노드 배열, next 인덱스로 분기·루프). 첫 방문(TOWN_FIRST)과 재방문(TOWN_REVISIT) 분리. localStorage `d100-story`로 인트로 1회 노출.
+- `src/lib/story.ts` — 인트로 슬라이드·마을 대화(line/choice 노드, gift='item'|'heal')·회상 기억 12개(MEMORIES)·층별 벽의 글귀(getLore)·5층마다 마을 방문 스크립트(townVisitScript). **세계관: 던전=쓰이다 만 책, 마을=서문, 촌장=작가, 100층 문=뒤표지.** localStorage: `d100-story`(인트로 1회), `d100-mem`(되찾은 기억 수).
+- 새 층 도착 시 `lore` phase로 벽의 글귀 1개 노출, 보물 획득 후 `memory` phase로 기억 1개 복원. 5의 배수 층엔 마을 문(dungeon.ts homeDoor) — 방문은 층 유지(townMode 'visit'), 문은 1회용(homeUsedRef), 거절 시 재무장(homeRetryRef). 몬스터는 5층 단위 티어로 모양·색 변화(DungeonScene ENEMY_TIER_*).
 - `src/lib/rng.ts` — mulberry32 시드 난수. **층 번호 = 시드** → 같은 층은 항상 같은 구조 (재현성).
 - `src/lib/upgrades.ts` — 스탯·보상 카드 풀. 드래프트는 `draftThree(rand)`, 보물 보상도 이 풀에서 지급.
 - `src/lib/store.ts` — useLocalStorage 훅. 키는 `d100-` 접두사 (`d100-best`).

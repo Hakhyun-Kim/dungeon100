@@ -49,6 +49,10 @@ const MAX_PARTICLES = 160;
 const SHOT_SPEED = 15;
 const AGGRO = 9;
 
+// 5층 단위로 몬스터의 색과 모양이 바뀐다 (티어)
+const ENEMY_TIER_COLORS = ['#ff5d7e', '#7be07a', '#5aa0ff', '#c06bff', '#ffa03d', '#8de0e0'];
+const ENEMY_TIER_EMISSIVE = ['#5c1024', '#124d18', '#10315c', '#3c1060', '#5c3a10', '#105050'];
+
 function DungeonScene({
   floorNo,
   hidden,
@@ -56,10 +60,13 @@ function DungeonScene({
   pausedRef,
   quizResultRef,
   portalRetryRef,
+  homeRetryRef,
+  homeUsedRef,
   onDamage,
   onKill,
   onExit,
   onChest,
+  onHomeDoor,
 }: {
   floorNo: number;
   hidden: boolean; // 두 문 달리기 미니게임 동안 던전을 숨기고 카메라를 양보
@@ -67,10 +74,13 @@ function DungeonScene({
   pausedRef: React.MutableRefObject<boolean>;
   quizResultRef: React.MutableRefObject<QuizResult | null>;
   portalRetryRef: React.MutableRefObject<number>; // "아직 안 내려갈래" 선택 시 증가 → 포털 재무장
+  homeRetryRef: React.MutableRefObject<number>; // 마을 문 "나중에" 선택 시 증가 → 문 재무장
+  homeUsedRef: React.MutableRefObject<number>; // 마을 방문 완료 시 증가 → 문 소멸
   onDamage: (dmg: number) => void;
   onKill: () => void;
   onExit: () => void;
   onChest: () => void;
+  onHomeDoor: () => void;
 }) {
   const floor = useMemo(() => generateFloor(floorNo), [floorNo]);
   const input = useMoveInput();
@@ -114,6 +124,11 @@ function DungeonScene({
   const exited = useRef(false);
   const portalRetrySeen = useRef(portalRetryRef.current);
   const portalWaitLeave = useRef(false);
+  const homeState = useRef<'idle' | 'pending' | 'used'>('idle');
+  const homeRetrySeen = useRef(homeRetryRef.current);
+  const homeWaitLeave = useRef(false);
+  const homeUsedSeen = useRef(homeUsedRef.current);
+  const homeDoorRef = useRef<THREE.Group>(null);
   const shake = useRef(0);
   const glowTimer = useRef(0);
   const sparkleTimer = useRef(0.4);
@@ -121,21 +136,28 @@ function DungeonScene({
   const seenQuizSeq = useRef(quizResultRef.current?.seq ?? 0);
   const dummy = useMemo(() => new THREE.Object3D(), []);
 
+  // 5층 단위 몬스터 티어 (모양·색 변화)
+  const enemyTier = Math.floor((floorNo - 1) / 5) % ENEMY_TIER_COLORS.length;
+
   // 자주 쓰는 색은 미리 만들어 재사용 (프레임 중 할당 방지)
   const palette = useMemo(
     () => ({
-      enemyBase: new THREE.Color('#ff5d7e'),
+      enemyBase: new THREE.Color(ENEMY_TIER_COLORS[enemyTier]),
       white: new THREE.Color('#ffffff'),
       tmp: new THREE.Color(),
       shotTiers: [new THREE.Color('#ffd166'), new THREE.Color('#ff9a3d'), new THREE.Color('#ff5136')],
     }),
-    [],
+    [enemyTier],
   );
 
   const [startX, startZ] = useMemo(() => cellToWorld(floor.start.x, floor.start.y), [floor]);
   const [exitX, exitZ] = useMemo(() => cellToWorld(floor.exit.x, floor.exit.y), [floor]);
   const chestPos = useMemo(
     () => (floor.chest ? cellToWorld(floor.chest.x, floor.chest.y) : null),
+    [floor],
+  );
+  const homePos = useMemo(
+    () => (floor.homeDoor ? cellToWorld(floor.homeDoor.x, floor.homeDoor.y) : null),
     [floor],
   );
 
@@ -229,18 +251,22 @@ function DungeonScene({
         exit: [exitX, exitZ],
         exited: exited.current,
         portalWaitLeave: portalWaitLeave.current,
+        homeWorld: homePos,
+        homeState: homeState.current,
+        enemyTier,
         enemiesAlive: enemies.current.filter((e) => e.alive).length,
       }),
     };
-  }, [chestPos, exitX, exitZ]);
+  }, [chestPos, homePos, enemyTier, exitX, exitZ]);
 
   const hiddenRef = useRef(hidden);
   hiddenRef.current = hidden;
 
   useFrame((state, delta) => {
-    const speedScale =
-      (import.meta.env.DEV && Number((window as unknown as Record<string, unknown>).__d100speed)) || 1;
-    const dt = Math.min(delta, 0.05) * speedScale;
+    const devWin = window as unknown as Record<string, unknown>;
+    const fixdt = import.meta.env.DEV ? Number(devWin.__d100fixdt) || 0 : 0;
+    const speedScale = (import.meta.env.DEV && Number(devWin.__d100speed)) || 1;
+    const dt = fixdt > 0 ? fixdt : Math.min(delta, 0.05) * speedScale;
     const t = state.clock.elapsedTime;
     const stats = statsRef.current;
     const p = playerRef.current;
@@ -279,6 +305,26 @@ function DungeonScene({
       if (Math.hypot(p.position.x - exitX, p.position.z - exitZ) > 2.6) {
         portalWaitLeave.current = false;
         exited.current = false;
+      }
+    }
+
+    // ── 마을 문: "나중에" → 벗어나면 재무장 / 방문 완료 → 문 소멸 + 자비
+    if (homeRetryRef.current !== homeRetrySeen.current) {
+      homeRetrySeen.current = homeRetryRef.current;
+      homeWaitLeave.current = true;
+    }
+    if (homeWaitLeave.current && homePos) {
+      if (Math.hypot(p.position.x - homePos[0], p.position.z - homePos[1]) > 2.6) {
+        homeWaitLeave.current = false;
+        homeState.current = 'idle';
+      }
+    }
+    if (homeUsedRef.current !== homeUsedSeen.current) {
+      homeUsedSeen.current = homeUsedRef.current;
+      if (homeState.current === 'pending') {
+        homeState.current = 'used';
+        if (homePos) burst(homePos[0], 1.2, homePos[1], '#ffcf8a', 14, 1.6);
+        for (const e of enemies.current) e.hitCd = Math.max(e.hitCd, 0.9);
       }
     }
 
@@ -392,6 +438,14 @@ function DungeonScene({
         }
       }
 
+      // ── 마을 문 접촉 → 들어갈지 선택
+      if (homeState.current === 'idle' && homePos) {
+        if (Math.hypot(p.position.x - homePos[0], p.position.z - homePos[1]) < 1.05) {
+          homeState.current = 'pending';
+          onHomeDoor();
+        }
+      }
+
       // ── 상자 대기 반짝임
       if (chestState.current === 'idle' && chestPos) {
         sparkleTimer.current -= dt;
@@ -490,6 +544,14 @@ function DungeonScene({
       if (pm.instanceColor) pm.instanceColor.needsUpdate = true;
     }
 
+    // ── 마을 문 연출 (사용 후 소멸)
+    const hd = homeDoorRef.current;
+    if (hd) {
+      const target = homeState.current === 'used' ? 0.0001 : 1;
+      hd.scale.setScalar(hd.scale.x + (target - hd.scale.x) * Math.min(1, dt * 8));
+      hd.position.y = Math.sin(t * 1.6) * 0.05;
+    }
+
     // ── 보물상자 연출 (개봉·실패 시 사라짐)
     const ch = chestRef.current;
     if (ch) {
@@ -551,10 +613,15 @@ function DungeonScene({
         <meshStandardMaterial color="#251c3d" />
       </instancedMesh>
 
-      {/* 적 (피격 시 흰색 번쩍 — 인스턴스 색상) */}
+      {/* 적 — 5층 단위 티어마다 모양·색이 달라진다 (피격 시 흰색 번쩍) */}
       <instancedMesh ref={enemyMeshRef} args={[undefined, undefined, enemies.current.length]} frustumCulled={false}>
-        <boxGeometry args={[0.9, 0.9, 0.9]} />
-        <meshStandardMaterial emissive="#5c1024" emissiveIntensity={0.6} />
+        {enemyTier === 0 && <boxGeometry args={[0.9, 0.9, 0.9]} />}
+        {enemyTier === 1 && <octahedronGeometry args={[0.62]} />}
+        {enemyTier === 2 && <coneGeometry args={[0.55, 1.05, 6]} />}
+        {enemyTier === 3 && <dodecahedronGeometry args={[0.6]} />}
+        {enemyTier === 4 && <cylinderGeometry args={[0.42, 0.62, 0.95, 7]} />}
+        {enemyTier === 5 && <icosahedronGeometry args={[0.62]} />}
+        <meshStandardMaterial emissive={ENEMY_TIER_EMISSIVE[enemyTier]} emissiveIntensity={0.6} />
       </instancedMesh>
 
       {/* 투사체 (공격력에 따라 크기·색 변화) */}
@@ -601,6 +668,25 @@ function DungeonScene({
             <meshStandardMaterial color="#ffd166" emissive="#c98f1e" emissiveIntensity={0.7} />
           </mesh>
           <pointLight color="#ffd166" intensity={1.1} distance={5} position={[0, 1, 0]} />
+        </group>
+      )}
+
+      {/* 마을로 가는 문 (5층마다) */}
+      {homePos && (
+        <group ref={homeDoorRef} position={[homePos[0], 0, homePos[1]]}>
+          <mesh position={[0, 1.05, 0]}>
+            <boxGeometry args={[1.3, 2.1, 0.22]} />
+            <meshStandardMaterial color="#c98f4a" />
+          </mesh>
+          <mesh position={[0, 2.24, 0]}>
+            <boxGeometry args={[1.55, 0.26, 0.32]} />
+            <meshStandardMaterial color="#8a5a2b" />
+          </mesh>
+          <mesh position={[0.42, 1.0, 0.14]}>
+            <sphereGeometry args={[0.09, 8, 8]} />
+            <meshStandardMaterial color="#ffd166" emissive="#c98f1e" emissiveIntensity={1.2} />
+          </mesh>
+          <pointLight color="#ffcf8a" intensity={1.5} distance={6} position={[0, 1.6, 0.7]} />
         </group>
       )}
 
