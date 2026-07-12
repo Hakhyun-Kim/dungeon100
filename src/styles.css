@@ -307,6 +307,41 @@ body {
   max-width: 420px;
 }
 
+/* ── 디버그 층 이동 (Shift+D) ── */
+.debug-screen {
+  background: rgba(8, 5, 16, 0.9);
+}
+
+.debug-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  width: min(92vw, 420px);
+}
+
+.debug-jump {
+  text-align: center;
+  padding: 10px 4px;
+}
+
+.debug-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.debug-input {
+  font-family: inherit;
+  font-size: 17px;
+  width: 120px;
+  color: #f3eeff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid #6a4fd0;
+  border-radius: 12px;
+  padding: 8px 12px;
+  text-align: center;
+}
+
 /* ── 대장간 · 죽음 로어 ── */
 .shop-coins {
   margin-top: 8px;

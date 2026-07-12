@@ -21,6 +21,7 @@
 - `npm run dev` — 개발 서버 (기본 포트 5175, `PORT` 환경변수로 변경 가능)
 - `npm run typecheck` — 타입 검사
 - `npm run build` — 프로덕션 빌드
+- **디버그 층 이동: Shift+D** (Esc 닫기) — 빠른 버튼(1·5·10·…·100층) + 직접 입력, 이동 시 체력 회복. DEV에서는 항상, **배포판에서는 `?debug` 쿼리를 붙였을 때만** 활성화 (예: https://hakhyun-kim.github.io/dungeon100/?debug). 일반 `d`는 이동 키라 Shift 조합 사용.
 - 숨김 탭(헤드리스 프리뷰)에서는 크롬이 rAF를 멈춰 3D가 안 그려짐 — `?rafshim` 쿼리로 우회 (index.html의 개발용 심: 타이머 rAF + ResizeObserver 폴리필 + **`window.__pump(n)` 동기 프레임 구동**). 크롬 집중 스로틀링(오래 숨겨진 탭, 타이머 분당 1회)에서는 타이머가 다 죽으므로 자동 검증은 `__pump` + `__d100fixdt`(고정 dt) + MessageChannel 틱(스로틀 안 됨)으로 구동할 것. 클릭 후 React 렌더는 태스크 경계가 필요 — 같은 evaluate 안에서는 MessageChannel 왕복(tick) 후 DOM을 읽어야 함. DEV 훅: `__d100`(teleport/state/hitBoss/killEnemies), `__d100run`(place/state), `__d100app`(jump — 층 점프). r3f 부팅은 클릭 루프보다 느릴 수 있으니 `window.__d100` 등장까지 넉넉히 대기할 것.
 - 배포: main 푸시 → `.github/workflows/deploy-pages.yml` → https://hakhyun-kim.github.io/dungeon100/
 

@@ -93,12 +93,20 @@ export default function App() {
   const [endingVariant, setEndingVariant] = useState<'alone' | 'together' | null>(null);
   const [endingIdx, setEndingIdx] = useState(0);
 
+  // 디버그 (Shift+D): 개발 모드 또는 ?debug 쿼리에서만
+  const debugAllowed = useMemo(
+    () => import.meta.env.DEV || new URLSearchParams(location.search).has('debug'),
+    [],
+  );
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [debugFloor, setDebugFloor] = useState('');
+
   const statsRef = useRef(stats);
   statsRef.current = stats;
   const floorNoRef = useRef(floorNo);
   floorNoRef.current = floorNo;
   const pausedRef = useRef(false);
-  pausedRef.current = phase !== 'run';
+  pausedRef.current = phase !== 'run' || debugOpen;
   const quizResultRef = useRef<QuizResult | null>(null);
   const portalRetryRef = useRef(0);
   const homeRetryRef = useRef(0);
@@ -195,6 +203,28 @@ export default function App() {
       },
     };
   }, []);
+
+  // 디버그 단축키: Shift+D 열고 닫기, Esc 닫기
+  useEffect(() => {
+    if (!debugAllowed) return;
+    const h = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if (e.key.toLowerCase() === 'd' && e.shiftKey) setDebugOpen((o) => !o);
+      else if (e.key === 'Escape') setDebugOpen(false);
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [debugAllowed]);
+
+  const debugJump = (n: number) => {
+    if (!Number.isFinite(n)) return;
+    const fl = Math.max(1, Math.min(100, Math.round(n)));
+    sfx.tap();
+    setFloorNo(fl);
+    setHp(statsRef.current.maxHp); // 이동 시 회복 (테스트 편의)
+    setDebugOpen(false);
+    setPhase('run');
+  };
 
   const toggleMute = () => {
     const next = !muted;
@@ -538,6 +568,44 @@ export default function App() {
       {flash > 0 && <div key={`f${flash}`} className="hit-flash" />}
       {goldFlash > 0 && <div key={`g${goldFlash}`} className="hit-flash gold" />}
       {lowHp && <div className="low-hp" />}
+
+      {/* 디버그 층 이동 (Shift+D — DEV 또는 ?debug) */}
+      {debugAllowed && debugOpen && runId > 0 && (
+        <div className="screen debug-screen">
+          <h2>🛠️ 디버그 — 층 이동</h2>
+          <div className="debug-grid">
+            {[1, 5, 10, 20, 30, 50, 56, 70, 90, 100].map((n) => (
+              <button key={n} className="choice-btn debug-jump" onClick={() => debugJump(n)}>
+                {n}층
+              </button>
+            ))}
+          </div>
+          <div className="debug-row">
+            <input
+              className="debug-input"
+              type="number"
+              min={1}
+              max={100}
+              placeholder="층 번호"
+              value={debugFloor}
+              onChange={(e) => setDebugFloor(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && debugFloor) debugJump(Number(debugFloor));
+              }}
+            />
+            <button
+              className="choice-btn"
+              onClick={() => debugFloor && debugJump(Number(debugFloor))}
+            >
+              이동
+            </button>
+          </div>
+          <p className="quiz-sub">Shift+D 열기/닫기 · Esc 닫기 · 이동하면 체력 회복</p>
+          <button className="skip-btn" onClick={() => setDebugOpen(false)}>
+            닫기
+          </button>
+        </div>
+      )}
 
       {phase === 'title' && (
         <div className="screen title-screen">
