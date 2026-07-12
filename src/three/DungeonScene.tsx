@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { CELL, canStand, cellToWorld, generateFloor, GRID, isFloor } from '../lib/dungeon';
 import type { Stats } from '../lib/upgrades';
+import Hero from './Hero';
 
 // 층 하나의 3D 씬 + 시뮬레이션. 층이 바뀌면 부모가 key로 리마운트한다.
 interface Enemy {
@@ -50,6 +51,7 @@ const AGGRO = 9;
 
 function DungeonScene({
   floorNo,
+  hidden,
   statsRef,
   pausedRef,
   quizResultRef,
@@ -59,6 +61,7 @@ function DungeonScene({
   onChest,
 }: {
   floorNo: number;
+  hidden: boolean; // 두 문 달리기 미니게임 동안 던전을 숨기고 카메라를 양보
   statsRef: React.MutableRefObject<Stats>;
   pausedRef: React.MutableRefObject<boolean>;
   quizResultRef: React.MutableRefObject<QuizResult | null>;
@@ -225,8 +228,13 @@ function DungeonScene({
     };
   }, [chestPos, exitX, exitZ]);
 
+  const hiddenRef = useRef(hidden);
+  hiddenRef.current = hidden;
+
   useFrame((state, delta) => {
-    const dt = Math.min(delta, 0.05);
+    const speedScale =
+      (import.meta.env.DEV && Number((window as unknown as Record<string, unknown>).__d100speed)) || 1;
+    const dt = Math.min(delta, 0.05) * speedScale;
     const t = state.clock.elapsedTime;
     const stats = statsRef.current;
     const p = playerRef.current;
@@ -495,21 +503,21 @@ function DungeonScene({
       glowRef.current.intensity = glowTimer.current * 3.2;
     }
 
-    // ── 카메라 추적 + 셰이크
-    shake.current = Math.max(0, shake.current - dt * 1.6);
-    const cam = state.camera;
-    const k = 1 - Math.pow(0.001, dt);
-    cam.position.lerp(new THREE.Vector3(p.position.x, 15.5, p.position.z + 9.5), k);
-    const s2 = shake.current * shake.current;
-    cam.position.x += (Math.random() - 0.5) * s2 * 1.6;
-    cam.position.z += (Math.random() - 0.5) * s2 * 1.6;
-    cam.lookAt(p.position.x, 0, p.position.z);
+    // ── 카메라 추적 + 셰이크 (미니게임 중에는 미니게임이 카메라를 잡는다)
+    if (!hiddenRef.current) {
+      shake.current = Math.max(0, shake.current - dt * 1.6);
+      const cam = state.camera;
+      const k = 1 - Math.pow(0.001, dt);
+      cam.position.lerp(new THREE.Vector3(p.position.x, 15.5, p.position.z + 9.5), k);
+      const s2 = shake.current * shake.current;
+      cam.position.x += (Math.random() - 0.5) * s2 * 1.6;
+      cam.position.z += (Math.random() - 0.5) * s2 * 1.6;
+      cam.lookAt(p.position.x, 0, p.position.z);
+    }
   });
 
   return (
-    <>
-      <color attach="background" args={['#140e22']} />
-      <fog attach="fog" args={['#140e22', 20, 44]} />
+    <group visible={!hidden}>
       <ambientLight intensity={0.6} />
       <directionalLight position={[6, 14, 4]} intensity={1.0} />
 
@@ -546,22 +554,7 @@ function DungeonScene({
       {/* 플레이어 (블록 캐릭터 + 파워업 시각화) */}
       <group ref={playerRef} position={[startX, 0, startZ]}>
         <group ref={bodyRef}>
-          <mesh position={[0, 0.62, 0]}>
-            <boxGeometry args={[0.66, 0.72, 0.42]} />
-            <meshStandardMaterial color="#5aa0ff" />
-          </mesh>
-          <mesh position={[0, 1.24, 0]}>
-            <boxGeometry args={[0.52, 0.48, 0.48]} />
-            <meshStandardMaterial color="#ffd9a8" />
-          </mesh>
-          <mesh position={[-0.11, 1.26, 0.25]}>
-            <boxGeometry args={[0.07, 0.09, 0.02]} />
-            <meshStandardMaterial color="#2a2333" />
-          </mesh>
-          <mesh position={[0.11, 1.26, 0.25]}>
-            <boxGeometry args={[0.07, 0.09, 0.02]} />
-            <meshStandardMaterial color="#2a2333" />
-          </mesh>
+          <Hero />
         </group>
         {/* 멀티샷 궤도 구슬 */}
         {[0, 1, 2, 3].map((i) => (
@@ -601,7 +594,7 @@ function DungeonScene({
         </mesh>
         <pointLight color="#9a6bff" intensity={2.4} distance={9} />
       </group>
-    </>
+    </group>
   );
 }
 

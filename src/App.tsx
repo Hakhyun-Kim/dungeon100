@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import DungeonScene, { type QuizResult } from './three/DungeonScene';
+import DoorRunScene from './three/DoorRunScene';
 import { BASE_STATS, UPGRADES, draftThree, type Stats, type Upgrade } from './lib/upgrades';
 import { makeQuiz } from './lib/quiz';
 import { mulberry32 } from './lib/rng';
 import { useLocalStorage } from './lib/store';
 
-type Phase = 'title' | 'run' | 'quiz' | 'draft' | 'over';
-type QuizView = 'ask' | 'ok' | 'no';
+// doorrun: 보물상자에 닿으면 시작되는 "두 문 달리기" 미니게임 (통과해야만 아이템 획득)
+type Phase = 'title' | 'run' | 'doorrun' | 'quiz' | 'draft' | 'over';
+type QuizView = 'ok' | 'no';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('title');
@@ -21,7 +23,7 @@ export default function App() {
   const [goldFlash, setGoldFlash] = useState(0);
   const [build, setBuild] = useState<Record<string, number>>({});
   const [quizSeq, setQuizSeq] = useState(0);
-  const [quizView, setQuizView] = useState<QuizView>('ask');
+  const [quizView, setQuizView] = useState<QuizView>('no');
   const [reward, setReward] = useState<Upgrade | null>(null);
 
   const statsRef = useRef(stats);
@@ -70,10 +72,7 @@ export default function App() {
   }, []);
   const onKill = useCallback(() => setKills((k) => k + 1), []);
   const onExit = useCallback(() => setPhase('draft'), []);
-  const onChest = useCallback(() => {
-    setQuizView('ask');
-    setPhase('quiz');
-  }, []);
+  const onChest = useCallback(() => setPhase('doorrun'), []);
 
   const pickUpgrade = (u: Upgrade) => {
     gainUpgrade(u);
@@ -81,8 +80,9 @@ export default function App() {
     setPhase('run');
   };
 
-  const answerQuiz = (i: 0 | 1) => {
-    if (i === quiz.correct) {
+  // 두 문 달리기 결과 — 정답 문을 몸으로 통과했을 때만 보물 지급
+  const onDoorRunDone = (ok: boolean) => {
+    if (ok) {
       const pick = UPGRADES[Math.floor(mulberry32(quizSeed + 99)() * UPGRADES.length)];
       setReward(pick);
       gainUpgrade(pick);
@@ -92,6 +92,7 @@ export default function App() {
       setReward(null);
       setQuizView('no');
     }
+    setPhase('quiz');
   };
 
   const continueFromQuiz = () => {
@@ -106,9 +107,12 @@ export default function App() {
     <div className="app">
       {phase !== 'title' && (
         <Canvas className="canvas" camera={{ fov: 50, position: [0, 15.5, 9.5] }} dpr={[1, 2]}>
+          <color attach="background" args={['#140e22']} />
+          <fog attach="fog" args={['#140e22', 20, 44]} />
           <DungeonScene
             key={`${runId}:${floorNo}`}
             floorNo={floorNo}
+            hidden={phase === 'doorrun'}
             statsRef={statsRef}
             pausedRef={pausedRef}
             quizResultRef={quizResultRef}
@@ -117,6 +121,7 @@ export default function App() {
             onExit={onExit}
             onChest={onChest}
           />
+          {phase === 'doorrun' && <DoorRunScene quiz={quiz} onDone={onDoorRunDone} />}
         </Canvas>
       )}
 
@@ -155,7 +160,7 @@ export default function App() {
           <div className="howto">
             <p>🕹️ 이동: 화면 드래그 (PC는 WASD/방향키)</p>
             <p>⚔️ 공격: 가까운 적을 자동으로 조준</p>
-            <p>🗝️ 보물상자의 수수께끼를 풀면 아이템 획득</p>
+            <p>🗝️ 보물상자에 닿으면 두 문 달리기 — 정답 문을 통과해야 아이템 획득!</p>
             <p>🌀 보라색 포털에 닿으면 다음 층 + 보상 선택</p>
           </div>
           {best > 0 && <p className="best">최고 기록: {best}층</p>}
@@ -165,22 +170,14 @@ export default function App() {
         </div>
       )}
 
+      {phase === 'doorrun' && (
+        <div className="doorrun-hint">
+          🚪 정답 문으로 달려요! (화면 왼쪽/오른쪽 꾹 또는 ←/→)
+        </div>
+      )}
+
       {phase === 'quiz' && (
         <div className="screen quiz-screen">
-          {quizView === 'ask' && (
-            <>
-              <p className="quiz-label">🗝️ 보물상자의 수수께끼</p>
-              <h2 className="quiz-q">{quiz.q}</h2>
-              <p className="quiz-sub">정답이 적힌 문을 열어요!</p>
-              <div className="doors">
-                {quiz.answers.map((a, i) => (
-                  <button key={i} className="door" onClick={() => answerQuiz(i as 0 | 1)}>
-                    <span className="door-answer">{a}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
           {quizView === 'ok' && reward && (
             <>
               <h2>🎉 정답! 보물을 얻었다</h2>
