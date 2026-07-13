@@ -569,21 +569,36 @@ function DungeonScene({
         p.position.y = 0;
       }
 
-      // ── 자동 조준 발사
+      // ── 자동 조준 발사 (가장 가까운 적 — 보스·수문장 포함 — 을 노린다)
       fireTimer.current -= dt;
       if (fireTimer.current <= 0) {
-        let best: Enemy | null = null;
+        let tx = 0;
+        let tz = 0;
         let bestD = stats.range;
+        let hasTarget = false;
         for (const e of enemies.current) {
           if (!e.alive) continue;
           const dist = Math.hypot(e.x - p.position.x, e.z - p.position.z);
           if (dist < bestD) {
             bestD = dist;
-            best = e;
+            tx = e.x;
+            tz = e.z;
+            hasTarget = true;
           }
         }
-        if (best) {
-          const base = Math.atan2(best.x - p.position.x, best.z - p.position.z);
+        // 보스도 사거리 안에 있으면 조준 대상 (예전엔 enemies만 봐서 보스를 못 쐈음)
+        const bAim = boss.current;
+        if (bAim && bAim.alive) {
+          const bdist = Math.hypot(bAim.x - p.position.x, bAim.z - p.position.z);
+          if (bdist < bestD) {
+            bestD = bdist;
+            tx = bAim.x;
+            tz = bAim.z;
+            hasTarget = true;
+          }
+        }
+        if (hasTarget) {
+          const base = Math.atan2(tx - p.position.x, tz - p.position.z);
           for (let s = 0; s < stats.shots; s++) {
             const slot = shots.current.find((sh) => !sh.alive);
             if (!slot) break;
