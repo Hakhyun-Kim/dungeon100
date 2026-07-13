@@ -23,6 +23,7 @@ interface Enemy {
   mode: number; // dasher: 0 접근 / 1 조준 / 2 돌진 / 3 숨 고르기
   adx: number; // 돌진 방향
   adz: number;
+  elite: boolean; // 출구 수문장 — 크고 강하게 돌진하는 정예 (보스 없는 층의 문지기)
 }
 
 function pickEnemyType(floorNo: number): EType {
@@ -148,25 +149,65 @@ function DungeonScene({
   const particleMeshRef = useRef<THREE.InstancedMesh>(null);
 
   const enemies = useRef<Enemy[]>(
-    floor.spawns.map((s) => {
-      const [wx, wz] = cellToWorld(s.x, s.y);
-      const type = pickEnemyType(floorNo);
+    (() => {
       const baseHp = 18 + floorNo * 7;
-      return {
-        x: wx,
-        z: wz,
-        hp: type === 'tank' ? baseHp * 2.8 : type === 'shooter' ? baseHp * 0.8 : baseHp,
-        alive: true,
-        hitCd: 0,
-        wobble: Math.random() * 6,
-        flash: 0,
-        type,
-        ai: Math.random() * 1.5,
-        mode: 0,
-        adx: 0,
-        adz: 0,
-      };
-    }),
+      const list: Enemy[] = floor.spawns.map((s) => {
+        const [wx, wz] = cellToWorld(s.x, s.y);
+        const type = pickEnemyType(floorNo);
+        return {
+          x: wx,
+          z: wz,
+          hp: type === 'tank' ? baseHp * 2.8 : type === 'shooter' ? baseHp * 0.8 : baseHp,
+          alive: true,
+          hitCd: 0,
+          wobble: Math.random() * 6,
+          flash: 0,
+          type,
+          ai: Math.random() * 1.5,
+          mode: 0,
+          adx: 0,
+          adz: 0,
+          elite: false,
+        };
+      });
+      // 출구 수문장 — 보스 없는 층(4층부터)의 문 앞을 정예가 지킨다.
+      // 조준 후 강하게 돌진해 HP를 크게 깎아, 깊이 내려갈수록 긴장감을 유지한다.
+      if (!isBossFloor && floorNo >= 4) {
+        const gx0 = floor.exit.x;
+        const gy0 = floor.exit.y;
+        const dirx = Math.sign(floor.start.x - gx0) || 1;
+        const diry = Math.sign(floor.start.y - gy0) || 0;
+        let gcx = gx0;
+        let gcy = gy0;
+        // 문에 가장 가까운 valid 셀을 우선 (문 바로 앞을 지키게)
+        for (let step = 1; step <= 3; step++) {
+          const cx = gx0 + dirx * step;
+          const cy = gy0 + diry * step;
+          if (isFloor(floor.cells, cx, cy)) {
+            gcx = cx;
+            gcy = cy;
+            break;
+          }
+        }
+        const [gwx, gwz] = cellToWorld(gcx, gcy);
+        list.push({
+          x: gwx,
+          z: gwz,
+          hp: 35 + floorNo * 11,
+          alive: true,
+          hitCd: 0.6,
+          wobble: Math.random() * 6,
+          flash: 0,
+          type: 'dasher',
+          ai: 0.8,
+          mode: 0,
+          adx: 0,
+          adz: 0,
+          elite: true,
+        });
+      }
+      return list;
+    })(),
   );
   const shots = useRef<Shot[]>(
     Array.from({ length: MAX_SHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, alive: false })),
@@ -202,6 +243,7 @@ function DungeonScene({
       enemyBase: new THREE.Color(ENEMY_TIER_COLORS[enemyTier]),
       white: new THREE.Color('#ffffff'),
       tmp: new THREE.Color(),
+      elite: new THREE.Color('#ff2e1f'), // 수문장 정예 색 (강렬한 진홍)
       shotTiers: [new THREE.Color('#ffd166'), new THREE.Color('#ff9a3d'), new THREE.Color('#ff5136')],
     }),
     [enemyTier],
@@ -232,6 +274,7 @@ function DungeonScene({
     Array.from({ length: MAX_ESHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, alive: false })),
   );
   const eshotMeshRef = useRef<THREE.InstancedMesh>(null);
+  const eliteLightRef = useRef<THREE.PointLight>(null); // 출구 수문장 발치의 붉은 광원
 
   // 보스 체력바 초기 보고
   useEffect(() => {
@@ -417,6 +460,10 @@ function DungeonScene({
         girlWorld: girlPos,
         enemyTier,
         boss: boss.current ? { hp: boss.current.hp, alive: boss.current.alive } : null,
+        guardian: (() => {
+          const g = enemies.current.find((e) => e.elite);
+          return g ? { hp: Math.round(g.hp), alive: g.alive, mode: g.mode, pos: [g.x, g.z] } : null;
+        })(),
         enemiesAlive: enemies.current.filter((e) => e.alive).length,
         enemyTypes: enemies.current.reduce(
           (acc, e) => {
@@ -586,8 +633,8 @@ function DungeonScene({
             sfx.hit();
             burst(e.x, 0.7, e.z, '#ffe08a', 4, 1.4);
             spawnDmg(e.x, e.z, Math.round(stats.damage));
-            // 넉백 (탱커는 밀리지 않음, 벽은 통과 못 함)
-            if (e.type !== 'tank') {
+            // 넉백 (탱커·수문장은 밀리지 않음, 벽은 통과 못 함)
+            if (e.type !== 'tank' && !e.elite) {
               const kx = e.x + sh.dx * 0.4;
               const kz = e.z + sh.dz * 0.4;
               if (canStand(floor.cells, kx, e.z, 0.38)) e.x = kx;
@@ -595,9 +642,10 @@ function DungeonScene({
             }
             if (e.hp <= 0) {
               e.alive = false;
-              burst(e.x, 0.7, e.z, '#ff5d7e', 12, 2.0);
-              shake.current = Math.min(0.6, shake.current + 0.1);
-              onKill(e.type === 'tank' ? 3 : 1); // 코인 보상
+              burst(e.x, 0.8, e.z, e.elite ? '#ff3020' : '#ff5d7e', e.elite ? 22 : 12, e.elite ? 2.6 : 2.0);
+              if (e.elite) burst(e.x, 1.3, e.z, '#ffffff', 10, 1.8);
+              shake.current = Math.min(0.6, shake.current + (e.elite ? 0.35 : 0.1));
+              onKill(e.elite ? 12 : e.type === 'tank' ? 3 : 1); // 코인 보상 (수문장 두둑)
             }
             break;
           }
@@ -641,29 +689,32 @@ function DungeonScene({
             }
           }
         } else if (e.type === 'dasher') {
-          // 접근 → 조준(부풀기) → 돌진 → 숨 고르기
+          // 접근 → 조준(부풀기) → 돌진 → 숨 고르기 (수문장은 더 넓게·빠르게·매섭게)
+          const aggroR = e.elite ? AGGRO + 9 : AGGRO;
+          const appSpd = e.elite ? 3.3 : 2.6;
+          const dashSpd = e.elite ? 11.5 : 9.5;
           if (e.mode === 0) {
-            if (dist < AGGRO) {
-              walk(ux, uz, 2.6);
-              if (dist < 6.5) {
+            if (dist < aggroR) {
+              walk(ux, uz, appSpd);
+              if (dist < (e.elite ? 7.5 : 6.5)) {
                 e.mode = 1;
-                e.ai = 0.55;
+                e.ai = e.elite ? 0.45 : 0.55;
               }
             }
           } else if (e.mode === 1) {
             e.ai -= dt;
             if (e.ai <= 0) {
               e.mode = 2;
-              e.ai = 0.5;
+              e.ai = e.elite ? 0.55 : 0.5;
               e.adx = ux;
               e.adz = uz;
             }
           } else if (e.mode === 2) {
             e.ai -= dt;
-            walk(e.adx, e.adz, 9.5);
+            walk(e.adx, e.adz, dashSpd);
             if (e.ai <= 0) {
               e.mode = 3;
-              e.ai = 1.1;
+              e.ai = e.elite ? 0.8 : 1.1;
             }
           } else {
             e.ai -= dt;
@@ -675,17 +726,32 @@ function DungeonScene({
           if (dist < AGGRO) walk(ux, uz, spd);
         }
 
-        const touchR = e.type === 'tank' ? 1.05 : 0.85;
+        const touchR = e.elite ? 1.25 : e.type === 'tank' ? 1.05 : 0.85;
         if (dist < touchR && e.hitCd <= 0) {
-          e.hitCd = e.type === 'dasher' && e.mode === 2 ? 0.6 : 0.8;
-          const dmg =
-            e.type === 'tank'
-              ? Math.round((6 + floorNo) * 1.5)
-              : e.type === 'dasher' && e.mode === 2
-                ? 8 + floorNo
-                : 6 + floorNo;
-          shake.current = Math.min(0.6, shake.current + 0.3);
-          burst(p.position.x, 0.8, p.position.z, '#ff4d5e', 6, 1.6);
+          let dmg: number;
+          if (e.elite) {
+            // 수문장: 돌진 강타는 HP를 크게 깎는다 (깊이 내려갈수록 위협적)
+            e.hitCd = e.mode === 2 ? 0.7 : 1.0;
+            dmg = e.mode === 2 ? Math.round(16 + floorNo * 0.9) : Math.round(9 + floorNo * 0.5);
+          } else {
+            e.hitCd = e.type === 'dasher' && e.mode === 2 ? 0.6 : 0.8;
+            dmg =
+              e.type === 'tank'
+                ? Math.round((6 + floorNo) * 1.5)
+                : e.type === 'dasher' && e.mode === 2
+                  ? 8 + floorNo
+                  : 6 + floorNo;
+          }
+          shake.current = Math.min(0.7, shake.current + (e.elite ? 0.5 : 0.3));
+          burst(
+            p.position.x,
+            0.8,
+            p.position.z,
+            e.elite ? '#ff2030' : '#ff4d5e',
+            e.elite ? 12 : 6,
+            e.elite ? 2.2 : 1.6,
+          );
+          if (e.elite) spawnDmg(p.position.x, p.position.z, dmg, '#ff5566'); // 큰 피해를 숫자로 보여줌
           onDamage(dmg);
         }
       }
@@ -832,7 +898,18 @@ function DungeonScene({
           let sy = 1;
           let sz = 1;
           palette.tmp.copy(palette.enemyBase);
-          if (e.type === 'tank') {
+          if (e.elite) {
+            // 수문장 — 크고 진홍빛, 돌진 시 납작하게 길어짐
+            sx = 1.9;
+            sz = 1.9;
+            sy = 2.0;
+            if (e.mode === 1) sy = 2.0 + Math.sin(t * 24) * 0.16; // 조준 중 부들부들
+            if (e.mode === 2) {
+              sz = 2.5;
+              sy = 1.5;
+            }
+            palette.tmp.copy(palette.elite);
+          } else if (e.type === 'tank') {
             sx = sy = sz = 1.55;
             palette.tmp.multiplyScalar(0.62);
           } else if (e.type === 'shooter') {
@@ -861,6 +938,18 @@ function DungeonScene({
       });
       em.instanceMatrix.needsUpdate = true;
       if (em.instanceColor) em.instanceColor.needsUpdate = true;
+    }
+
+    // ── 출구 수문장 발치의 붉은 광원 (살아있을 때만, 은은히 맥동)
+    if (eliteLightRef.current) {
+      const guardian = enemies.current.find((e) => e.elite && e.alive);
+      if (guardian) {
+        eliteLightRef.current.visible = true;
+        eliteLightRef.current.position.set(guardian.x, 1.4, guardian.z);
+        eliteLightRef.current.intensity = 2.2 + Math.sin(t * 6) * 0.6 + guardian.flash * 2.5;
+      } else {
+        eliteLightRef.current.visible = false;
+      }
     }
 
     const sm = shotMeshRef.current;
@@ -1174,6 +1263,9 @@ function DungeonScene({
         <sphereGeometry args={[0.22, 8, 8]} />
         <meshStandardMaterial color="#ff3d5e" emissive="#a01030" emissiveIntensity={1.4} />
       </instancedMesh>
+
+      {/* 출구 수문장 광원 (정예 발치의 붉은 빛 — 프레임에서 위치·세기 갱신) */}
+      <pointLight ref={eliteLightRef} color="#ff5030" intensity={0} distance={9} visible={false} />
 
       {/* 소녀의 흔적 — 은은히 빛나는 꽃 한 송이 */}
       {tracePos && (
