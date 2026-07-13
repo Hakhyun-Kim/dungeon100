@@ -56,7 +56,7 @@ npm run dev   # http://localhost:5175
 
 ## 5. 플레이 영상
 
-> **YouTube: ____________** (30~60초 실플레이 영상)
+> **YouTube: https://youtu.be/V4Vr0z4m6uE** (30~60초 실플레이 영상)
 
 ## 6. 기술 요약
 

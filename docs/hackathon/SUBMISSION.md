@@ -1,7 +1,7 @@
 # NAN 2026 사전과제 제출 체크리스트 — 백층 던전
 
 > 행사: https://nan2026.nhn.com/ · 심사 계정: `dl_gameai_reviewer@nhn.com`
-> ⚠️ 접수 마감일: ____________ (확인 후 기입 — 마감 후 제출 내용 변경 불가)
+> 🗓️ 접수 마감일: **2026-08-10** · 제출일: **2026-07-13** (마감 후 제출 내용 변경 불가)
 > ✅ **제출작 확정: 백층 던전.** 자매작 「두 문 러너」의 두 문 달리기는 이 게임의 보물상자 미니게임으로 통합되어 있음 (원작 저장소: [door-runner](https://github.com/Hakhyun-Kim/door-runner)).
 
 ## 제출물 5종 현황
@@ -9,7 +9,7 @@
 | # | 제출물 | 형태 | 상태 | 비고 |
 |---|--------|------|------|------|
 | 1 | 플레이 가능한 빌드 + 소스 | GitHub Pages 링크 + 저장소 | ✅ 공개 저장소 + 자동 배포 | 커밋 기록이 곧 AI 개발 과정 증빙 |
-| 2 | 플레이 동영상 (30~60초) | YouTube 링크 | ⬜ 촬영 필요 | **[RECORDING_GUIDE.md](RECORDING_GUIDE.md)** — 대본·녹화법·유튜브 문구 |
+| 2 | 플레이 동영상 (30~60초) | YouTube 링크 | ✅ 업로드 완료 | https://youtu.be/V4Vr0z4m6uE |
 | 3 | 게임 소개 및 설명 문서 | PDF | 📝 초안 완료 (`GAME_INTRO.md`) | 영상 링크 확정 후 PDF 변환 |
 | 4 | AI 활용 기술 문서 | PDF | 📝 초안 완료 (`AI_USAGE.md`) | AI 자가 검증 하네스가 하이라이트 |
 | 5 | 팀원 롤 기술서 | PDF | ➖ 해당 없음 | **개인 참여 — 제출 생략** |
@@ -18,7 +18,7 @@
 
 - GitHub 저장소: https://github.com/Hakhyun-Kim/dungeon100 (public)
 - 플레이 링크 (GitHub Pages): https://hakhyun-kim.github.io/dungeon100/
-- 플레이 영상 (YouTube): ____________
+- 플레이 영상 (YouTube): https://youtu.be/V4Vr0z4m6uE
 
 ## 플레이 영상 촬영 가이드 (30~60초)
 
