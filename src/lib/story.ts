@@ -518,6 +518,39 @@ export function townVisitScript(floorNo: number): TownNode[] {
   return TOWN_VISIT_LATER;
 }
 
+// 죽음에서 돌아온 주인공을 맞이하는 마을 (부활 체크포인트).
+// 1층이 아니라 마지막으로 다녀온 마을 층에서 다시 시작 — '주인공은 다시 쓰일 뿐' 세계관과 연결.
+export function deathVisitScript(floorNo: number): TownNode[] {
+  return [
+    {
+      kind: 'line',
+      icon: '👧',
+      speaker: '여관 소녀 니나',
+      text: `또 눈을 떴네요, 모험가님! 놀라지 마요 — 여긴 ${floorNo}층 문으로 이어진 마을이에요. 당신은 몇 번이고 여기서 다시 시작할 수 있어요.`,
+      next: 1,
+    },
+    {
+      kind: 'line',
+      icon: '👧',
+      speaker: '니나',
+      text: '전에 말했죠. "주인공은 안 죽어요. 다시 쓰일 뿐이죠." …상처는 제가 다 돌봐 뒀어요. 장비도 그대로고요.',
+      next: 2,
+    },
+    {
+      kind: 'line',
+      icon: '👵',
+      speaker: '촌장',
+      text: `${floorNo}층까지 온 걸음이 헛되지 않았단다. 자, 다시 내려가 보렴 — 이번엔 조금 더 멀리.`,
+      next: 3,
+    },
+    {
+      kind: 'choice',
+      prompt: `${floorNo}층 문 앞에 다시 섰다. 몸이 개운하다.`,
+      options: [{ label: '⚔️ 던전으로 돌아간다', action: 'return' }],
+    },
+  ];
+}
+
 // ── 보물을 얻을 때 하나씩 돌아오는 집의 기억 (순서대로, 다 보면 순환)
 export interface Memory {
   icon: string;

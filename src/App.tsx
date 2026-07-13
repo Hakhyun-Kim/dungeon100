@@ -24,6 +24,7 @@ import {
   getLore,
   getDeathLore,
   townVisitScript,
+  deathVisitScript,
   type TownNode,
 } from './lib/story';
 
@@ -70,6 +71,8 @@ const MAX_DOOR_ROUND = 3;
 export default function App() {
   const [phase, setPhase] = useState<Phase>('title');
   const [floorNo, setFloorNo] = useState(1);
+  // 부활 체크포인트 — 마지막으로 다녀온 5층 단위 마을 층 (죽으면 여기서 다시 시작)
+  const [checkpointFloor, setCheckpointFloor] = useState(1);
   const [stats, setStats] = useState<Stats>(BASE_STATS);
   const [hp, setHp] = useState(BASE_STATS.maxHp);
   const [kills, setKills] = useState(0);
@@ -328,6 +331,7 @@ export default function App() {
     sfx.enter();
     setStorySeen(true);
     setFloorNo(1);
+    setCheckpointFloor(1); // 새 도전 — 체크포인트 초기화
     // 대장간 영구 강화 반영
     const startStats: Stats = {
       ...BASE_STATS,
@@ -626,6 +630,7 @@ export default function App() {
   const openHomeDoor = () => {
     sfx.tap();
     homeUsedRef.current += 1;
+    setCheckpointFloor(floorNo); // 이 마을을 다녀갔으니 부활 지점 갱신
     goTown(townVisitScript(floorNo), 'visit');
   };
 
@@ -633,6 +638,18 @@ export default function App() {
     sfx.tap();
     homeRetryRef.current += 1;
     setPhase('run');
+  };
+
+  // 죽으면 1층이 아니라 마지막으로 다녀온 마을(체크포인트)에서 부활 — 장비 유지·완전 회복.
+  // 주민들이 맞아 주고, 거기서 다시 던전으로 내려간다. ('죽음=다시 쓰임' 세계관과 연결)
+  const resumeFromCheckpoint = () => {
+    sfx.tap();
+    setFloorNo(checkpointFloor);
+    setHp(stats.maxHp); // 부활 — 완전 회복 (스탯·빌드는 유지)
+    setDoorRound(1);
+    quizResultRef.current = null;
+    setRunId((id) => id + 1); // 씬 강제 리마운트 (같은 층에서 죽어도 새로 시작)
+    goTown(deathVisitScript(checkpointFloor), 'visit');
   };
 
   const hpRatio = Math.max(0, Math.min(1, hp / stats.maxHp));
@@ -1284,11 +1301,17 @@ export default function App() {
           <p className="over-lore">{overLore}</p>
           <p className="quiz-sub">🪙 {coins} — 코인은 사라지지 않았다. 이야기도, 이어진다.</p>
           <div className="dialog-choices">
-            <button className="choice-btn" onClick={() => enterDungeon()}>
-              ⚔️ 바로 다시 도전
-            </button>
+            {checkpointFloor >= 5 ? (
+              <button className="choice-btn" onClick={resumeFromCheckpoint}>
+                🏘️ {checkpointFloor}층 마을에서 다시 (장비 유지)
+              </button>
+            ) : (
+              <button className="choice-btn" onClick={() => enterDungeon()}>
+                ⚔️ 바로 다시 도전
+              </button>
+            )}
             <button className="choice-btn" onClick={() => goTown(TOWN_REVISIT)}>
-              🏘️ 마을에서 한숨 돌리기 (대장간 🛠️)
+              🏘️ 처음부터 (마을·대장간 🛠️)
             </button>
           </div>
           <button
