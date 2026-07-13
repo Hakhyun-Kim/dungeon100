@@ -2,7 +2,8 @@ import { mulberry32 } from './rng';
 
 // 두 문 달리기의 수수께끼 — 두 문 러너의 "정답 문 고르기"를 미니게임으로 이식.
 // 문제 은행 없이 절차 생성하며, 던전 종류(초등/어른)와 층 깊이에 따라 어려워진다.
-export type DungeonMode = 'kids' | 'adult';
+// 'monster'는 수학 대신 몬스터 아레나로 보물을 얻는 모드 — makeQuiz는 호출되지 않는다.
+export type DungeonMode = 'kids' | 'adult' | 'monster';
 
 export interface Quiz {
   q: string;

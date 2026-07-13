@@ -98,7 +98,7 @@ export const TOWN_FIRST: TownNode[] = [
     kind: 'line',
     icon: '👵',
     speaker: '촌장',
-    text: "참, 던전의 보물상자는 '두 문의 시험'을 걸어온단다. 정답이 적힌 문을 몸으로 열어야 보물을 주지. 깊이 달릴수록 좋은 보물이 나온다는 소문이야.",
+    text: "참, 던전의 보물상자는 '두 문의 시험'을 걸어온단다. 정답이 적힌 문을 몸으로 열어야 보물을 주지. …아, 머리 쓰기 싫으면 '몬스터 던전'을 골라도 돼. 거기선 상자를 열면 문제 대신 괴물이 우르르 쏟아지는데, 그 틈의 보석을 주우면 된다더라. 쓰러져도 몇 번이고 다시 도전할 수 있다니 겁낼 것 없어.",
     next: 5,
   },
   {
@@ -120,10 +120,11 @@ export const TOWN_FIRST: TownNode[] = [
   {
     kind: 'choice',
     prompt:
-      '던전 입구에 섰다. 문이 두 갈래로 갈라져 있다 — 왼쪽 문엔 크레용 낙서가, 오른쪽 문엔 어른의 필체가 새겨져 있다.',
+      '던전 입구에 섰다. 문이 세 갈래로 갈라져 있다 — 왼쪽 문엔 크레용 낙서, 가운데 문엔 어른의 필체, 오른쪽 문엔 발톱으로 긁은 자국이 나 있다.',
     options: [
       { label: '🎒 초등학교 던전 (쉬운 문제)', action: 'enter', mode: 'kids' },
       { label: '🧠 어른 던전 (어려운 문제)', action: 'enter', mode: 'adult' },
+      { label: '👹 몬스터 던전 (문제 대신 전투)', action: 'enter', mode: 'monster' },
       { label: '😮‍💨 잠깐, 마음의 준비가…', next: 9 },
     ],
   },
@@ -147,10 +148,11 @@ export const TOWN_ENTRY: TownNode[] = [
   },
   {
     kind: 'choice',
-    prompt: '던전 입구 — 왼쪽 문엔 크레용 낙서, 오른쪽 문엔 어른의 필체.',
+    prompt: '던전 입구 — 왼쪽 문엔 크레용 낙서, 가운데 문엔 어른의 필체, 오른쪽 문엔 발톱 자국.',
     options: [
       { label: '🎒 초등학교 던전 (쉬운 문제)', action: 'enter', mode: 'kids' },
       { label: '🧠 어른 던전 (어려운 문제)', action: 'enter', mode: 'adult' },
+      { label: '👹 몬스터 던전 (문제 대신 전투)', action: 'enter', mode: 'monster' },
       { label: '🛠️ 무크의 대장간 — 영구 강화 (🪙)', action: 'shop' },
       { label: '🚶 잠깐 마을 구경 좀…', next: 2 },
     ],
@@ -179,6 +181,7 @@ export const TOWN_REVISIT: TownNode[] = [
     options: [
       { label: '🎒 초등학교 던전 (쉬운 문제)', action: 'enter', mode: 'kids' },
       { label: '🧠 어른 던전 (어려운 문제)', action: 'enter', mode: 'adult' },
+      { label: '👹 몬스터 던전 (문제 대신 전투)', action: 'enter', mode: 'monster' },
       { label: '🛠️ 무크의 대장간 — 영구 강화 (🪙)', action: 'shop' },
       { label: '🛏️ 조금만 더 쉬고…', next: 2 },
     ],

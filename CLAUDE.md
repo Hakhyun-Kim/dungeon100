@@ -9,12 +9,13 @@
 - 아래 "다음 후보" 섹션을 항상 최신으로 유지 — 끝낸 항목은 지우고, 새로 떠오른 아이디어를 우선순위와 함께 추가.
 
 ## 다음 후보 (우선순위)
-1. **밸런스 자동 시뮬레이터** — `__pump`+`__d100fixdt` 하네스로 자동 봇 N판 → 사망 층 분포 리포트 (AI 활용 문서 하이라이트). 적 4타입·메타 성장이 생겨 밸런스 점검 필요성 커짐.
-2. **처치 콤보** — 연속 처치 시 코인 배율(x2·x3), 콤보 이펙트 — 전투 몰입 + 코인 경제 연결.
-3. **층 테마 색 변화** — 10층 단위 바닥·벽·안개 팔레트 교체 (절차 생성이라 저비용).
-4. **모바일 진동** (navigator.vibrate) — 피격·처치·보물에 짧은 진동.
-5. **두 게임 통합** — 두 문 러너를 백층 던전의 정식 모드로 흡수 (README에 계획 명시됨). 해커톤 이후 검토.
-6. **제출 준비** — 플레이 영상 촬영(SUBMISSION.md 가이드), 문서 PDF 변환, 마감일 기입, **디버그 키(Shift+D) 게이트 재도입 여부 결정**.
+1. **밸런스 자동 시뮬레이터** — `__pump`+`__d100fixdt` 하네스로 자동 봇 N판 → 사망 층 분포 리포트 (AI 활용 문서 하이라이트). 적 4타입·메타 성장·몬스터 아레나가 생겨 밸런스 점검 필요성 커짐.
+2. **몬스터 아레나 밸런스 튜닝** — 4타입 전부 1층부터 섞임(완료). 남은 것: 보석 근처 스폰 몰림 방지·유도, 클리어 난이도 층별 곡선 조정(aliveCap/enemyMaxHp/touchDmg — 현재 dasher+탄막 때문에 가만히 있으면 금방 죽음), 타입 분포 비율 튜닝. 처치가 코인에 반영 안 됨(무한 재도전 파밍 방지) — 의도된 것.
+3. **처치 콤보** — 연속 처치 시 코인 배율(x2·x3), 콤보 이펙트 — 전투 몰입 + 코인 경제 연결.
+4. **층 테마 색 변화** — 10층 단위 바닥·벽·안개 팔레트 교체 (절차 생성이라 저비용).
+5. **모바일 진동** (navigator.vibrate) — 피격·처치·보물에 짧은 진동.
+6. **두 게임 통합** — 두 문 러너를 백층 던전의 정식 모드로 흡수 (README에 계획 명시됨). 해커톤 이후 검토.
+7. **제출 준비** — 플레이 영상 촬영(SUBMISSION.md 가이드), 문서 PDF 변환, 마감일 기입, **디버그 키(Shift+D) 게이트 재도입 여부 결정**.
 
 ## 실행
 - `npm install` — 최초 1회
@@ -24,19 +25,21 @@
 - **디버그 층 이동: Shift+D** (Esc 닫기) — 빠른 버튼(1·5·10·…·100층) + 직접 입력, 이동 시 체력 회복. DEV에서는 항상, **배포판에서는 `?debug` 쿼리 필요** (예: …/dungeon100/?debug — 제출 심사자 오작동 방지를 위해 제출 전 재게이트, 2026-07-13). `e.code` 기반이라 한/영 입력 상태 무관. 일반 `d`는 이동 키라 Shift 조합 사용, 이동 키는 Shift 조합 무시.
 - **오버레이 키보드 선택**: 모든 선택 화면을 마우스 없이 진행 가능 — 두 갈래 선택(두 문 보상·포털·마을 문·엔딩)은 ←/↑=1번·→/↓=2번, 드래프트 3장은 ←/↑↓/→ 또는 1·2·3, 진행 버튼·대사는 Enter/Space/→. 숫자 키 1~4는 모든 선택지에서 동작.
 - HUD는 z-index 50으로 오버레이(30) 위 — 음소거(🔊) 버튼이 팝업 중에도 항상 눌린다.
-- 숨김 탭(헤드리스 프리뷰)에서는 크롬이 rAF를 멈춰 3D가 안 그려짐 — `?rafshim` 쿼리로 우회 (index.html의 개발용 심: 타이머 rAF + ResizeObserver 폴리필 + **`window.__pump(n)` 동기 프레임 구동**). 크롬 집중 스로틀링(오래 숨겨진 탭, 타이머 분당 1회)에서는 타이머가 다 죽으므로 자동 검증은 `__pump` + `__d100fixdt`(고정 dt) + MessageChannel 틱(스로틀 안 됨)으로 구동할 것. 클릭 후 React 렌더는 태스크 경계가 필요 — 같은 evaluate 안에서는 MessageChannel 왕복(tick) 후 DOM을 읽어야 함. DEV 훅: `__d100`(teleport/state/hitBoss/killEnemies), `__d100run`(place/state), `__d100app`(jump — 층 점프). r3f 부팅은 클릭 루프보다 느릴 수 있으니 `window.__d100` 등장까지 넉넉히 대기할 것.
+- 숨김 탭(헤드리스 프리뷰)에서는 크롬이 rAF를 멈춰 3D가 안 그려짐 — `?rafshim` 쿼리로 우회 (index.html의 개발용 심: 타이머 rAF + ResizeObserver 폴리필 + **`window.__pump(n)` 동기 프레임 구동**). 크롬 집중 스로틀링(오래 숨겨진 탭, 타이머 분당 1회)에서는 타이머가 다 죽으므로 자동 검증은 `__pump` + `__d100fixdt`(고정 dt) + MessageChannel 틱(스로틀 안 됨)으로 구동할 것. 클릭 후 React 렌더는 태스크 경계가 필요 — 같은 evaluate 안에서는 MessageChannel 왕복(tick) 후 DOM을 읽어야 함. DEV 훅: `__d100`(teleport/state/hitBoss/killEnemies), `__d100run`(place/state), `__d100arena`(place/state/collect/hurt — 몬스터 아레나), `__d100app`(jump — 층 점프). r3f 부팅은 클릭 루프보다 느릴 수 있으니 `window.__d100` 등장까지 넉넉히 대기할 것. (아레나 훅은 씬 마운트 직후 passive effect라 같은 evaluate 안에서 tick 몇 번 돌려야 등장.)
 - 배포: main 푸시 → `.github/workflows/deploy-pages.yml` → https://hakhyun-kim.github.io/dungeon100/
 
 ## 구조
-- `src/App.tsx` — phase 상태 머신: `title` → `story`(인트로, 최초 1회·건너뛰기 가능) → `town`(마을 대화·선택) → `run` → `doorrun`(보물상자 = 두 문 달리기, 최대 3라운드 푸시-유어-럭) → `quiz`(결과/계속 선택) / `portal`(다음 층 내려갈지 선택 — 거절 시 portalRetryRef 증가로 포털 재무장) → `draft`(보상 3택 1) → `run` / `over`(사망 → 재도전 or 마을). HUD·빌드 칩·오버레이는 캔버스 위 DOM. 사망 판정은 hp useEffect. Canvas는 run 계열 phase에만 마운트(배경·fog는 Canvas 레벨), 층 전환은 DungeonScene key 리마운트, 미니게임 라운드는 DoorRunScene key 리마운트. 미니게임 결과는 quizResultRef(seq 증가)로 던전 씬에 전달. 보상: 통과한 문 수 = 아이템 수, 3문 완주 = 전설(3개+완전회복), 중도 오답 = 전부 빈손.
+- `src/App.tsx` — phase 상태 머신: `title` → `story`(인트로, 최초 1회·건너뛰기 가능) → `town`(마을 대화·선택) → `run` → **보물상자 미니게임(모드에 따라 갈림)**: 수학 모드 → `doorrun`(두 문 달리기, 최대 3라운드 푸시-유어-럭) / 몬스터 모드 → `arena`(몬스터 무리+보석 3개) → `quiz`(결과/계속 선택) → `portal`(다음 층 내려갈지 선택 — 거절 시 portalRetryRef 증가로 포털 재무장) → `draft`(보상 3택 1) → `run` / `over`(사망 → 재도전 or 마을). HUD·빌드 칩·오버레이는 캔버스 위 DOM. 사망 판정은 hp useEffect. Canvas는 run 계열 phase에만 마운트(배경·fog는 Canvas 레벨), 층 전환은 DungeonScene key 리마운트, 미니게임 라운드는 DoorRunScene/GemArenaScene key 리마운트. 미니게임 결과는 quizResultRef(seq 증가)로 던전 씬에 전달. 보상: 통과한 문·주운 보석 수 = 아이템 수, 3개 완주 = 전설(3개+완전회복), 실패 = 전부 빈손. **보물상자 모드 분기**는 modeRef(onChest useCallback 안 stale 방지)로 판단.
+- **몬스터 아레나** (보물상자 '몬스터' 모드, `arena`/`arenaover` phase + `GemArenaScene`) — 수학 대신 우르르 몰려오는 무리를 뚫고 바닥의 보석 3개를 몸으로 주우면 능력치업(=3문 완주와 동일 보상). **아레나 전용 체력**(ARENA_MAX_HP=100, 본체와 분리)이 0이 되면 `arenaover`로 — 본체는 무사하고 **몇 번이고 재도전**(arenaTry로 리마운트) 또는 모은 보석만큼 받고 나가기(`bailArena`→grantRewards(N)). 아레나 HUD는 👹 + 아레나 체력바 + 💎 진행도. DEV 훅 `__d100arena`(place/state/collect/hurt).
 - `src/three/DungeonScene.tsx` — 층 하나의 씬+시뮬레이션. 지형·적·투사체·파티클 전부 InstancedMesh. 시뮬레이션은 useFrame에서 ref 기반(React 상태는 onDamage/onKill/onExit/onChest 이벤트만). 타격감: 피격 흰색 번쩍(인스턴스 색)+넉백+스파크, 처치 폭발, 카메라 셰이크. 파워업 시각화: 멀티샷 궤도 구슬, 공격력별 투사체 크기·색, 체력별 몸집, 보물 획득 황금 잔광. 입력은 useMoveInput 훅 (키보드 + 터치 드래그, button 위에서는 시작 안 함). pausedRef로 퀴즈/드래프트/게임오버 중 정지. DEV 전용 `window.__d100`(teleport/state) — 자동 검증용.
 - `src/lib/dungeon.ts` — 절차 생성. 방 흩뿌리기 + 폭 2 L자 복도 순차 연결(연결 보장). `GRID`=44셀, `CELL`=2. 충돌은 `canStand`(네 모서리 셀 검사). 시작 방 안전지대, 출구 인접 스폰 금지, 층당 보물상자 1개(시작·출구에서 떨어진 곳).
 - `src/three/DoorRunScene.tsx` — **두 문 달리기 미니게임** (두 문 러너 인게임 재현). 자동 달리기 + 좌우 조작(useSteer: 화면 좌/우 꾹·←/→), 보라 게이트·유리 옆벽·문제판, 문 사이 벽 막힘, 몸으로 정답 문 통과 → onDone(true)·색종이 / 오답 💥 뒤로 넘어짐·정답 문 초록 표시 → onDone(false). 미니게임 동안 DungeonScene은 hidden(보임·카메라 양보). DEV 훅 `__d100run`(place/state), 시간 가속 `__d100speed`.
+- `src/three/GemArenaScene.tsx` — **몬스터 아레나 미니게임** (보물상자 '몬스터' 모드). 오픈 아레나(반경 ARENA_R=9, 그리드 없이 경계 클램프) + 계속 몰려오는 무리(aliveCap까지 재스폰) + 고정 위치 보석 3개(octahedron). **무리는 1층부터 4타입 전부 섞임**(pickArenaType — chaser/shooter/dasher/tank, 본체 던전을 미리 맛보게 + 긴장감) — 타입별 AI·실루엣·슈터 탄막(eshots)까지 본체 이식. 본체와 동일한 useMoveInput·자동조준 발사·넉백(탱커 면역)·파티클 재사용. 보석 3개 완수 → onDone(true,3)·전설 보상, 체력 0 → onDone(false, 모은 보석 수). 아레나 동안 DungeonScene은 hidden(카메라 양보). DEV 훅 `__d100arena`.
 - `src/three/Hero.tsx` — 공용 주인공 블록 캐릭터 (던전·미니게임 세계관 통일).
 - `src/three/textTexture.ts` — 한글 텍스트 → 캔버스 텍스처 (문제판·문 답, 두문러너 labels.ts 축소판).
-- `src/lib/quiz.ts` — 미니게임 문제 생성. **던전 종류(DungeonMode: 'kids' 초등 / 'adult' 어른)** × 층 깊이로 난이도 결정 — kids: 한자리±→두자리±→곱셈구구→두자리×한자리 / adult: 두자리±→두자리×한자리→혼합→두자리×두자리. 근접 오답, 문제 은행 없음. 라운드 보정 +6/라운드. 던전 입구(마을 choice)에서 모드 선택, HUD에 🎒/🧠 표시.
+- `src/lib/quiz.ts` — 미니게임 문제 생성. **던전 종류(DungeonMode: 'kids' 초등 / 'adult' 어른 / 'monster' 몬스터)** × 층 깊이로 난이도 결정 — kids: 한자리±→두자리±→곱셈구구→두자리×한자리 / adult: 두자리±→두자리×한자리→혼합→두자리×두자리. 'monster'는 수학 대신 아레나 전투라 makeQuiz 미호출. 근접 오답, 문제 은행 없음. 라운드 보정 +6/라운드. 던전 입구(마을 choice)에서 모드 선택, HUD에 🎒/🧠/👹 표시.
 - `src/lib/sound.ts` — Web Audio 합성 효과음 19종 (파일 없음): tap/pick/hit(연사 제한)/kill/hurt/doorrun/pass/crash/treasure/legend/memory/lore/portal/bell/gift/over/enter/heartbeat/roar/unlock. phase 전환음은 App useEffect, 타격·통과음은 씬에서 직접 호출. 음소거: localStorage `d100-muted` + HUD·타이틀 🔊 버튼. `getAc()`로 AudioContext를 music.ts와 공유.
-- `src/lib/music.ts` — **절차 생성 BGM** (파일 없음, 16분음표 스텝 시퀀서 + 룩어헤드 스케줄링): title(패드)/town(왈츠)/dungeon(깊이별 템포·옥타브 변화)/doorrun(질주)/boss(오스티나토). App useEffect가 phase·보스 생존·층 티어에 따라 트랙 전환. 음소거 토글 시 `music.sync()`.
+- `src/lib/music.ts` — **절차 생성 BGM** (파일 없음, 16분음표 스텝 시퀀서 + 룩어헤드 스케줄링): title(패드)/town(왈츠)/dungeon(깊이별 템포·옥타브 변화)/doorrun(질주)/boss(오스티나토 — 몬스터 아레나도 이 트랙). App useEffect가 phase·보스 생존·층 티어에 따라 트랙 전환. 음소거 토글 시 `music.sync()`.
 - **보스 "페이지의 수호자"** (10층마다, DungeonScene) — 출구를 지키며 포털 봉인(처치 전 포털 숨김·비활성). 느린 추격 + 8방향 방사 탄막(eshots 풀) + 강한 접촉 피해. 처치 시 확정 보물 1개 + 회복 30 + 봉인 해제 연출. HUD에 보스 체력바. hp = 150+층×25.
 - **엔딩 (100층)** — 100층 출구는 황금 문. 접촉 시 `ending` phase: 혼자 나가기 / 촌장(작가)과 함께 나가기 선택 → 각각 다른 에필로그(story.ts ENDING_*) → 통계 화면. 100층에도 보스 있음(최종전 후 문).
 - **기억 완성 보상** — 12번째 기억 회수 시 `memfull` phase: 아이템 2개 + 완전 회복.

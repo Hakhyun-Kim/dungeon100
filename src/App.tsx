@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import DungeonScene, { type QuizResult } from './three/DungeonScene';
 import DoorRunScene from './three/DoorRunScene';
+import GemArenaScene, { ARENA_MAX_HP } from './three/GemArenaScene';
 import { BASE_STATS, UPGRADES, draftThree, type Stats, type Upgrade } from './lib/upgrades';
 import { makeQuiz, type DungeonMode } from './lib/quiz';
 import { mulberry32 } from './lib/rng';
@@ -40,7 +41,8 @@ const SHOP_ITEMS: { key: keyof Meta; icon: string; name: string; desc: string; m
 const shopCost = (lv: number) => (lv + 1) * 25;
 
 // 흐름: title → story(인트로) → town(마을) → run
-//  - 보물상자: run → doorrun(두 문 달리기, 최대 3연속) → quiz(결과) → memory(되찾은 기억) → run
+//  - 보물상자(수학 모드): run → doorrun(두 문 달리기, 최대 3연속) → quiz(결과) → memory(되찾은 기억) → run
+//  - 보물상자(몬스터 모드): run → arena(무리 처치+보석 3개) → quiz(보상) / arenaover(쓰러짐 → 재도전·포기) → memory → run
 //  - 층 이동: run → portal(내려갈지 선택) → draft(보상 3택 1) → lore(벽의 글귀) → run(다음 층)
 //  - 5층마다: run → homedoor(마을 문 선택) → town(방문 — 층 유지) → run
 type Phase =
@@ -49,6 +51,8 @@ type Phase =
   | 'town'
   | 'run'
   | 'doorrun'
+  | 'arena'
+  | 'arenaover'
   | 'quiz'
   | 'memory'
   | 'memfull'
@@ -89,6 +93,12 @@ export default function App() {
   const [quizView, setQuizView] = useState<QuizView>('no');
   const [rewards, setRewards] = useState<Upgrade[]>([]);
   const [doorRound, setDoorRound] = useState(1);
+  // 몬스터 아레나 (보물상자 '몬스터' 모드)
+  const [arenaHp, setArenaHp] = useState(ARENA_MAX_HP);
+  const [arenaMax, setArenaMax] = useState(ARENA_MAX_HP);
+  const [arenaGems, setArenaGems] = useState(0);
+  const [arenaTry, setArenaTry] = useState(0); // 재도전 시 씬 리마운트 key
+  const [arenaDeathGems, setArenaDeathGems] = useState(0);
   const [storyIdx, setStoryIdx] = useState(0);
   const [townIdx, setTownIdx] = useState(0);
   const [townScript, setTownScript] = useState<TownNode[]>(TOWN_FIRST);
@@ -115,6 +125,8 @@ export default function App() {
   statsRef.current = stats;
   const floorNoRef = useRef(floorNo);
   floorNoRef.current = floorNo;
+  const modeRef = useRef(mode); // onChest(useCallback) 안에서 최신 모드 참조
+  modeRef.current = mode;
   const pausedRef = useRef(false);
   pausedRef.current = phase !== 'run' || debugOpen;
   const quizResultRef = useRef<QuizResult | null>(null);
@@ -149,6 +161,7 @@ export default function App() {
   // phase 전환 효과음
   useEffect(() => {
     if (phase === 'doorrun') sfx.doorrun();
+    else if (phase === 'arena') sfx.roar();
     else if (phase === 'memory') sfx.memory();
     else if (phase === 'lore') sfx.lore();
     else if (phase === 'portal') sfx.portal();
@@ -169,6 +182,8 @@ export default function App() {
       music.play('town');
     } else if (phase === 'doorrun') {
       music.play('doorrun');
+    } else if (phase === 'arena' || phase === 'arenaover') {
+      music.play('boss', Math.floor((floorNo - 1) / 5));
     } else if (phase === 'over') {
       music.stop();
     } else {
@@ -456,8 +471,17 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const onChest = useCallback(() => {
-    setDoorRound(1);
-    setPhase('doorrun');
+    if (modeRef.current === 'monster') {
+      // 몬스터 모드 — 보물상자는 몬스터 아레나를 연다
+      setArenaGems(0);
+      setArenaHp(ARENA_MAX_HP);
+      setArenaMax(ARENA_MAX_HP);
+      setArenaTry((t) => t + 1);
+      setPhase('arena');
+    } else {
+      setDoorRound(1);
+      setPhase('doorrun');
+    }
   }, []);
   const onHomeDoor = useCallback(() => setPhase('homedoor'), []);
   const onTrace = useCallback(() => {
@@ -500,6 +524,44 @@ export default function App() {
   const runDeeper = () => {
     setDoorRound((r) => r + 1);
     setPhase('doorrun');
+  };
+
+  // ── 몬스터 아레나 결과 (DoorRunScene처럼 매 렌더 새 콜백을 넘겨도 r3f가 최신을 호출)
+  const onArenaHp = (hpNow: number, max: number) => {
+    setArenaHp(hpNow);
+    setArenaMax(max);
+  };
+  const onArenaGem = (n: number) => setArenaGems(n);
+  const onArenaDone = (cleared: boolean, gems: number) => {
+    if (cleared) {
+      // 보석 3개 완수 = 전설 보물 (아이템 3개 + 완전 회복)
+      grantRewards(MAX_DOOR_ROUND);
+      setQuizView('ok');
+      setPhase('quiz');
+    } else {
+      // 쓰러짐 — 본체는 무사, 재도전할지 물어본다
+      setArenaDeathGems(gems);
+      setPhase('arenaover');
+    }
+  };
+  const retryArena = () => {
+    sfx.tap();
+    setArenaGems(0);
+    setArenaHp(ARENA_MAX_HP);
+    setArenaMax(ARENA_MAX_HP);
+    setArenaTry((t) => t + 1);
+    setPhase('arena');
+  };
+  const bailArena = () => {
+    sfx.tap();
+    if (arenaDeathGems > 0) {
+      grantRewards(arenaDeathGems); // 모은 보석 수만큼 보상
+      setQuizView('ok');
+    } else {
+      setRewards([]);
+      setQuizView('no');
+    }
+    setPhase('quiz');
   };
 
   const continueFromQuiz = () => {
@@ -590,7 +652,7 @@ export default function App() {
           <DungeonScene
             key={`${runId}:${floorNo}`}
             floorNo={floorNo}
-            hidden={phase === 'doorrun'}
+            hidden={phase === 'doorrun' || phase === 'arena' || phase === 'arenaover'}
             statsRef={statsRef}
             pausedRef={pausedRef}
             quizResultRef={quizResultRef}
@@ -610,13 +672,23 @@ export default function App() {
           {phase === 'doorrun' && (
             <DoorRunScene key={doorRound} quiz={quiz} onDone={onDoorRunDone} />
           )}
+          {phase === 'arena' && (
+            <GemArenaScene
+              key={arenaTry}
+              floorNo={floorNo}
+              statsRef={statsRef}
+              onArenaHp={onArenaHp}
+              onGem={onArenaGem}
+              onDone={onArenaDone}
+            />
+          )}
         </Canvas>
       )}
 
-      {inGame && phase !== 'town' && (
+      {inGame && phase !== 'town' && phase !== 'arena' && phase !== 'arenaover' && (
         <div className="hud">
           <div className="hud-chip">
-            {mode === 'kids' ? '🎒' : '🧠'} {floorNo}층
+            {mode === 'kids' ? '🎒' : mode === 'adult' ? '🧠' : '👹'} {floorNo}층
           </div>
           <div className="hp-wrap">
             <div className="hp-bar" style={{ width: `${hpRatio * 100}%` }} />
@@ -626,6 +698,26 @@ export default function App() {
           </div>
           <div className="hud-chip">💀 {kills}</div>
           <div className="hud-chip">🪙 {coins}</div>
+          <button className="hud-chip mute-btn" onClick={toggleMute}>
+            {muted ? '🔇' : '🔊'}
+          </button>
+        </div>
+      )}
+
+      {/* 몬스터 아레나 HUD — 아레나 전용 체력 + 보석 진행도 */}
+      {phase === 'arena' && (
+        <div className="hud">
+          <div className="hud-chip">👹 아레나</div>
+          <div className="hp-wrap">
+            <div
+              className="hp-bar"
+              style={{ width: `${Math.max(0, (arenaHp / arenaMax) * 100)}%` }}
+            />
+            <span className="hp-text">
+              {Math.ceil(arenaHp)} / {arenaMax}
+            </span>
+          </div>
+          <div className="hud-chip">💎 {arenaGems} / 3</div>
           <button className="hud-chip mute-btn" onClick={toggleMute}>
             {muted ? '🔇' : '🔊'}
           </button>
@@ -848,6 +940,12 @@ export default function App() {
         </div>
       )}
 
+      {phase === 'arena' && (
+        <div className="doorrun-hint">
+          💎 보석 3개를 모아라! 무리를 뚫고 몸으로 줍기 (드래그 / WASD) — 쓰러져도 다시 도전 가능
+        </div>
+      )}
+
       {phase === 'portal' && (
         <div className="screen quiz-screen">
           <h2>🌀 아래로 내려가는 포털이 열려 있다</h2>
@@ -888,6 +986,31 @@ export default function App() {
         </div>
       )}
 
+      {phase === 'arenaover' && (
+        <div className="screen quiz-screen">
+          <h2>💥 아레나에서 쓰러졌다</h2>
+          <p className="quiz-sub">
+            하지만 본체는 무사하다 — 이 상자는 몇 번이고 다시 도전할 수 있다.
+            {arenaDeathGems > 0 && (
+              <>
+                <br />
+                지금까지 💎 {arenaDeathGems}개를 모았다.
+              </>
+            )}
+          </p>
+          <div className="dialog-choices">
+            <button className="choice-btn" onClick={retryArena}>
+              🔁 다시 도전 (보석 초기화)
+            </button>
+            <button className="choice-btn" onClick={bailArena}>
+              {arenaDeathGems > 0
+                ? `🎁 여기까지 — 보석 ${arenaDeathGems}개 받기`
+                : '🏳️ 포기하고 나간다'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {phase === 'quiz' && (
         <div className="screen quiz-screen">
           {quizView === 'choice' && (
@@ -911,10 +1034,18 @@ export default function App() {
           {quizView === 'ok' && rewards.length > 0 && (
             <>
               <h2>
-                {rewards.length >= MAX_DOOR_ROUND ? '🏆 전설의 보물이다!' : '🎉 보물을 얻었다!'}
+                {rewards.length >= MAX_DOOR_ROUND
+                  ? mode === 'monster'
+                    ? '🏆 세 보석의 축복!'
+                    : '🏆 전설의 보물이다!'
+                  : '🎉 보물을 얻었다!'}
               </h2>
               {rewards.length >= MAX_DOOR_ROUND && (
-                <p className="quiz-sub">세 개의 문을 모두 통과! 체력도 가득 찼다.</p>
+                <p className="quiz-sub">
+                  {mode === 'monster'
+                    ? '세 개의 보석을 모두 손에 넣었다! 체력도 가득 찼다.'
+                    : '세 개의 문을 모두 통과! 체력도 가득 찼다.'}
+                </p>
               )}
               <div className="cards">
                 {rewards.map((u, i) => (
@@ -932,12 +1063,21 @@ export default function App() {
           )}
           {quizView === 'no' && (
             <>
-              <h2>💨 아쉽다! 정답은 {quiz.answers[quiz.correct]}</h2>
-              <p className="quiz-sub">
-                {doorRound > 1
-                  ? `${doorRound - 1}개의 문을 통과했지만… 보물은 전부 먼지가 되었다.`
-                  : '상자가 먼지가 되어 사라졌다…'}
-              </p>
+              {mode === 'monster' ? (
+                <>
+                  <h2>💨 보석을 하나도 줍지 못했다…</h2>
+                  <p className="quiz-sub">무리에 밀려 빈손으로 물러났다. 상자가 먼지가 되어 사라졌다…</p>
+                </>
+              ) : (
+                <>
+                  <h2>💨 아쉽다! 정답은 {quiz.answers[quiz.correct]}</h2>
+                  <p className="quiz-sub">
+                    {doorRound > 1
+                      ? `${doorRound - 1}개의 문을 통과했지만… 보물은 전부 먼지가 되었다.`
+                      : '상자가 먼지가 되어 사라졌다…'}
+                  </p>
+                </>
+              )}
               <button className="big-btn" onClick={continueFromQuiz}>
                 계속 탐험
               </button>

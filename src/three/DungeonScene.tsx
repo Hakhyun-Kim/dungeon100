@@ -1298,7 +1298,8 @@ function DungeonScene({
 
 // 키보드(WASD/방향키) + 터치 드래그(가상 스틱) 입력 → 정규화된 이동 벡터
 // e.code 기반이라 한/영 입력 상태와 무관. Shift 조합(디버그 키 등)은 무시.
-function useMoveInput() {
+// 몬스터 아레나(GemArenaScene)에서도 재사용한다.
+export function useMoveInput() {
   const dir = useRef({ x: 0, z: 0 });
   useEffect(() => {
     const keys = new Set<string>();

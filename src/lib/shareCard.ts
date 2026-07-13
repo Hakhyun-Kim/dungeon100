@@ -1,4 +1,5 @@
 // 게임 기록 공유 카드 — 캔버스로 그려 저장/공유 (파일·서버 없음)
+import type { DungeonMode } from './quiz';
 
 export interface CardStats {
   floor: number;
@@ -6,7 +7,7 @@ export interface CardStats {
   mem: number;
   memMax: number;
   best: number;
-  mode: 'kids' | 'adult';
+  mode: DungeonMode;
   cleared?: boolean;
 }
 
@@ -58,7 +59,7 @@ function drawCard(s: CardStats): HTMLCanvasElement {
     ['💀 처치', String(s.kills)],
     ['💭 되찾은 기억', `${Math.min(s.mem, s.memMax)} / ${s.memMax}`],
     ['🏆 최고 기록', `${Math.max(s.best, s.floor)}층`],
-    ['🚪 던전', s.mode === 'kids' ? '🎒 초등학교' : '🧠 어른'],
+    ['🚪 던전', s.mode === 'kids' ? '🎒 초등학교' : s.mode === 'adult' ? '🧠 어른' : '👹 몬스터'],
   ];
   x.font = `30px ${F}`;
   rows.forEach(([label, val], i) => {
