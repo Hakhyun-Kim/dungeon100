@@ -266,6 +266,9 @@ export default function App() {
     const h = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       if (debugOpen) return;
+      // 자동 반복(키를 누르고 있을 때) 입력은 무시 — 이동하려고 누른 채로 포털·대화 화면이
+      // 떠도 눌러져 있던 키가 자동으로 선택되지 않게. 한 번 떼었다 다시 눌러야 반응한다.
+      if (e.repeat) return;
       const k = e.key;
       const isEnter = k === 'Enter' || k === ' ';
       const isLeft = k === 'ArrowLeft';
