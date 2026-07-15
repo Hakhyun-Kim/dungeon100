@@ -63,7 +63,9 @@ export default function TownScene({
   const npcRefs = useRef<(THREE.Group | null)[]>([null, null, null]);
   const entranceRef = useRef<THREE.Group>(null);
   const entranceLightRef = useRef<THREE.PointLight>(null);
-  const lastNear = useRef<TownTarget>(null);
+  // undefined로 시작 → 마운트 후 첫 프레임에 실제 근접값(보통 null)을 반드시 1회 보고.
+  // (상점 등에서 씬이 리마운트될 때 App의 stale한 '무크와 대화' 버튼을 확실히 지운다)
+  const lastNear = useRef<TownTarget | undefined>(undefined);
 
   // NPC 이름표 + 던전 입구 표지 텍스처
   const labels = useMemo(

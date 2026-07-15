@@ -313,9 +313,10 @@ export default function App() {
           dlg.click();
           return;
         }
-        // 대화창이 없으면 근처 상호작용 버튼 (말 걸기/던전 입구)
+        // 대화창이 없으면 근처 상호작용 버튼 (말 걸기/던전 입구) — Enter/Space만.
+        // →는 이동 키라 여기서 반응하면 걷다가 대화가 열려 버림.
         const act = document.querySelector<HTMLButtonElement>('.village-action');
-        if (phase === 'village' && act) {
+        if (phase === 'village' && act && isEnter) {
           e.preventDefault();
           act.click();
         }
