@@ -61,7 +61,12 @@ export type TownNode =
   | {
       kind: 'choice';
       prompt: string;
-      options: { label: string; next?: number; action?: 'enter' | 'return' | 'shop'; mode?: DungeonMode }[];
+      options: {
+        label: string;
+        next?: number;
+        action?: 'enter' | 'return' | 'shop' | 'close';
+        mode?: DungeonMode;
+      }[];
     };
 
 // 첫 방문 — 촌장에게 퀘스트를 받고 던전 입구까지
@@ -547,6 +552,110 @@ export function deathVisitScript(floorNo: number): TownNode[] {
       kind: 'choice',
       prompt: `${floorNo}층 문 앞에 다시 섰다. 몸이 개운하다.`,
       options: [{ label: '⚔️ 던전으로 돌아간다', action: 'return' }],
+    },
+  ];
+}
+
+// ── 걸어다니는 마을(TownScene)에서 NPC에게 다가가 나누는 대화 ──
+// 상황: 'enter'(던전 입장 전 허브) / 'visit'(5층마다 마을 문) / 'death'(부활 체크포인트)
+// line 노드의 next가 음수면 대화 종료(마을로 복귀).
+export type TownContext = 'enter' | 'visit' | 'death';
+
+// 촌장 — 퀘스트·세계관. 깊이(층) 방문마다 진실에 한 걸음씩 다가간다.
+export function chiefTalk(ctx: TownContext, firstTime: boolean, floorNo: number): TownNode[] {
+  const L = (text: string, next: number): TownNode => ({ kind: 'line', icon: '👵', speaker: '촌장', text, next });
+  if (ctx === 'death') {
+    return [L(`${floorNo}층까지 온 걸음이 헛되지 않았단다. 다시 내려가 보렴 — 이번엔 조금 더 멀리.`, -1)];
+  }
+  if (ctx === 'visit') {
+    const tier = Math.floor(floorNo / 5);
+    if (tier <= 1)
+      return [
+        L("정말 던전 안의 문으로 나왔구먼! '다섯 층마다 책갈피가 꽂힌다'는 옛말이 사실이었어.", 1),
+        L('책갈피가 무슨 뜻이냐고? 누군가 어디까지 읽었는지 표시해 두는 것 같지 않니?', -1),
+      ];
+    if (tier === 2)
+      return [
+        L('이 마을엔 아이가 태어나지 않아. 아무도 늙지도 않지. …이상하지? 근데 아무도 이상해하질 않아.', 1),
+        L('나도 방금 처음으로 이상하다고 생각했네. 네가 온 뒤로, 멈춰 있던 것들이 조금씩 움직이는구나.', -1),
+      ];
+    if (tier === 3)
+      return [
+        L('보물이 기억을 되돌려준다는 얘기, 들었지. 이 던전은 잔인한 건지 다정한 건지 모르겠단 말이야.', 1),
+        L('기억을 잘 붙들고 있으렴. 여기선 그게 제일 쉽게 사라지는 것이거든.', -1),
+      ];
+    if (tier === 4)
+      return [
+        L('…20층. 여기까지 온 사람에게는 말해 주기로 정해 뒀단다.', 1),
+        L("나는 이 책을 '읽다가' 떨어진 게 아니야. 이 책을 '쓰던' 사람이란다. 마지막 장이 안 써져서… 이야기 안에 갇혔지.", 2),
+        L('네가 한 층 내려갈 때마다 벽에 문장이 하나씩 늘어. 네 모험이 마지막 장을 대신 쓰고 있는 거야. …부디, 좋은 결말이 되어 다오.', -1),
+      ];
+    return [L('얼마 안 남았구나. 100층의 문은 이 책의 뒤표지란다. 좋은 결말을 부탁한다.', -1)];
+  }
+  // enter
+  if (firstTime) {
+    return [
+      L('오, 또 떨어졌구먼! 2026년에서 왔다고? 쯧쯧, 집에 가고 싶겠지.', 1),
+      L('마을 뒤 백층 던전, 그 가장 깊은 곳에 「집으로 가는 문」이 있단다. 끝까지 간 사람은… 음, 아직 없지만!', 2),
+      L('던전 보물상자는 시험을 걸어와. 두 문의 수수께끼를 풀거나, 겁 없으면 몬스터를 상대해도 되지. 준비되면 저 던전 입구로 가렴.', -1),
+    ];
+  }
+  return [L('왔구먼! 던전이 오늘도 입을 벌리고 기다린다. 준비되면 저 입구로 가렴.', -1)];
+}
+
+// 여관 소녀 니나 — 수프로 회복. 부활 직후엔 '죽지 않는다'는 진실을 넌지시.
+export function ninaTalk(ctx: TownContext): TownNode[] {
+  if (ctx === 'death') {
+    return [
+      { kind: 'line', icon: '👧', speaker: '여관 소녀 니나', text: '또 눈을 떴네요! 놀라지 마요 — 전에 말했잖아요. "주인공은 안 죽어요. 다시 쓰일 뿐이죠."', next: 1 },
+      { kind: 'line', icon: '👧', speaker: '니나', text: '상처는 제가 다 돌봐 뒀어요. 특제 수프도 한 그릇 — 몸이 개운해질 거예요!', next: -1, gift: 'heal' },
+    ];
+  }
+  return [
+    { kind: 'line', icon: '👧', speaker: '여관 소녀 니나', text: '모험가님! 얼굴이 반쪽이 됐어요. 우리 여관 특제 수프 드시고 가요. 서비스예요!', next: -1, gift: 'heal' },
+  ];
+}
+
+// 대장장이 무크 — 대화 끝에 강화 상점(대장간)을 연다.
+export function mukTalk(): TownNode[] {
+  return [
+    { kind: 'line', icon: '🧔', speaker: '대장장이 무크', text: '오, 잠옷 모험가! 죽어도 몸에 남는 단련이 있지. 코인만 있으면 몇 번이고 벼려 주마.', next: 1 },
+    {
+      kind: 'choice',
+      prompt: '무크의 손은 쇳가루가 아니라… 잉크로 얼룩져 있었다.',
+      options: [
+        { label: '🛠️ 대장간 — 영구 강화 (🪙)', action: 'shop' },
+        { label: '↩️ 다음에 올게', action: 'close' },
+      ],
+    },
+  ];
+}
+
+// 던전 입구 아치 — 상황별 내려가기. 첫 입장/허브에선 난이도(모드)를 고른다.
+export function entranceOptions(ctx: TownContext, floorNo: number): TownNode[] {
+  if (ctx === 'enter') {
+    return [
+      {
+        kind: 'choice',
+        prompt: '던전 입구다. 어두운 계단이 아래로 이어진다. 어느 쪽 시험을 택할까?',
+        options: [
+          { label: '🎒 초등학교 던전 (쉬운 문제)', action: 'enter', mode: 'kids' },
+          { label: '🧠 어른 던전 (어려운 문제)', action: 'enter', mode: 'adult' },
+          { label: '👹 몬스터 던전 (문제 대신 전투)', action: 'enter', mode: 'monster' },
+          { label: '🕯️ 아직 준비가…', action: 'close' },
+        ],
+      },
+    ];
+  }
+  // visit / death — 하던 도전을 이어서 내려간다
+  return [
+    {
+      kind: 'choice',
+      prompt: `던전 입구다. ${floorNo}층으로 이어진 계단이 기다린다.`,
+      options: [
+        { label: `⚔️ 던전으로 내려간다 (${floorNo}층)`, action: 'return' },
+        { label: '🕯️ 마을을 더 둘러본다', action: 'close' },
+      ],
     },
   ];
 }

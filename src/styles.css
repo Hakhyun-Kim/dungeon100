@@ -567,6 +567,63 @@ body {
   }
 }
 
+/* ── 걸어다니는 마을 (TownScene) ── */
+.hud-spacer {
+  flex: 1;
+}
+
+.village-hint {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 46px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 12, 40, 0.72);
+  border: 1px solid rgba(154, 107, 255, 0.4);
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: #d8cff2;
+  max-width: 92vw;
+  text-align: center;
+  pointer-events: none;
+  z-index: 40;
+}
+
+.village-action {
+  position: absolute;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  font-family: inherit;
+  font-size: 17px;
+  color: #fff;
+  background: linear-gradient(180deg, #6a4fd0, #4a2f8f);
+  border: 2px solid #9a6bff;
+  border-radius: 999px;
+  padding: 12px 26px;
+  box-shadow: 0 8px 24px rgba(122, 77, 255, 0.5);
+  cursor: pointer;
+  animation: villagePulse 1.3s ease-in-out infinite;
+}
+
+@keyframes villagePulse {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.06);
+  }
+}
+
+/* 대화창은 3D 마을이 보이도록 배경 없이 하단에 */
+.village-talk {
+  justify-content: flex-end;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  background: none;
+}
+
 .reward-pop {
   animation: rewardPop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1);
   border-color: #ffd166;

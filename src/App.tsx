@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import DungeonScene, { type QuizResult } from './three/DungeonScene';
 import DoorRunScene from './three/DoorRunScene';
 import GemArenaScene, { ARENA_MAX_HP } from './three/GemArenaScene';
+import TownScene, { type TownTarget } from './three/TownScene';
 import { BASE_STATS, UPGRADES, draftThree, type Stats, type Upgrade } from './lib/upgrades';
 import { makeQuiz, type DungeonMode } from './lib/quiz';
 import { mulberry32 } from './lib/rng';
@@ -12,9 +13,6 @@ import { music } from './lib/music';
 import { shareCard } from './lib/shareCard';
 import {
   STORY_NODES,
-  TOWN_FIRST,
-  TOWN_ENTRY,
-  TOWN_REVISIT,
   MEMORIES,
   ENDING_ALONE,
   ENDING_TOGETHER,
@@ -23,8 +21,11 @@ import {
   GIRL_SCRIPT,
   getLore,
   getDeathLore,
-  townVisitScript,
-  deathVisitScript,
+  chiefTalk,
+  ninaTalk,
+  mukTalk,
+  entranceOptions,
+  type TownContext,
   type TownNode,
 } from './lib/story';
 
@@ -50,6 +51,7 @@ type Phase =
   | 'title'
   | 'story'
   | 'town'
+  | 'village'
   | 'run'
   | 'doorrun'
   | 'arena'
@@ -104,9 +106,14 @@ export default function App() {
   const [arenaDeathGems, setArenaDeathGems] = useState(0);
   const [storyIdx, setStoryIdx] = useState(0);
   const [townIdx, setTownIdx] = useState(0);
-  const [townScript, setTownScript] = useState<TownNode[]>(TOWN_FIRST);
+  const [townScript, setTownScript] = useState<TownNode[]>([]); // DOM 마을 화면(현재 56층 소녀 전용)
   const [townMode, setTownMode] = useState<'pre' | 'visit' | 'girl'>('pre');
   const [giftName, setGiftName] = useState<string | null>(null);
+  // 걸어다니는 마을 (TownScene)
+  const [villageCtx, setVillageCtx] = useState<TownContext>('enter');
+  const [villageFirst, setVillageFirst] = useState(false);
+  const [villageNear, setVillageNear] = useState<TownTarget>(null);
+  const [villageTalk, setVillageTalk] = useState<{ script: TownNode[]; idx: number } | null>(null);
   const [mode, setMode] = useState<DungeonMode>('kids');
   const [muted, setMutedState] = useState(isMuted());
   const [bossHp, setBossHp] = useState(0);
@@ -132,6 +139,9 @@ export default function App() {
   modeRef.current = mode;
   const pausedRef = useRef(false);
   pausedRef.current = phase !== 'run' || debugOpen;
+  // 마을에선 대화창이 열려 있을 때만 이동 정지 (그 외엔 자유롭게 걸어다님)
+  const villagePausedRef = useRef(false);
+  villagePausedRef.current = villageTalk !== null || debugOpen;
   const quizResultRef = useRef<QuizResult | null>(null);
   const portalRetryRef = useRef(0);
   const homeRetryRef = useRef(0);
@@ -181,7 +191,7 @@ export default function App() {
     }
     if (phase === 'title' || phase === 'story' || phase === 'ending' || phase === 'memfull') {
       music.play('title');
-    } else if (phase === 'town') {
+    } else if (phase === 'town' || phase === 'village') {
       music.play('town');
     } else if (phase === 'doorrun') {
       music.play('doorrun');
@@ -293,12 +303,21 @@ export default function App() {
       // 진행 버튼 하나 (계속 탐험, 가슴에 담는다, 다음 등)
       const primary = buttons('.screen .big-btn');
       if (primary.length >= 1 && (isEnter || isRight)) return click(primary[0]);
-      // 마을 대사 진행
-      if (phase === 'town' && (isEnter || isRight)) {
-        const dlg = document.querySelector<HTMLElement>('.town-screen .dialog-box');
+      // 마을(비주얼노벨/걸어다니는 마을) 대사 진행
+      if ((phase === 'town' || phase === 'village') && (isEnter || isRight)) {
+        const dlg = document.querySelector<HTMLElement>(
+          '.town-screen .dialog-box, .village-talk .dialog-box',
+        );
         if (dlg && dlg.querySelector('.dialog-next')) {
           e.preventDefault();
           dlg.click();
+          return;
+        }
+        // 대화창이 없으면 근처 상호작용 버튼 (말 걸기/던전 입구)
+        const act = document.querySelector<HTMLButtonElement>('.village-action');
+        if (phase === 'village' && act) {
+          e.preventDefault();
+          act.click();
         }
       }
     };
@@ -357,10 +376,93 @@ export default function App() {
   const startAdventure = () => {
     sfx.tap();
     if (storySeen) {
-      goTown(TOWN_ENTRY);
+      goVillage('enter');
     } else {
       setStoryIdx(0);
       setPhase('story');
+    }
+  };
+
+  // 걸어다니는 마을로 진입 (허브·5층 방문·부활 공용)
+  const goVillage = (ctx: TownContext, first = false) => {
+    setVillageCtx(ctx);
+    setVillageFirst(first);
+    setVillageNear(null);
+    setVillageTalk(null);
+    setPhase('village');
+  };
+  const onVillageNear = useCallback((t: TownTarget) => setVillageNear(t), []);
+
+  // 마을에서 NPC/입구에 다가가 상호작용 버튼을 누르면 그에 맞는 대화 스크립트를 연다
+  const talkTo = (target: TownTarget) => {
+    if (!target) return;
+    sfx.tap();
+    let script: TownNode[] = [];
+    if (target === 'chief') script = chiefTalk(villageCtx, villageFirst, floorNo);
+    else if (target === 'nina') script = ninaTalk(villageCtx);
+    else if (target === 'muk') script = mukTalk();
+    else if (target === 'entrance') script = entranceOptions(villageCtx, floorNo);
+    if (!script.length) return;
+    applyVillageGift(script[0]);
+    setVillageTalk({ script, idx: 0 });
+  };
+
+  // 대화 노드에 선물(gift)이 있으면 1회 지급 (여관 수프 = 완전 회복)
+  const villageGiftDone = useRef<Set<TownNode>>(new Set());
+  const applyVillageGift = (node: TownNode) => {
+    if (node.kind !== 'line' || !node.gift || villageGiftDone.current.has(node)) return;
+    villageGiftDone.current.add(node);
+    if (node.gift === 'heal') {
+      setHp(stats.maxHp);
+      setGiftName('🍲 체력 완전 회복');
+      setGoldFlash((f) => f + 1);
+      sfx.gift();
+    } else {
+      const u = UPGRADES[Math.floor(mulberry32(runId * 41 + floorNo * 13 + 7)() * UPGRADES.length)];
+      gainUpgrade(u);
+      setGiftName(`${u.icon} ${u.name} 획득`);
+      setGoldFlash((f) => f + 1);
+      sfx.gift();
+    }
+  };
+
+  const closeTalk = () => setVillageTalk(null);
+
+  // 대화 진행 — line은 next(<0이면 종료), choice는 action 처리
+  const advanceTalkLine = (node: Extract<TownNode, { kind: 'line' }>) => {
+    sfx.tap();
+    if (node.next < 0 || !villageTalk || node.next >= villageTalk.script.length) {
+      closeTalk();
+      return;
+    }
+    const nextNode = villageTalk.script[node.next];
+    applyVillageGift(nextNode);
+    setVillageTalk({ script: villageTalk.script, idx: node.next });
+  };
+  const chooseTalkOption = (o: {
+    label: string;
+    next?: number;
+    action?: 'enter' | 'return' | 'shop' | 'close';
+    mode?: DungeonMode;
+  }) => {
+    sfx.tap();
+    if (o.action === 'enter') {
+      closeTalk();
+      enterDungeon(o.mode); // 던전 입구 → 난이도 선택 → 1층부터 새 도전
+    } else if (o.action === 'return') {
+      closeTalk();
+      setPhase('run'); // 이어서 내려가기 (5층 방문·부활 — floorNo는 이미 설정됨)
+    } else if (o.action === 'shop') {
+      closeTalk();
+      setPhase('shop');
+    } else if (o.action === 'close') {
+      closeTalk();
+    } else if (o.next != null && villageTalk) {
+      const nextNode = villageTalk.script[o.next];
+      applyVillageGift(nextNode);
+      setVillageTalk({ script: villageTalk.script, idx: o.next });
+    } else {
+      closeTalk();
     }
   };
 
@@ -631,7 +733,7 @@ export default function App() {
     sfx.tap();
     homeUsedRef.current += 1;
     setCheckpointFloor(floorNo); // 이 마을을 다녀갔으니 부활 지점 갱신
-    goTown(townVisitScript(floorNo), 'visit');
+    goVillage('visit');
   };
 
   const skipHomeDoor = () => {
@@ -649,7 +751,7 @@ export default function App() {
     setDoorRound(1);
     quizResultRef.current = null;
     setRunId((id) => id + 1); // 씬 강제 리마운트 (같은 층에서 죽어도 새로 시작)
-    goTown(deathVisitScript(checkpointFloor), 'visit');
+    goVillage('death');
   };
 
   const hpRatio = Math.max(0, Math.min(1, hp / stats.maxHp));
@@ -669,7 +771,12 @@ export default function App() {
           <DungeonScene
             key={`${runId}:${floorNo}`}
             floorNo={floorNo}
-            hidden={phase === 'doorrun' || phase === 'arena' || phase === 'arenaover'}
+            hidden={
+              phase === 'doorrun' ||
+              phase === 'arena' ||
+              phase === 'arenaover' ||
+              phase === 'village'
+            }
             statsRef={statsRef}
             pausedRef={pausedRef}
             quizResultRef={quizResultRef}
@@ -699,10 +806,17 @@ export default function App() {
               onDone={onArenaDone}
             />
           )}
+          {phase === 'village' && (
+            <TownScene pausedRef={villagePausedRef} onNear={onVillageNear} />
+          )}
         </Canvas>
       )}
 
-      {inGame && phase !== 'town' && phase !== 'arena' && phase !== 'arenaover' && (
+      {inGame &&
+        phase !== 'town' &&
+        phase !== 'village' &&
+        phase !== 'arena' &&
+        phase !== 'arenaover' && (
         <div className="hud">
           <div className="hud-chip">
             {mode === 'kids' ? '🎒' : mode === 'adult' ? '🧠' : '👹'} {floorNo}층
@@ -741,8 +855,71 @@ export default function App() {
         </div>
       )}
 
+      {/* 걸어다니는 마을 — 상단 안내 + 상호작용 버튼 + 대화창 */}
+      {phase === 'village' && (
+        <>
+          <div className="hud">
+            <div className="hud-chip">🏘️ 마을</div>
+            <div className="hud-spacer" />
+            <button className="hud-chip mute-btn" onClick={toggleMute}>
+              {muted ? '🔇' : '🔊'}
+            </button>
+          </div>
+          {!villageTalk && (
+            <div className="village-hint">
+              드래그 / WASD로 걷기 · 사람에게 다가가 대화 · 던전 입구로 가면 내려가요
+            </div>
+          )}
+          {villageNear && !villageTalk && (
+            <button className="village-action" onClick={() => talkTo(villageNear)}>
+              {villageNear === 'entrance'
+                ? '🌀 던전 입구 — 내려가기'
+                : villageNear === 'chief'
+                  ? '💬 촌장과 대화'
+                  : villageNear === 'nina'
+                    ? '💬 니나와 대화'
+                    : '💬 무크와 대화'}
+            </button>
+          )}
+          {villageTalk &&
+            (() => {
+              const node = villageTalk.script[villageTalk.idx];
+              if (!node) return null;
+              return (
+                <div className="screen village-talk">
+                  {node.kind === 'line' ? (
+                    <div className="dialog-box" onClick={() => advanceTalkLine(node)}>
+                      <div className="dialog-speaker">
+                        <span className="dialog-icon">{node.icon}</span> {node.speaker}
+                      </div>
+                      <p className="dialog-text">{node.text}</p>
+                      {node.gift && giftName && <p className="dialog-gift">🎁 {giftName}!</p>}
+                      <span className="dialog-next">▼ 터치해서 계속</span>
+                    </div>
+                  ) : (
+                    <div className="dialog-box">
+                      <p className="dialog-text">{node.prompt}</p>
+                      <div className="dialog-choices">
+                        {node.options.map((o) => (
+                          <button
+                            key={o.label}
+                            className="choice-btn"
+                            onClick={() => chooseTalkOption(o)}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+        </>
+      )}
+
       {/* 현재 빌드 (획득한 아이템) */}
-      {inGame && phase !== 'town' && Object.keys(build).length > 0 && (
+      {inGame && phase !== 'town' && phase !== 'village' && Object.keys(build).length > 0 && (
         <div className="build-row">
           {UPGRADES.filter((u) => build[u.id]).map((u) => (
             <span key={u.id} className="build-chip">
@@ -837,7 +1014,7 @@ export default function App() {
           const advance = () => {
             sfx.tap();
             setStoryAnswer(null);
-            if (isLast) goTown(TOWN_FIRST);
+            if (isLast) goVillage('enter', true);
             else setStoryIdx((i) => i + 1);
           };
           const quizPending = node.kind === 'quiz' && storyAnswer === null;
@@ -892,7 +1069,7 @@ export default function App() {
                     e.stopPropagation();
                     sfx.tap();
                     setStoryAnswer(null);
-                    goTown(TOWN_FIRST);
+                    goVillage('enter', true);
                   }}
                 >
                   건너뛰기 ⏭
@@ -1310,7 +1487,7 @@ export default function App() {
                 ⚔️ 바로 다시 도전
               </button>
             )}
-            <button className="choice-btn" onClick={() => goTown(TOWN_REVISIT)}>
+            <button className="choice-btn" onClick={() => goVillage('enter')}>
               🏘️ 처음부터 (마을·대장간 🛠️)
             </button>
           </div>
@@ -1362,7 +1539,7 @@ export default function App() {
                 className="choice-btn"
                 onClick={() => {
                   sfx.tap();
-                  setPhase('town');
+                  setPhase('village');
                 }}
               >
                 ↩️ 마을로 돌아간다
