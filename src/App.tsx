@@ -242,7 +242,15 @@ export default function App() {
     };
   }, []);
 
-  // 디버그 단축키: Shift+D 열고 닫기, Esc 닫기 (한/영 입력 상태와 무관하게 e.code 사용)
+  // 디버그 보물 (Shift+P): 보물방 클리어(전설)와 동일 — 아이템 3개 + 완전 회복.
+  // 핸들러 useEffect는 [debugAllowed] 고정이라 ref로 최신 phase·grantRewards를 본다.
+  const debugGrantRef = useRef(() => {});
+  debugGrantRef.current = () => {
+    if (phase !== 'run') return;
+    grantRewards(MAX_DOOR_ROUND, Math.floor(Math.random() * 1e9)); // 누를 때마다 다른 아이템
+  };
+
+  // 디버그 단축키: Shift+D 층 이동 열고 닫기, Shift+P 보물, Esc 닫기 (한/영 무관 e.code)
   useEffect(() => {
     if (!debugAllowed) return;
     const h = (e: KeyboardEvent) => {
@@ -250,6 +258,9 @@ export default function App() {
       if (e.code === 'KeyD' && e.shiftKey) {
         e.preventDefault();
         setDebugOpen((o) => !o);
+      } else if (e.code === 'KeyP' && e.shiftKey) {
+        e.preventDefault();
+        debugGrantRef.current();
       } else if (e.key === 'Escape') {
         setDebugOpen(false);
       }
@@ -497,8 +508,8 @@ export default function App() {
   };
 
   // 통과한 문 수(tier)만큼 보물 지급 — 3문 완주는 전설 보물(전부 + 완전 회복)
-  const grantRewards = (tier: number) => {
-    const rand = mulberry32(quizSeed + 991);
+  const grantRewards = (tier: number, seed = quizSeed + 991) => {
+    const rand = mulberry32(seed);
     const pool = [...UPGRADES];
     const picks: Upgrade[] = [];
     for (let i = 0; i < tier && pool.length > 0; i++) {
@@ -979,7 +990,9 @@ export default function App() {
               이동
             </button>
           </div>
-          <p className="quiz-sub">Shift+D 열기/닫기 · Esc 닫기 · 이동하면 체력 회복</p>
+          <p className="quiz-sub">
+            Shift+D 열기/닫기 · Esc 닫기 · 이동하면 체력 회복 · Shift+P 보물(아이템 3개+회복)
+          </p>
           <button className="skip-btn" onClick={() => setDebugOpen(false)}>
             닫기
           </button>
