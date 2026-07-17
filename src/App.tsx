@@ -4,7 +4,7 @@ import DungeonScene, { type QuizResult } from './three/DungeonScene';
 import DoorRunScene from './three/DoorRunScene';
 import GemArenaScene, { ARENA_MAX_HP } from './three/GemArenaScene';
 import TownScene, { type TownTarget } from './three/TownScene';
-import { BASE_STATS, UPGRADES, draftThree, type Stats, type Upgrade } from './lib/upgrades';
+import { BASE_STATS, SPEED_CAP, UPGRADES, draftThree, type Stats, type Upgrade } from './lib/upgrades';
 import { makeQuiz, type DungeonMode } from './lib/quiz';
 import { mulberry32 } from './lib/rng';
 import { useLocalStorage } from './lib/store';
@@ -35,12 +35,15 @@ interface Meta {
   hp: number;
   spd: number;
 }
-const SHOP_ITEMS: { key: keyof Meta; icon: string; name: string; desc: string; max: number }[] = [
-  { key: 'dmg', icon: '⚔️', name: '공격 단련', desc: '시작 공격력 +2', max: 5 },
-  { key: 'hp', icon: '💖', name: '생명 단련', desc: '시작 체력 +15', max: 5 },
-  { key: 'spd', icon: '👟', name: '신속 단련', desc: '시작 이동 +0.4', max: 5 },
+// 레벨 상한 없음 — 비용이 (lv+1)×25로 계속 오르는 무한 단련. 신속만 소프트 캡(아래 metaSpeed).
+const SHOP_ITEMS: { key: keyof Meta; icon: string; name: string; desc: string }[] = [
+  { key: 'dmg', icon: '⚔️', name: '공격 단련', desc: '시작 공격력 +2' },
+  { key: 'hp', icon: '💖', name: '생명 단련', desc: '시작 체력 +15' },
+  { key: 'spd', icon: '👟', name: '신속 단련', desc: '시작 이동 증가 (갈수록 완만)' },
 ];
 const shopCost = (lv: number) => (lv + 1) * 25;
+// 신속 단련은 레벨당 캡까지 남은 거리의 8%씩 — 1레벨은 예전과 같은 +0.4, 무한 구매해도 캡(12) 안쪽.
+const metaSpeed = (lv: number) => SPEED_CAP - (SPEED_CAP - BASE_STATS.speed) * Math.pow(0.92, lv);
 
 // 흐름: title → story(인트로) → town(마을) → run
 //  - 보물상자(수학 모드): run → doorrun(두 문 달리기, 최대 3연속) → quiz(결과) → memory(되찾은 기억) → run
@@ -375,7 +378,7 @@ export default function App() {
       ...BASE_STATS,
       damage: BASE_STATS.damage + meta.dmg * 2,
       maxHp: BASE_STATS.maxHp + meta.hp * 15,
-      speed: BASE_STATS.speed + meta.spd * 0.4,
+      speed: metaSpeed(meta.spd),
     };
     setStats(startStats);
     setHp(startStats.maxHp);
@@ -734,11 +737,9 @@ export default function App() {
   };
 
   const buyUpgrade = (key: keyof Meta) => {
-    const item = SHOP_ITEMS.find((i) => i.key === key);
-    if (!item) return;
     const lv = meta[key];
     const cost = shopCost(lv);
-    if (lv >= item.max || coins < cost) {
+    if (coins < cost) {
       sfx.tap();
       return;
     }
@@ -1540,20 +1541,18 @@ export default function App() {
             <div className="dialog-choices">
               {SHOP_ITEMS.map((it) => {
                 const lv = meta[it.key];
-                const maxed = lv >= it.max;
                 const cost = shopCost(lv);
                 return (
                   <button
                     key={it.key}
                     className="choice-btn shop-item"
-                    disabled={maxed || coins < cost}
+                    disabled={coins < cost}
                     onClick={() => buyUpgrade(it.key)}
                   >
                     <span>
                       {it.icon} {it.name} Lv.{lv}
-                      {maxed ? ' (최대)' : ''}
                     </span>
-                    <span className="shop-cost">{maxed ? '단련 완료' : `${it.desc} · 🪙 ${cost}`}</span>
+                    <span className="shop-cost">{`${it.desc} · 🪙 ${cost}`}</span>
                   </button>
                 );
               })}
