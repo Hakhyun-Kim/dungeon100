@@ -24,6 +24,7 @@
 - `npm run build` — 프로덕션 빌드
 - **디버그 층 이동: Shift+D** (Esc 닫기) — 빠른 버튼(1·5·10·…·100층) + 직접 입력, 이동 시 체력 회복. DEV에서는 항상, **배포판에서는 `?debug` 쿼리 필요** (예: …/dungeon100/?debug — 제출 심사자 오작동 방지를 위해 제출 전 재게이트, 2026-07-13). `e.code` 기반이라 한/영 입력 상태 무관. 일반 `d`는 이동 키라 Shift 조합 사용, 이동 키는 Shift 조합 무시.
 - **디버그 보물: Shift+P** (run phase에서만, 같은 `?debug` 게이트) — 보물방 클리어(전설)와 동일 보상: 랜덤 아이템 3개 + 완전 회복 + 황금 잔광·전설음. 흐름 끊김 없이 즉시 지급(quiz/memory 화면 안 거침), 누를 때마다 다른 아이템(grantRewards에 Math.random 시드 전달).
+- **디버그 코인: Shift+M** (같은 `?debug` 게이트, phase 무관) — 코인 +100. 대장간(메타 강화) 테스트용, 코인은 localStorage라 유지됨.
 - **오버레이 키보드 선택**: 모든 선택 화면을 마우스 없이 진행 가능 — 두 갈래 선택(두 문 보상·포털·마을 문·엔딩)은 ←/↑=1번·→/↓=2번, 드래프트 3장은 ←/↑↓/→ 또는 1·2·3, 진행 버튼·대사는 Enter/Space/→. 숫자 키 1~4는 모든 선택지에서 동작.
 - HUD는 z-index 50으로 오버레이(30) 위 — 음소거(🔊) 버튼이 팝업 중에도 항상 눌린다.
 - 숨김 탭(헤드리스 프리뷰)에서는 크롬이 rAF를 멈춰 3D가 안 그려짐 — `?rafshim` 쿼리로 우회 (index.html의 개발용 심: 타이머 rAF + ResizeObserver 폴리필 + **`window.__pump(n)` 동기 프레임 구동**). 크롬 집중 스로틀링(오래 숨겨진 탭, 타이머 분당 1회)에서는 타이머가 다 죽으므로 자동 검증은 `__pump` + `__d100fixdt`(고정 dt) + MessageChannel 틱(스로틀 안 됨)으로 구동할 것. 클릭 후 React 렌더는 태스크 경계가 필요 — 같은 evaluate 안에서는 MessageChannel 왕복(tick) 후 DOM을 읽어야 함. DEV 훅: `__d100`(teleport/state/hitBoss/killEnemies), `__d100run`(place/state), `__d100arena`(place/state/collect/hurt — 몬스터 아레나), `__d100town`(place/state — 걸어다니는 마을), `__d100app`(jump — 층 점프). r3f 부팅은 클릭 루프보다 느릴 수 있으니 `window.__d100` 등장까지 넉넉히 대기할 것. (아레나 훅은 씬 마운트 직후 passive effect라 같은 evaluate 안에서 tick 몇 번 돌려야 등장.)
@@ -50,7 +51,7 @@
 - `src/lib/story.ts` — 인트로 슬라이드·회상 기억 12개(MEMORIES)·층별 벽의 글귀(getLore). **걸어다니는 마을 NPC 대화는 상황(TownContext: enter/visit/death)별 함수**로: `chiefTalk`(촌장 — 첫 입장 퀘스트·5층마다 세계관 회수·부활 격려), `ninaTalk`(니나 — 수프 회복, 부활 직후 '다시 쓰일 뿐'), `mukTalk`(무크 — 대장간 상점 진입), `entranceOptions`(던전 입구 — enter는 난이도 선택, 그 외는 이어서 내려가기). line 노드 `next<0`이면 대화 종료. **세계관: 던전=쓰이다 만 책, 마을=서문, 촌장=작가, 100층 문=뒤표지.** localStorage: `d100-story`(인트로 1회), `d100-mem`(되찾은 기억 수).
 - 새 층 도착 시 `lore` phase로 벽의 글귀 1개 노출, 보물 획득 후 `memory` phase로 기억 1개 복원. 5의 배수 층엔 마을 문(dungeon.ts homeDoor) — 방문은 층 유지(townMode 'visit'), 문은 1회용(homeUsedRef), 거절 시 재무장(homeRetryRef). 몬스터는 5층 단위 티어로 모양·색 변화(DungeonScene ENEMY_TIER_*).
 - `src/lib/rng.ts` — mulberry32 시드 난수. **층 번호 = 시드** → 같은 층은 항상 같은 구조 (재현성).
-- `src/lib/upgrades.ts` — 스탯·보상 카드 풀. 드래프트는 `draftThree(rand)`, 보물 보상도 이 풀에서 지급.
+- `src/lib/upgrades.ts` — 스탯·보상 카드 풀. 드래프트는 `draftThree(rand)`, 보물 보상도 이 풀에서 지급. **이동 속도는 소프트 캡**(SPEED_CAP=12, 캡까지 남은 거리의 15%씩) — 예전 곱연산 ×1.12는 픽마다 절대 증가량이 커져 고속에서 던전 조작이 불편했음(2026-07-17 변경).
 - `src/lib/store.ts` — useLocalStorage 훅 (함수형 업데이트 지원). 키는 `d100-` 접두사: `d100-best`(최고 층), `d100-story`(인트로), `d100-mem`(기억), `d100-muted`(음소거), `d100-coins`(코인), `d100-meta`(영구 강화 {dmg,hp,spd}), `d100-deaths`(사망 횟수 — 죽음 로어 진행).
 - **적 4타입** (DungeonScene): chaser(추격)/shooter(거리 유지+조준 사격, 3층+)/dasher(조준 후 돌진, 5층+)/tank(느리고 단단·넉백 면역·피해 1.5배, 7층+). 실루엣·색으로 구분(탱커 크고 어둡게, 슈터 작고 노랗게, 대셔 길쭉+조준 시 부들부들). 슈터 탄환은 보스 탄막 풀(eshots) 공유.
 - **출구 수문장** (elite, DungeonScene) — 보스 없는 층(4층부터)의 **포털 문 앞을 지키는 정예** 1기. dasher AI를 재사용하되 더 넓은 어그로·빠른 접근·매서운 돌진, **넉백 면역**, 크고 진홍빛(전용 광원 eliteLightRef). 돌진 강타는 HP를 크게 깎고(`16+층×0.9`, 일반 접촉 `9+층×0.5`) 붉은 데미지 숫자로 보여줘 **깊이 내려갈수록 긴장감 유지**. hp `35+층×11`, 처치 코인 12. 포털을 봉인하진 않음(하드 게이트 X — 위험만 강조). DEV state에 `guardian` 노출.

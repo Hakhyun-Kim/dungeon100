@@ -250,7 +250,7 @@ export default function App() {
     grantRewards(MAX_DOOR_ROUND, Math.floor(Math.random() * 1e9)); // 누를 때마다 다른 아이템
   };
 
-  // 디버그 단축키: Shift+D 층 이동 열고 닫기, Shift+P 보물, Esc 닫기 (한/영 무관 e.code)
+  // 디버그 단축키: Shift+D 층 이동 열고 닫기, Shift+P 보물, Shift+M 코인 +100, Esc 닫기 (한/영 무관 e.code)
   useEffect(() => {
     if (!debugAllowed) return;
     const h = (e: KeyboardEvent) => {
@@ -261,6 +261,10 @@ export default function App() {
       } else if (e.code === 'KeyP' && e.shiftKey) {
         e.preventDefault();
         debugGrantRef.current();
+      } else if (e.code === 'KeyM' && e.shiftKey) {
+        e.preventDefault();
+        sfx.gift();
+        setCoins((c) => c + 100); // 대장간(메타 강화) 테스트용 — 코인은 localStorage라 죽어도 유지
       } else if (e.key === 'Escape') {
         setDebugOpen(false);
       }
@@ -991,7 +995,8 @@ export default function App() {
             </button>
           </div>
           <p className="quiz-sub">
-            Shift+D 열기/닫기 · Esc 닫기 · 이동하면 체력 회복 · Shift+P 보물(아이템 3개+회복)
+            Shift+D 열기/닫기 · Esc 닫기 · 이동하면 체력 회복 · Shift+P 보물(아이템 3개+회복) ·
+            Shift+M 코인 +100
           </p>
           <button className="skip-btn" onClick={() => setDebugOpen(false)}>
             닫기
