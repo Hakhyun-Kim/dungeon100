@@ -960,9 +960,10 @@ export default function App() {
         </div>
       )}
 
-      {flash > 0 && <div key={`f${flash}`} className="hit-flash" />}
-      {goldFlash > 0 && <div key={`g${goldFlash}`} className="hit-flash gold" />}
-      {lowHp && <div className="low-hp" />}
+      {/* 전체 화면 플래시·펄스는 디버그 모드에서 끔 — 반복 테스트 시 눈 피로 (소리 신호는 유지) */}
+      {!debugAllowed && flash > 0 && <div key={`f${flash}`} className="hit-flash" />}
+      {!debugAllowed && goldFlash > 0 && <div key={`g${goldFlash}`} className="hit-flash gold" />}
+      {!debugAllowed && lowHp && <div className="low-hp" />}
 
       {/* 디버그 층 이동 (Shift+D — DEV 또는 ?debug) */}
       {debugAllowed && debugOpen && runId > 0 && (
