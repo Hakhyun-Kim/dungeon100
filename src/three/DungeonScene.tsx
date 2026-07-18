@@ -28,9 +28,10 @@ interface Enemy {
 
 function pickEnemyType(floorNo: number): EType {
   const r = Math.random();
-  if (floorNo >= 3 && r < 0.22) return 'shooter';
-  if (floorNo >= 5 && r < 0.4) return 'dasher';
-  if (floorNo >= 7 && r < 0.53) return 'tank';
+  const d = Math.min(1, floorNo / 30); // 깊이 계수 — 내려갈수록 위험한 타입 비중 상승
+  if (floorNo >= 2 && r < 0.2 + d * 0.08) return 'shooter';
+  if (floorNo >= 4 && r < 0.38 + d * 0.1) return 'dasher';
+  if (floorNo >= 6 && r < 0.52 + d * 0.1) return 'tank';
   return 'chaser';
 }
 
@@ -64,7 +65,7 @@ interface EShot {
   alive: boolean;
 }
 
-const MAX_ESHOTS = 32;
+const MAX_ESHOTS = 64; // 슈터 연사 강화 + 보스 탄막 확대에 맞춰 풀 확장
 const ESHOT_SPEED = 6.5;
 
 interface Particle {
@@ -281,8 +282,8 @@ function DungeonScene({
       ? {
           x: exitX,
           z: exitZ,
-          hp: 150 + floorNo * 25,
-          maxHp: 150 + floorNo * 25,
+          hp: 450 + floorNo * 45,
+          maxHp: 450 + floorNo * 45,
           alive: true,
           hitCd: 0,
           fireTimer: 1.5,
@@ -691,8 +692,8 @@ function DungeonScene({
         }
       }
 
-      // ── 적 AI (타입별) + 접촉 피해
-      const espeed = 2.3 + Math.min(2, floorNo * 0.06);
+      // ── 적 AI (타입별) + 접촉 피해 — 내려갈수록 확실히 빨라진다 (스릴 램프)
+      const espeed = 2.5 + Math.min(3.3, floorNo * 0.16);
       for (const e of enemies.current) {
         if (!e.alive) continue;
         e.hitCd -= dt;
@@ -709,19 +710,23 @@ function DungeonScene({
         };
 
         if (e.type === 'shooter') {
-          // 거리를 유지하며 조준 사격
+          // 거리를 유지하며 조준 사격 — 깊을수록 연사가 빨라지고 부채꼴로 여러 발
           e.ai -= dt;
           if (dist < AGGRO + 3) {
-            if (dist < 4.5) walk(-ux, -uz, 2.0);
-            else if (dist > 8.5) walk(ux, uz, 1.9);
+            if (dist < 4.5) walk(-ux, -uz, 2.2);
+            else if (dist > 8.5) walk(ux, uz, 2.1);
             if (dist < 11 && e.ai <= 0) {
-              e.ai = 2.3;
-              const slot = eshots.current.find((s2) => !s2.alive);
-              if (slot) {
+              e.ai = Math.max(1.2, 2.1 - floorNo * 0.06);
+              const nShots = floorNo >= 20 ? 3 : floorNo >= 8 ? 2 : 1;
+              const baseA = Math.atan2(ux, uz);
+              for (let si = 0; si < nShots; si++) {
+                const slot = eshots.current.find((s2) => !s2.alive);
+                if (!slot) break;
+                const ang = baseA + (si - (nShots - 1) / 2) * 0.2;
                 slot.x = e.x;
                 slot.z = e.z;
-                slot.dx = ux;
-                slot.dz = uz;
+                slot.dx = Math.sin(ang);
+                slot.dz = Math.cos(ang);
                 slot.left = 13;
                 slot.alive = true;
               }
@@ -730,8 +735,8 @@ function DungeonScene({
         } else if (e.type === 'dasher') {
           // 접근 → 조준(부풀기) → 돌진 → 숨 고르기 (수문장은 더 넓게·빠르게·매섭게)
           const aggroR = e.elite ? AGGRO + 9 : AGGRO;
-          const appSpd = e.elite ? 3.3 : 2.6;
-          const dashSpd = e.elite ? 11.5 : 9.5;
+          const appSpd = e.elite ? 3.3 : 2.8 + Math.min(1.2, floorNo * 0.04);
+          const dashSpd = e.elite ? 11.5 : 10 + Math.min(3, floorNo * 0.05);
           if (e.mode === 0) {
             if (dist < aggroR) {
               walk(ux, uz, appSpd);
@@ -760,8 +765,8 @@ function DungeonScene({
             if (e.ai <= 0) e.mode = 0;
           }
         } else {
-          // chaser / tank — 우직하게 접근
-          const spd = e.type === 'tank' ? 1.5 : espeed;
+          // chaser / tank — 우직하게 접근 (탱커도 깊을수록 조금씩 빨라진다)
+          const spd = e.type === 'tank' ? 1.6 + Math.min(1.4, floorNo * 0.05) : espeed;
           if (dist < AGGRO) walk(ux, uz, spd);
         }
 
@@ -795,7 +800,7 @@ function DungeonScene({
         }
       }
 
-      // ── 보스 (10층마다): 느리게 추격 + 방사형 탄막
+      // ── 보스 (10층마다): 추격 + 방사형 탄막 — 저체력이 되면 광폭화(더 자주 발사)
       const bAi = boss.current;
       if (bAi && bAi.alive) {
         bAi.hitCd -= dt;
@@ -804,16 +809,18 @@ function DungeonScene({
         const bz = p.position.z - bAi.z;
         const bd = Math.hypot(bx, bz);
         if (bd < 16 && bd > 0.001) {
-          const nx = bAi.x + (bx / bd) * 1.8 * dt;
-          const nz = bAi.z + (bz / bd) * 1.8 * dt;
+          const nx = bAi.x + (bx / bd) * 2.3 * dt;
+          const nz = bAi.z + (bz / bd) * 2.3 * dt;
           if (canStand(floor.cells, nx, bAi.z, 0.9)) bAi.x = nx;
           if (canStand(floor.cells, bAi.x, nz, 0.9)) bAi.z = nz;
           if (bAi.fireTimer <= 0) {
-            bAi.fireTimer = 2.4;
-            for (let k = 0; k < 8; k++) {
+            const rage = bAi.hp < bAi.maxHp * 0.4 ? 0.72 : 1; // 광폭화 페이즈
+            bAi.fireTimer = Math.max(1.3, 2.0 - floorNo * 0.012) * rage;
+            const nB = floorNo >= 60 ? 14 : floorNo >= 30 ? 12 : 10;
+            for (let k = 0; k < nB; k++) {
               const slot = eshots.current.find((s2) => !s2.alive);
               if (!slot) break;
-              const ang = (k / 8) * Math.PI * 2 + t;
+              const ang = (k / nB) * Math.PI * 2 + t;
               slot.x = bAi.x;
               slot.z = bAi.z;
               slot.dx = Math.sin(ang);
@@ -826,18 +833,19 @@ function DungeonScene({
         }
         if (bd < 1.6 && bAi.hitCd <= 0) {
           bAi.hitCd = 1.0;
-          shake.current = Math.min(0.6, shake.current + 0.35);
+          shake.current = Math.min(0.7, shake.current + 0.4);
           burst(p.position.x, 0.8, p.position.z, '#ff4d5e', 8, 1.8);
-          onDamage(12 + Math.round(floorNo * 0.5));
+          onDamage(16 + Math.round(floorNo * 0.7));
         }
       }
 
-      // ── 보스 탄막 (플레이어 피격)
+      // ── 적 탄막 (슈터·보스 공용, 플레이어 피격) — 깊을수록 탄속도 빨라진다
+      const eshotSpd = ESHOT_SPEED + Math.min(3, floorNo * 0.08);
       for (const es of eshots.current) {
         if (!es.alive) continue;
-        es.x += es.dx * ESHOT_SPEED * dt;
-        es.z += es.dz * ESHOT_SPEED * dt;
-        es.left -= ESHOT_SPEED * dt;
+        es.x += es.dx * eshotSpd * dt;
+        es.z += es.dz * eshotSpd * dt;
+        es.left -= eshotSpd * dt;
         const ecx = Math.floor(es.x / CELL + GRID / 2);
         const ecz = Math.floor(es.z / CELL + GRID / 2);
         if (es.left <= 0 || !isFloor(floor.cells, ecx, ecz)) {

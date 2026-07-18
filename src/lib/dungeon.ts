@@ -85,8 +85,9 @@ export function generateFloor(floorNo: number): FloorMap {
   const exit = { x: last.cx, y: last.cy };
 
   // 적 스폰 — 시작 방은 안전지대, 출구 바로 옆도 비워 즉사 방지
+  // 층당 밀도 램프: 3층마다 방당 +1 (최대 7) — 내려갈수록 확실히 붐빈다
   const spawns: { x: number; y: number }[] = [];
-  const perRoom = 2 + Math.floor(floorNo / 4);
+  const perRoom = Math.min(7, 2 + Math.floor(floorNo / 3));
   for (let i = 1; i < rooms.length; i++) {
     const r = rooms[i];
     for (let k = 0; k < perRoom; k++) {
