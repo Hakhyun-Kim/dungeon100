@@ -836,6 +836,29 @@ export default function App() {
         await sleep(400);
       }
     };
+    // 마을(.village-talk)·소녀 찻자리(.town-screen) 대화를 읽는 속도로 진행.
+    // 선택지가 나오면 "다른 방법은 없나요?" 같은 개그 선택지를 우선 고른다.
+    const clickTalk = () => {
+      const choices = [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          '.village-talk .choice-btn, .town-screen .dialog-choices .choice-btn',
+        ),
+      ].filter((b) => !b.disabled);
+      if (choices.length > 0) {
+        const gag = choices.find((b) => b.textContent?.includes('다른 방법'));
+        return (gag ?? choices[0]).click();
+      }
+      document
+        .querySelector<HTMLElement>('.village-talk .dialog-box, .town-screen .dialog-box')
+        ?.click();
+    };
+    const talkFor = async (ms: number) => {
+      const until = Date.now() + ms;
+      while (Date.now() < until && !stop) {
+        await sleep(1800);
+        if (!stop) clickTalk();
+      }
+    };
     // 무작위 산책 — 전투·마을 구경용 (자동 조준이 알아서 싸운다)
     const wander = async (ms: number) => {
       const until = Date.now() + ms;
@@ -870,14 +893,19 @@ export default function App() {
     };
 
     const tour = async () => {
-      await caption('🏘️ 모험은 걸어다니는 마을에서 — NPC와 대화하고 던전 입구로!');
+      await caption('🏘️ 모험은 걸어다니는 마을에서 시작됩니다');
       goVillage('enter');
-      await wander(5500);
+      await wander(2600);
+      if (stop) return;
+
+      await caption('👵 촌장과 대화 — "혹시 다른 방법은 없나요?" …선택지는 가끔 하나뿐!');
+      setVillageTalk({ script: chiefTalk('enter', true, 0), idx: 0 });
+      await talkFor(11000);
       if (stop) return;
 
       await caption('⚔️ 매판 새로 생성되는 던전 — 가까운 적은 자동 조준!');
       enterDungeon('kids');
-      await wander(7500);
+      await wander(5000);
       if (stop) return;
 
       await caption('🎁 보물은 빌드로 바로 보입니다 — 궤도 구슬, 커지는 투사체!');
@@ -885,14 +913,14 @@ export default function App() {
         debugGrantRef.current();
         await sleep(1200);
       }
-      await wander(3500);
+      await wander(2500);
       if (stop) return;
 
       await caption('🚪 미니게임 ① 두 문 달리기 — 정답이 적힌 문을 몸으로!');
       setDoorRound(1);
       setPhase('doorrun');
       {
-        const until = Date.now() + 11000;
+        const until = Date.now() + 9000;
         while (Date.now() < until && !stop && phaseRef.current === 'doorrun') {
           const c = Math.random() < 0.5 ? 'ArrowLeft' : 'ArrowRight';
           key(c, true);
@@ -901,7 +929,7 @@ export default function App() {
         }
         releaseAll();
       }
-      await settleUntil(['run'], 12000); // 결과·기억 회상까지 넘기고 던전 복귀
+      await settleUntil(['run'], 10000); // 결과·기억 회상까지 넘기고 던전 복귀
       if (stop) return;
 
       await caption('👹 미니게임 ② 몬스터 아레나 — 무리를 뚫고 보석 3개!');
@@ -910,31 +938,39 @@ export default function App() {
       setArenaMax(ARENA_MAX_HP);
       setArenaTry((t) => t + 1);
       setPhase('arena');
-      await wander(11000);
+      await wander(9000);
       if (stop) return;
 
       await caption('🌊 깊이 = 이야기의 진행 — 10층마다 던전의 색이 변하고 안개가 짙어집니다');
       debugJump(45);
       await sleep(300);
       debugGrantRef.current();
-      await wander(6000);
+      await wander(4000);
       debugJump(75);
       await sleep(300);
       debugGrantRef.current();
-      await wander(6000);
+      await wander(4000);
+      if (stop) return;
+
+      await caption('🫖 56층의 소녀 — 작가가 쓰다 만 「공주님」, 여백의 찻자리');
+      setFloorNo(56);
+      await sleep(300);
+      sfx.gift();
+      goTown(girlScript(false), 'girl', { sky: '✨', scape: '🕯️ 🫖 📚 🌼 🕯️' });
+      await talkFor(9500);
       if (stop) return;
 
       await caption('🌅 깊이 내려가면 마을에도 시간이 흐릅니다 — 습격, 방벽, 그리고 폐허와 새벽');
       setFloorNo(85);
       goVillage('visit');
-      await wander(7000);
+      await wander(6000);
       if (stop) return;
 
       await caption('📖 10층마다 페이지의 수호자가 포털을 봉인합니다 — 탄막을 뚫어라!');
       debugJump(30);
       await sleep(300);
       debugGrantRef.current();
-      await wander(12000);
+      await wander(9000);
       if (stop) return;
 
       await caption('✨ 56층의 소녀, 100층의 황금 문, 엔딩과 에필로그는 — 직접 확인해 보세요!');
@@ -1259,7 +1295,7 @@ export default function App() {
                 setDemoRunning(true);
               }}
             >
-              🎬 자동 시연 보기 (약 90초)
+              🎬 자동 시연 보기 (약 100초)
             </button>
           )}
           <button className="big-btn" onClick={startAdventure}>

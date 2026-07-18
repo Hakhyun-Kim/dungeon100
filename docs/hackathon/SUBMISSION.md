@@ -18,7 +18,7 @@
 
 - GitHub 저장소: https://github.com/Hakhyun-Kim/dungeon100 (public)
 - 플레이 링크 (GitHub Pages): https://hakhyun-kim.github.io/dungeon100/
-- **자동 시연 링크 (클릭 한 번, 약 90초)**: https://hakhyun-kim.github.io/dungeon100/?demo — 게임이 스스로 마을·전투·미니게임 2종·층 테마·보스를 자막과 함께 시연 (영상 보조·심사 편의)
+- **자동 시연 링크 (클릭 한 번, 약 100초)**: https://hakhyun-kim.github.io/dungeon100/?demo — 게임이 스스로 마을·촌장 대화·전투·미니게임 2종·층 테마·56층의 소녀·보스를 자막과 함께 시연 (영상 보조·심사 편의)
 - 플레이 영상 (YouTube): https://youtu.be/V4Vr0z4m6uE
 
 ## 플레이 영상 촬영 가이드 (30~60초)
