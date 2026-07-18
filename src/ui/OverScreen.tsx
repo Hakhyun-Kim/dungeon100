@@ -8,6 +8,7 @@ export default function OverScreen({
   coins,
   lore,
   checkpointFloor,
+  daily = false,
   onResume,
   onRetry,
   onVillage,
@@ -19,6 +20,7 @@ export default function OverScreen({
   coins: number;
   lore: string;
   checkpointFloor: number;
+  daily?: boolean;
   onResume: () => void;
   onRetry: () => void;
   onVillage: () => void;
@@ -30,6 +32,7 @@ export default function OverScreen({
       <p>
         처치 {kills} · 최고 기록 {Math.max(best, floorNo)}층
       </p>
+      {daily && <p className="best">📅 오늘의 던전 기록으로 저장! 기록 카드로 인증해 보세요</p>}
       <p className="over-lore">{lore}</p>
       <p className="quiz-sub">🪙 {coins} — 코인은 사라지지 않았다. 이야기도, 이어진다.</p>
       <ChoiceList

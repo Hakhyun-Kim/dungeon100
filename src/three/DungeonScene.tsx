@@ -123,6 +123,7 @@ export const dungeonTheme = (floorNo: number) =>
 
 function DungeonScene({
   floorNo,
+  seedOffset = 0,
   hidden,
   statsRef,
   pausedRef,
@@ -142,6 +143,7 @@ function DungeonScene({
   onGirl,
 }: {
   floorNo: number;
+  seedOffset?: number; // 일일 던전 — 날짜 시드를 층 시드에 섞는다 (0 = 보통 던전)
   hidden: boolean; // 두 문 달리기 미니게임 동안 던전을 숨기고 카메라를 양보
   statsRef: React.MutableRefObject<Stats>;
   pausedRef: React.MutableRefObject<boolean>;
@@ -160,7 +162,7 @@ function DungeonScene({
   onTrace: () => void; // 소녀의 흔적 발견
   onGirl: () => void; // 56층 소녀와 만남
 }) {
-  const floor = useMemo(() => generateFloor(floorNo), [floorNo]);
+  const floor = useMemo(() => generateFloor(floorNo, seedOffset), [floorNo, seedOffset]);
   const isBossFloor = floorNo % 10 === 0;
   const input = useMoveInput();
 

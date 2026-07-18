@@ -12,6 +12,7 @@ import TownScene, {
 import { BASE_STATS, draftThree, pickUpgrades, type Stats, type Upgrade } from './lib/upgrades';
 import { makeQuiz, MAX_DOOR_ROUND, type DungeonMode } from './lib/quiz';
 import { metaSpeed, shopCost, type Meta } from './lib/meta';
+import { todayKey, dailySeed, type DailyRecord } from './lib/daily';
 import { mulberry32 } from './lib/rng';
 import { useLocalStorage } from './lib/store';
 import { sfx, isMuted, setMuted } from './lib/sound';
@@ -122,6 +123,10 @@ export default function App() {
   const [villageNear, setVillageNear] = useState<TownTarget>(null);
   const [villageTalk, setVillageTalk] = useState<VillageTalk | null>(null);
   const [mode, setMode] = useState<DungeonMode>('kids');
+  // 일일 던전 — 오늘 날짜 = 시드, 모두가 같은 맵 (어른 문제 고정, 기록은 d100-daily)
+  const [runType, setRunType] = useState<'normal' | 'daily'>('normal');
+  const [dailyBest, setDailyBest] = useLocalStorage<DailyRecord | null>('d100-daily', null);
+  const dailyNum = useMemo(() => dailySeed(todayKey()), []);
   const [muted, setMutedState] = useState(isMuted());
   const [bossHp, setBossHp] = useState(0);
   const [bossMax, setBossMax] = useState(0);
@@ -162,25 +167,40 @@ export default function App() {
   const homeUsedRef = useRef(0);
   const visitGiftGiven = useRef<Set<number>>(new Set()); // 방문당 노드별 선물 1회
 
+  // 일일 던전 기록 갱신 (사망·완주 공용)
+  const recordDaily = (floor: number, cleared = false) => {
+    if (runType !== 'daily') return;
+    const key = todayKey();
+    if (!dailyBest || dailyBest.date !== key || floor > dailyBest.floor) {
+      setDailyBest({ date: key, floor, cleared });
+    } else if (cleared && !dailyBest.cleared) {
+      setDailyBest({ ...dailyBest, cleared: true });
+    }
+  };
+
   // 사망 판정은 hp 변화에 반응 (이벤트 콜백을 안정적으로 유지하기 위함)
   useEffect(() => {
     if (phase === 'run' && hp <= 0) {
       setPhase('over');
       if (floorNo > best) setBest(floorNo);
+      recordDaily(floorNo);
       setOverLore(getDeathLore(deaths)); // 죽을수록 위화감이 커진다
       setDeaths(deaths + 1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hp, phase]);
 
+  // 일일 던전은 재도전해도 같은 드래프트·같은 문제가 나오게 runId 대신 날짜 시드를 쓴다
+  const runVar = runType === 'daily' ? dailyNum % 100000 : runId;
+
   // 드래프트 — 희귀도 가중 + 태그 시너지(같은 태그 2개+ 보유 시 그 태그가 더 잘 나온다)
   const draft = useMemo(
-    () => draftThree(mulberry32(runId * 7919 + floorNo * 131 + 7), build),
-    [runId, floorNo, build],
+    () => draftThree(mulberry32(runVar * 7919 + floorNo * 131 + 7), build),
+    [runVar, floorNo, build],
   );
 
   // 문(라운드)마다 새 문제 — 깊은 라운드일수록 어려운 문제 등급, 던전 종류에 따라 수준 조절
-  const quizSeed = runId * 104729 + floorNo * 131 + quizSeq * 17 + doorRound * 7 + 5;
+  const quizSeed = runVar * 104729 + floorNo * 131 + quizSeq * 17 + doorRound * 7 + 5;
   const quiz = useMemo(
     () => makeQuiz(quizSeed, floorNo + (doorRound - 1) * 6, mode),
     [quizSeed, floorNo, doorRound, mode],
@@ -242,6 +262,7 @@ export default function App() {
       setEndingVariant(null);
       setEndingIdx(0);
       if (100 > best) setBest(100);
+      recordDaily(100, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
@@ -308,8 +329,12 @@ export default function App() {
 
   const memory = MEMORIES[memCount % MEMORIES.length];
 
-  const enterDungeon = (m?: DungeonMode) => {
-    if (m) setMode(m);
+  // type 미지정: 모드를 골랐으면 보통 런, 무인자(게임오버 재도전)는 현재 런 유형 유지
+  const enterDungeon = (m?: DungeonMode, type?: 'normal' | 'daily') => {
+    const rt = type ?? (m ? 'normal' : runType);
+    setRunType(rt);
+    const startMode = rt === 'daily' ? 'adult' : m; // 일일 던전은 어른 문제 고정 (공정 비교)
+    if (startMode) setMode(startMode);
     sfx.enter();
     setStorySeen(true);
     setFloorNo(1);
@@ -793,6 +818,7 @@ export default function App() {
           <DungeonScene
             key={`${runId}:${floorNo}`}
             floorNo={floorNo}
+            seedOffset={runType === 'daily' ? dailyNum : 0}
             hidden={
               phase === 'doorrun' ||
               phase === 'arena' ||
@@ -844,6 +870,7 @@ export default function App() {
       {inDungeonUi && (
         <GameHud
           mode={mode}
+          daily={runType === 'daily'}
           floorNo={floorNo}
           hp={hp}
           maxHp={stats.maxHp}
@@ -911,8 +938,10 @@ export default function App() {
           storySeen={storySeen}
           demoMode={demoMode}
           muted={muted}
+          dailyRecord={dailyBest?.date === todayKey() ? dailyBest : null}
           onToggleMute={toggleMute}
           onStart={startAdventure}
+          onDaily={() => enterDungeon(undefined, 'daily')}
           onReplay={replayStory}
           onDemo={() => {
             sfx.enter();
@@ -1021,6 +1050,7 @@ export default function App() {
               best,
               mode,
               cleared: true,
+              daily: runType === 'daily' ? todayKey() : undefined,
             });
           }}
         />
@@ -1052,6 +1082,7 @@ export default function App() {
           coins={coins}
           lore={overLore}
           checkpointFloor={checkpointFloor}
+          daily={runType === 'daily'}
           onResume={resumeFromCheckpoint}
           onRetry={() => enterDungeon()}
           onVillage={() => goVillage('enter')}
@@ -1064,6 +1095,7 @@ export default function App() {
               memMax: MEMORIES.length,
               best,
               mode,
+              daily: runType === 'daily' ? todayKey() : undefined,
             });
           }}
         />

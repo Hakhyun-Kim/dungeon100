@@ -9,6 +9,7 @@ export interface CardStats {
   best: number;
   mode: DungeonMode;
   cleared?: boolean;
+  daily?: string; // 일일 던전 날짜 (예: 2026-07-19) — 같은 날 같은 맵 기록 인증
 }
 
 function drawCard(s: CardStats): HTMLCanvasElement {
@@ -41,7 +42,15 @@ function drawCard(s: CardStats): HTMLCanvasElement {
   x.fillText('백층 던전', W / 2, 110);
   x.font = `24px ${F}`;
   x.fillStyle = '#9c8fc4';
-  x.fillText(s.cleared ? '— 끝까지 읽은 사람 —' : '책 속으로 떨어진 대학생의 기록', W / 2, 156);
+  x.fillText(
+    s.daily
+      ? `📅 오늘의 던전 ${s.daily} — 모두 같은 맵`
+      : s.cleared
+        ? '— 끝까지 읽은 사람 —'
+        : '책 속으로 떨어진 대학생의 기록',
+    W / 2,
+    156,
+  );
 
   x.font = `120px ${F}`;
   x.fillText(s.cleared ? '📖' : '🏰', W / 2, 320);

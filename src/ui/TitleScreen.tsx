@@ -1,15 +1,18 @@
+import type { DailyRecord } from '../lib/daily';
 import { MEMORIES } from '../lib/story';
-import { ChoiceList, PrimaryButton } from './Menu';
+import { ChoiceList } from './Menu';
 
-// 타이틀 화면 — 시연 모드(?demo)에서는 시연 버튼이 추가돼 세로 메뉴가 된다.
+// 타이틀 화면 — 모험 시작·일일 던전 세로 메뉴 (?demo에서는 시연 버튼 추가).
 export default function TitleScreen({
   best,
   memCount,
   storySeen,
   demoMode,
   muted,
+  dailyRecord,
   onToggleMute,
   onStart,
+  onDaily,
   onReplay,
   onDemo,
 }: {
@@ -18,8 +21,10 @@ export default function TitleScreen({
   storySeen: boolean;
   demoMode: boolean;
   muted: boolean;
+  dailyRecord: DailyRecord | null; // 오늘 날짜의 기록 (없으면 null)
   onToggleMute: () => void;
   onStart: () => void;
+  onDaily: () => void;
   onReplay: () => void;
   onDemo: () => void;
 }) {
@@ -41,22 +46,36 @@ export default function TitleScreen({
           최고 기록: {best}층 · 되찾은 기억 {Math.min(memCount, MEMORIES.length)}개
         </p>
       )}
-      {demoMode ? (
-        <ChoiceList
-          kind="big"
-          items={[
-            {
-              key: 'demo',
-              label: '🎬 자동 시연 보기 (약 100초)',
-              className: 'demo-start',
-              onPick: onDemo,
-            },
-            { key: 'start', label: '모험 시작', onPick: onStart },
-          ]}
-        />
-      ) : (
-        <PrimaryButton onPick={onStart}>모험 시작</PrimaryButton>
+      {dailyRecord && (
+        <p className="best">
+          📅 오늘의 던전 기록: {dailyRecord.cleared ? '100층 완주!' : `${dailyRecord.floor}층`}
+        </p>
       )}
+      <ChoiceList
+        kind="big"
+        items={[
+          ...(demoMode
+            ? [
+                {
+                  key: 'demo',
+                  label: '🎬 자동 시연 보기 (약 100초)',
+                  className: 'demo-start',
+                  onPick: onDemo,
+                },
+              ]
+            : []),
+          { key: 'start', label: '모험 시작', onPick: onStart },
+          {
+            key: 'daily',
+            label: '📅 오늘의 던전',
+            className: 'daily-btn',
+            onPick: onDaily,
+          },
+        ]}
+      />
+      <p className="quiz-sub daily-hint">
+        오늘의 던전: 날짜가 시드 — 모두가 같은 맵에 도전 (어른 문제 고정, 기록 카드로 인증)
+      </p>
       {storySeen && (
         <button className="skip-btn" onClick={onReplay}>
           📖 스토리 다시 보기

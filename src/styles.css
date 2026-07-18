@@ -389,6 +389,27 @@ body {
   gap: 14px;
 }
 
+/* 일일 던전 버튼 — 보조 톤 (초록) */
+.big-btn.daily-btn {
+  font-size: 18px;
+  padding: 10px 30px;
+  background: linear-gradient(180deg, #3f6b52, #2c4f3a);
+  box-shadow: 0 6px 0 #1d3427;
+}
+
+.big-btn.daily-btn:active {
+  box-shadow: 0 3px 0 #1d3427;
+}
+
+.big-btn.daily-btn.focused {
+  box-shadow: 0 6px 0 #1d3427, 0 0 0 3px rgba(255, 209, 102, 0.55), 0 0 22px rgba(255, 209, 102, 0.3);
+}
+
+.daily-hint {
+  max-width: 440px;
+  font-size: 13px;
+}
+
 .quiz-screen .dialog-choices {
   max-width: 420px;
 }

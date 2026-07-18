@@ -12,9 +12,10 @@ function MuteButton({ muted, onToggle }: { muted: boolean; onToggle: () => void 
   );
 }
 
-// 던전 본편 HUD — 모드·층 칩 + 체력바 + 처치·코인
+// 던전 본편 HUD — 모드·층 칩 + 체력바 + 처치·코인 (일일 던전은 📅 표시)
 export function GameHud({
   mode,
+  daily = false,
   floorNo,
   hp,
   maxHp,
@@ -24,6 +25,7 @@ export function GameHud({
   onToggleMute,
 }: {
   mode: DungeonMode;
+  daily?: boolean;
   floorNo: number;
   hp: number;
   maxHp: number;
@@ -36,7 +38,7 @@ export function GameHud({
   return (
     <div className="hud">
       <div className="hud-chip">
-        {mode === 'kids' ? '🎒' : mode === 'adult' ? '🧠' : '👹'} {floorNo}층
+        {daily ? '📅' : mode === 'kids' ? '🎒' : mode === 'adult' ? '🧠' : '👹'} {floorNo}층
       </div>
       <div className="hp-wrap">
         <div className="hp-bar" style={{ width: `${ratio * 100}%` }} />

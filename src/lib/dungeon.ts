@@ -53,8 +53,9 @@ export function canStand(cells: Uint8Array, wx: number, wz: number, r: number): 
   return true;
 }
 
-export function generateFloor(floorNo: number): FloorMap {
-  const rand = mulberry32(floorNo * 1013904223 + 12345);
+// seedOffset — 일일 던전(날짜 시드) 등 변형 층. 0이면 기존과 동일 (층 번호 = 시드).
+export function generateFloor(floorNo: number, seedOffset = 0): FloorMap {
+  const rand = mulberry32(floorNo * 1013904223 + 12345 + seedOffset);
   const cells = new Uint8Array(GRID * GRID);
   const rooms: Room[] = [];
   const roomCount = Math.min(5 + Math.floor(floorNo / 3), 9);
