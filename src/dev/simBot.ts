@@ -120,14 +120,24 @@ let gridFloor = -1;
 let path: [number, number][] | null = null;
 let wpIdx = 0;
 let floorTime = 0;
-let stuckTime = 0;
-let lastPos: [number, number] | null = null;
+// 멈춤 감지 — 틱 단위 미세 변위는 회피 지터에 속는다(실측: 벽에 박힌 채 ±0.06 진동).
+// 3초 앵커 창의 '순변위'로 판정하고, 걸리면 경로 재계산 + 잠깐 수직 이탈(벽 슬라이드).
+let anchorPos: [number, number] | null = null;
+let anchorT = 0;
+let nudgeT = 0;
+let nudgeSign = 1;
 let chestGrantedFloor = -1;
 // 보스전: 근접 링(4)에서 확전 — 원거리 링은 벽·어그로 경계에서 교착됐다.
 // 가까울수록 사선 확보 + 자동 조준이 보스를 문다 (실측: 근접 시 6초에 700딜).
+// 그래도 딜이 없으면(벽 뒤 포켓에 낌 — 거리 4.9에서 HP 불변 실측) BFS로 직접 파고든다.
 let bossRing = 4;
 let bossHpLast = -1;
 let bossStallT = 0;
+let bossPathMode = false; // 벡터 조향이 벽에 막힘 → 보스 셀까지 길찾기 모드
+let bossPathAge = 0; // 보스가 움직이니 경로를 주기적으로 재계산
+let pathGoal: 'exit' | 'boss' = 'exit';
+// 교착 진단 트레이스 — 층 체류 60초를 넘기면 샘플링, stuck 기록 시 localStorage에 남긴다
+let stallTrace: Record<string, unknown>[] = [];
 
 function resetFloorNav() {
   grid = null;
@@ -135,11 +145,16 @@ function resetFloorNav() {
   path = null;
   wpIdx = 0;
   floorTime = 0;
-  stuckTime = 0;
-  lastPos = null;
+  anchorPos = null;
+  anchorT = 0;
+  nudgeT = 0;
   bossRing = 4;
   bossHpLast = -1;
   bossStallT = 0;
+  bossPathMode = false;
+  bossPathAge = 0;
+  pathGoal = 'exit';
+  stallTrace = [];
 }
 
 const saveProgress = () =>
@@ -215,17 +230,49 @@ function runBrain() {
     Math.hypot(s.bossWorld[0] - px, s.bossWorld[1] - pz) < 13;
   const bossActive = bossNear;
 
+  // 목표 셀까지 BFS 경로를 따라 조향 벡터를 만든다 (출구·보스 공용)
+  const followPath = (tx: number, tz: number): boolean => {
+    if (!path) {
+      path = bfsPath(grid!, toCell(grid!, px), toCell(grid!, pz), toCell(grid!, tx), toCell(grid!, tz));
+      wpIdx = 0;
+    }
+    if (!path) return false;
+    while (
+      wpIdx < path.length - 1 &&
+      Math.hypot(toWorld(grid!, path[wpIdx][0]) - px, toWorld(grid!, path[wpIdx][1]) - pz) < 1.2
+    ) {
+      wpIdx++;
+    }
+    const wp = path[Math.min(wpIdx, path.length - 1)];
+    const wx = toWorld(grid!, wp[0]);
+    const wz = toWorld(grid!, wp[1]);
+    const d = Math.hypot(wx - px, wz - pz) || 0.001;
+    // 층이 길어질수록 경로 견인을 키운다 — 깊은 층 무리 사이를 밀고 나가는 절박함
+    const pull = 1.2 + Math.min(1.0, floorTime / 60);
+    vx = ((wx - px) / d) * pull;
+    vz = ((wz - pz) / d) * pull;
+    return true;
+  };
+  const setGoal = (g: 'exit' | 'boss') => {
+    if (pathGoal !== g) {
+      pathGoal = g;
+      path = null;
+    }
+  };
+
   if (bossActive) {
-    // 보스 카이팅: 링 유지 + 접선 스트레이프. HP가 5초간 안 깎이면 링을 좁혀 파고든다
-    // (링 위 위치가 벽 뒤면 투사체가 벽에 막힘 — 가까울수록 사선 확보).
+    // 보스 카이팅: 링 유지 + 접선 스트레이프. HP가 5초간 안 깎이면 링을 좁히고,
+    // 최소 링에서도 딜이 없으면(벽 뒤 포켓 교착) BFS로 보스까지 직접 파고든다.
     const step0 = opts.pumpN * opts.fixdt;
     if (s.boss.hp !== bossHpLast) {
       bossHpLast = s.boss.hp;
       bossStallT = 0;
+      bossPathMode = false; // 딜이 들어오면 다시 카이팅
     } else {
       bossStallT += step0;
       if (bossStallT > 5) {
-        bossRing = Math.max(2.5, bossRing - 0.8);
+        if (bossRing > 2.6) bossRing = Math.max(2.5, bossRing - 0.8);
+        else bossPathMode = true;
         bossStallT = 0;
       }
     }
@@ -234,53 +281,66 @@ function runBrain() {
     const dist = Math.hypot(dx, dz) || 0.001;
     const ux = dx / dist;
     const uz = dz / dist;
-    vx = (dist - bossRing) * 0.5 * ux + -uz * 0.8;
-    vz = (dist - bossRing) * 0.5 * uz + ux * 0.8;
+    if (bossPathMode && dist > 2.2) {
+      setGoal('boss');
+      bossPathAge += step0;
+      if (bossPathAge > 2.5) {
+        bossPathAge = 0;
+        path = null; // 보스가 움직이니 주기적으로 재계산
+      }
+      if (!followPath(s.bossWorld[0], s.bossWorld[1])) {
+        vx = ux;
+        vz = uz; // 길이 없으면 직진
+      }
+    } else {
+      setGoal('exit'); // 카이팅 벡터 모드 (경로는 안 씀 — 다음 전환 대비 초기화만)
+      vx = (dist - bossRing) * 0.5 * ux + -uz * 0.8;
+      vz = (dist - bossRing) * 0.5 * uz + ux * 0.8;
+    }
   } else {
     // 출구로 길찾기
-    if (!path) {
-      const sp = bfsPath(grid, toCell(grid, px), toCell(grid, pz), toCell(grid, s.exit[0]), toCell(grid, s.exit[1]));
-      path = sp;
-      wpIdx = 0;
-    }
-    if (path) {
-      while (
-        wpIdx < path.length - 1 &&
-        Math.hypot(toWorld(grid, path[wpIdx][0]) - px, toWorld(grid, path[wpIdx][1]) - pz) < 1.2
-      ) {
-        wpIdx++;
-      }
-      const wp = path[Math.min(wpIdx, path.length - 1)];
-      const wx = toWorld(grid, wp[0]);
-      const wz = toWorld(grid, wp[1]);
-      const d = Math.hypot(wx - px, wz - pz) || 0.001;
-      vx = ((wx - px) / d) * 1.2;
-      vz = ((wz - pz) / d) * 1.2;
-    }
+    setGoal('exit');
+    followPath(s.exit[0], s.exit[1]);
   }
 
-  // 탄막 회피 (다가오는 탄에 수직)
+  // 탄막 회피 (다가오는 탄에 수직) — 보스 경로 모드에선 절반만 (접근이 우선)
+  const eshotScale = bossActive && bossPathMode ? 0.5 : 1;
   for (const e of s.eshots as number[][]) {
     const ex = px - e[0];
     const ez = pz - e[1];
     const d = Math.hypot(ex, ez);
     if (d < 4.2 && e[2] * ex + e[3] * ez > 0) {
       const side = Math.sign(-e[3] * ex + e[2] * ez || 1);
-      const w = 3.5 / (d + 0.3);
+      const w = (3.5 * eshotScale) / (d + 0.3);
       vx += -e[3] * w * side;
       vz += e[2] * w * side;
     }
   }
-  // 적 근접 회피
+  // 적 근접 회피 — 층이 길어질수록 회피를 줄이고 밀고 나간다 (몬스터 하우스 무리 교착 대책:
+  // 회피 벡터가 길목 무리에 막혀 120초 stuck 나던 것을, 시간이 지나면 싸우며 돌파하게)
+  const avoidScale = Math.max(0.3, 1 - floorTime / 90);
   for (const en of s.enemiesPos as number[][]) {
+    // 출구 문 앞을 지키는 적(수문장 포함)은 피하지 않는다 — 돌아서는 순간 문에 못 간다.
+    // 자동 조준이 접근 중에 잡아 주고, 접촉 피해는 빌드로 버틴다.
+    if (Math.hypot(en[0] - s.exit[0], en[1] - s.exit[1]) < 4) continue;
     const ex = px - en[0];
     const ez = pz - en[1];
     const d = Math.hypot(ex, ez);
     if (d < 2.6 && d > 0.001) {
-      const w = 2.2 / (d + 0.2);
+      const w = (2.2 * avoidScale) / (d + 0.2);
       vx += (ex / d) * w;
       vz += (ez / d) * w;
     }
+  }
+
+  // 벽 슬라이드 — 멈춤이 감지되면 잠깐 진행 방향의 수직으로 밀어 코너에서 빠져나온다
+  const step = opts.pumpN * opts.fixdt;
+  if (nudgeT > 0) {
+    nudgeT -= step;
+    const tx = -vz * nudgeSign;
+    const tz = vx * nudgeSign;
+    vx += tx * 1.5;
+    vz += tz * 1.5;
   }
 
   const mag = Math.hypot(vx, vz) || 1;
@@ -293,22 +353,41 @@ function runBrain() {
   if (nz > 0.35) want.add('ArrowDown');
   setKeys(want);
 
-  // 멈춤 감지 → 길 재계산, 층 시간 초과 → 판 종료(리로드 복구)
-  const step = opts.pumpN * opts.fixdt;
+  // 멈춤 감지(3초 창 순변위) → 길 재계산 + 벽 슬라이드, 층 시간 초과 → 판 종료(리로드 복구)
   floorTime += step;
-  if (lastPos && Math.hypot(px - lastPos[0], pz - lastPos[1]) < 0.05 && !bossActive) {
-    stuckTime += step;
-    if (stuckTime > 4) {
+  anchorT += step;
+  if (!anchorPos) {
+    anchorPos = [px, pz];
+    anchorT = 0;
+  } else if (anchorT > 3) {
+    if (Math.hypot(px - anchorPos[0], pz - anchorPos[1]) < 0.8 && !bossActive) {
       path = null;
-      stuckTime = 0;
+      nudgeT = 2;
+      nudgeSign = Math.random() < 0.5 ? 1 : -1;
     }
-  } else {
-    stuckTime = 0;
+    anchorPos = [px, pz];
+    anchorT = 0;
   }
-  lastPos = [px, pz];
+  // 교착 진단 — 층 체류 60초부터 상태 샘플 (stuck 기록 시 localStorage에 저장)
+  if (floorTime > 60 && stallTrace.length < 240) {
+    stallTrace.push({
+      ft: +floorTime.toFixed(1),
+      p: [+px.toFixed(1), +pz.toFixed(1)],
+      wp: wpIdx,
+      pl: path ? path.length : null,
+      keys: [...downKeys].map((k) => k.replace('Arrow', '')).join(','),
+      scr: document.querySelector('.screen')?.className?.replace('screen ', '') ?? '',
+      alt: (s as AnyWin).altarState,
+      sec: (s as AnyWin).secretState,
+    });
+  }
   // 보스 층은 전투가 길어질 수 있어 예산을 넉넉히
   const budget = s.boss ? 300 : 120;
   if (floorTime > budget) {
+    localStorage.setItem(
+      'd100sim-stalltrace',
+      JSON.stringify({ floor: s.floorNo, trace: stallTrace.filter((_, i) => i % 6 === 0) }),
+    );
     recordRun('stuck', s.floorNo);
     if (results.length >= opts.runs) finish();
     else reloadForNextRun();
@@ -431,7 +510,7 @@ function start(o: Partial<SimOpts> = {}) {
     return;
   }
   opts = { ...DEF, ...o };
-  if (!o.runs || results.length === 0) results = [];
+  results = []; // 수동 start()는 언제나 새 측정 — 이어가기는 리로드 복구(resume) 경로가 담당
   running = true;
   lastFloor = 1;
   resetFloorNav();
