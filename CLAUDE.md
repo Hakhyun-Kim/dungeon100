@@ -9,16 +9,22 @@
 - 아래 "다음 후보" 섹션을 항상 최신으로 유지 — 끝낸 항목은 지우고, 새로 떠오른 아이디어를 우선순위와 함께 추가.
 
 ## 다음 후보 (우선순위)
+
+> 게임 확장의 판단 기준 3가지(절차 생성 우선·재미·검증 가능)와 후보별 평가는 `docs/DESIGN.md`의 **"확장 방향"** 섹션 참조.
+
 1. **밸런스 시뮬레이터 보스전 봇 개선** — 1차 완성(`src/dev/simBot.ts`, `__d100sim.start({runs:N})` — 사망 층 분포 리포트, 하드런 6·9층 사망 실측). 잔여: 보스전에서 봇이 교착(원거리 링은 벽·어그로 경계 스테일메이트, 근접 링 검증 중) — 보스 층 돌파 로직 튜닝. 숨김 탭 장시간 세션은 환경이 열화되니 **보이는 탭에서 돌리는 게 안정적**.
 2. **제출물 최신화** — 플레이 영상 재촬영(2026-07-13 영상엔 몬스터 아레나·걸어다니는 마을·마을 시절·던전 테마·엔딩 강화 미반영), GAME_INTRO/AI_USAGE PDF 변환, 시크릿 창 최종 점검. 마감 2026-08-10.
 3. **몬스터 아레나 밸런스 튜닝** — 보석 근처 스폰 몰림 방지, 클리어 난이도 층별 곡선(aliveCap/enemyMaxHp/touchDmg), 타입 분포 비율. 처치가 코인에 반영 안 됨(파밍 방지)은 의도된 것.
-4. **업그레이드 풀 확장** — 15종+, 희귀도·시너지 태그 (주2 잔여 항목).
-5. **미니맵** — 깊은 층 안개가 짙어진 만큼 가치 상승 (탐험 보조, 로그라이크 관례).
-6. **처치 콤보** — 연속 처치 시 코인 배율(x2·x3) + 콤보 이펙트.
-7. **모바일 진동** (navigator.vibrate) — 피격·처치·보물에 짧은 진동.
-8. **떠돌이 상인 부활** — 비주얼노벨 시절 삭제된 NPC(2026-07-18 죽은 코드 정리로 대사도 제거, git 히스토리에 있음)를 걸어다니는 마을 네 번째 NPC로 — 시절 연동 대사·아이템 판매 등.
-9. **모바일 성능 최적화** — DPR 제한, 인스턴싱 정리.
-10. **두 게임 통합** — 두 문 러너를 정식 모드로 흡수. 해커톤 이후 검토.
+4. **업그레이드 풀 확장** — 15종+, 희귀도·시너지 태그 (주2 잔여 항목, 확장 1순위 — 순수 데이터라 시뮬봇 검증과 궁합 최고).
+5. **일일 던전** — 오늘 날짜 = 시드로 모두가 같은 던전에 도전, 공유 카드로 기록 인증 (층=시드 구조 그대로 재사용, 구현 작음).
+6. **방 이벤트/변형** — 제단(HP를 바치고 아이템)·저주 방·몬스터 하우스 등 방에 태그만 얹는 절차 생성 확장.
+7. **미니맵** — 깊은 층 안개가 짙어진 만큼 가치 상승 (탐험 보조, 로그라이크 관례).
+8. **처치 콤보** — 연속 처치 시 코인 배율(x2·x3) + 콤보 이펙트.
+9. **모바일 진동** (navigator.vibrate) — 피격·처치·보물에 짧은 진동.
+10. **떠돌이 상인 부활** — 비주얼노벨 시절 삭제된 NPC(2026-07-18 죽은 코드 정리로 대사도 제거, git 히스토리에 있음)를 걸어다니는 마을 네 번째 NPC로 — 시절 연동 대사·아이템 판매 등.
+11. **모바일 성능 최적화** — DPR 제한, 인스턴싱 정리.
+12. **저주 단계·무한 모드(101층+)** — 회차 도전 수정자와 스코어 러시. 해커톤 이후.
+13. **두 게임 통합** — 두 문 러너를 정식 모드로 흡수. 해커톤 이후 검토.
 
 ## 실행
 - `npm install` — 최초 1회
@@ -28,16 +34,28 @@
 - **디버그 층 이동: Shift+D** (Esc 닫기) — 빠른 버튼(1·5·10·…·100층) + 직접 입력, 이동 시 체력 회복. DEV에서는 항상, **배포판에서는 `?debug` 쿼리 필요** (예: …/dungeon100/?debug — 제출 심사자 오작동 방지를 위해 제출 전 재게이트, 2026-07-13). `e.code` 기반이라 한/영 입력 상태 무관. 일반 `d`는 이동 키라 Shift 조합 사용, 이동 키는 Shift 조합 무시.
 - **디버그 보물: Shift+P** (run phase에서만, 같은 `?debug` 게이트) — 보물방 클리어(전설)와 동일 보상: 랜덤 아이템 3개 + 완전 회복 + 황금 잔광·전설음. 흐름 끊김 없이 즉시 지급(quiz/memory 화면 안 거침), 누를 때마다 다른 아이템(grantRewards에 Math.random 시드 전달).
 - **디버그 코인: Shift+M** (같은 `?debug` 게이트, phase 무관) — 코인 +100. 대장간(메타 강화) 테스트용, 코인은 localStorage라 유지됨.
-- **자동 시연 모드: `?demo` 쿼리** (프로덕션에서도 동작 — 예: …/dungeon100/?demo) — 타이틀에 "🎬 자동 시연 보기(약 100초)" 버튼이 생기고, 클릭 한 번이면 게임이 스스로 쇼케이스 투어를 진행: 마을 산책 → **촌장 대화(가짜 선택 개그 "다른 방법은 없나요?"→"없어.")** → 1층 전투 → 보물 3연속(빌드 시각화) → 두 문 달리기 → 몬스터 아레나 → 45층(테마·안개) → **56층 소녀 찻자리(공주 장면 — goTown(girlScript(false))로 직접 진입, girlMet 저장 안 함 = 심사자 세이브 오염 방지)** → 75층 → 85층 폐허 마을 → 30층 보스 → 예고 자막 → 끝 화면(다시 보기/직접 플레이). App 내부 드라이버가 합성 키보드 이벤트(useMoveInput/useSteer가 window 키 이벤트 기반)로 걷고, 장면 전환은 goVillage/enterDungeon/debugJump/debugGrantRef 직접 호출 — DEV 훅 불사용이라 배포판에서도 동작. 오버레이(로어·기억·포털 등)는 1.5초 보여주고 자동으로 넘김(포털·마을 문은 거절), 대화는 talkFor가 1.8초 간격으로 진행(개그 선택지 우선). 자막 `.demo-caption`, 종료 버튼, 끝 화면 `.demo-end`. 심사자용 "영상 대체" 링크로 활용.
+- **자동 시연 모드: `?demo` 쿼리** (프로덕션에서도 동작 — 예: …/dungeon100/?demo) — 타이틀에 "🎬 자동 시연 보기(약 100초)" 버튼이 생기고, 클릭 한 번이면 게임이 스스로 쇼케이스 투어를 진행: 마을 산책 → **촌장 대화(가짜 선택 개그 "다른 방법은 없나요?"→"없어.")** → 1층 전투 → 보물 3연속(빌드 시각화) → 두 문 달리기 → 몬스터 아레나 → 45층(테마·안개) → **56층 소녀 찻자리(공주 장면 — goTown(girlScript(false))로 직접 진입, girlMet 저장 안 함 = 심사자 세이브 오염 방지)** → 75층 → 85층 폐허 마을 → 30층 보스 → 예고 자막 → 끝 화면(다시 보기/직접 플레이). 시나리오 드라이버(`src/demo/useDemoDriver.ts`)가 합성 키보드 이벤트(useMoveInput/useSteer가 window 키 이벤트 기반)로 걷고, 장면 전환은 App이 넘겨준 조작 프리미티브(DemoActions — village/dungeon/jump/treasure 등) 직접 호출 — DEV 훅 불사용이라 배포판에서도 동작. 오버레이(로어·기억·포털 등)는 1.5초 보여주고 자동으로 넘김(포털·마을 문은 거절), 대화는 talkFor가 1.8초 간격으로 진행(개그 선택지 우선). 자막 `.demo-caption`, 종료 버튼, 끝 화면 `.demo-end`. 심사자용 "영상 대체" 링크로 활용.
 - **디버그 모드에서는 전체 화면 플래시·펄스 오버레이 끔** (피격 hit-flash·보물 gold·저체력 low-hp — 반복 테스트 시 눈 피로, 2026-07-17). 소리 신호(심장박동 등)는 유지. 일반 플레이(비디버그)에는 그대로.
-- **오버레이 키보드 선택**: 모든 선택 화면을 마우스 없이 진행 가능 — 두 갈래 선택(두 문 보상·포털·마을 문·엔딩)은 ←/↑=1번·→/↓=2번, 드래프트 3장은 ←/↑↓/→ 또는 1·2·3, 진행 버튼·대사는 Enter/Space/→. 숫자 키 1~4는 모든 선택지에서 동작.
+- **표준 메뉴 선택 UI** (`src/ui/Menu.tsx` — ChoiceList·PrimaryButton, 2026-07-19 표준화): 모든 선택 화면에서 **항상 한 항목이 하이라이트**(.focused 금색 테두리, 기본 = 첫 활성 항목)되어 있고, **방향키로 이동**(순환·비활성 스킵), **Enter/Space로 확정**, 숫자 1~4는 바로 선택, 마우스 호버는 하이라이트와 동기화. 진행 버튼(유일 버튼)·대사는 Enter/Space/→. 메뉴가 겹치면(디버그 창·시연 끝 화면) **나중에 열린 메뉴만 키를 받음**(모듈 레벨 메뉴 스택 — DebugPanel은 useMenuStack만 등록해 아래 메뉴를 잠금). 자동 반복(e.repeat) 무시 — 이동 키를 누른 채 화면이 떠도 오작동 없음.
 - HUD는 z-index 50으로 오버레이(30) 위 — 음소거(🔊) 버튼이 팝업 중에도 항상 눌린다.
 - 숨김 탭(헤드리스 프리뷰)에서는 크롬이 rAF를 멈춰 3D가 안 그려짐 — `?rafshim` 쿼리로 우회 (index.html의 개발용 심: 타이머 rAF + ResizeObserver 폴리필 + **`window.__pump(n)` 동기 프레임 구동**). 크롬 집중 스로틀링(오래 숨겨진 탭, 타이머 분당 1회)에서는 타이머가 다 죽으므로 자동 검증은 `__pump` + `__d100fixdt`(고정 dt) + MessageChannel 틱(스로틀 안 됨)으로 구동할 것. 클릭 후 React 렌더는 태스크 경계가 필요 — 같은 evaluate 안에서는 MessageChannel 왕복(tick) 후 DOM을 읽어야 함. DEV 훅: `__d100`(teleport/state/hitBoss/killEnemies — state에 밸런스 봇용 `bossWorld`/`eshots`/`enemiesPos` 좌표 노출), `__d100run`(place/state), `__d100arena`(place/state/collect/hurt — 몬스터 아레나), `__d100town`(place/state — 걸어다니는 마을), `__d100app`(jump — 층 점프). **밸런스 봇 실측 예시**(2026-07-18): 회피 봇(링 유지+탄막 수직 회피, 8방향 키 합성)으로 10층 보스 1:1 → 12아이템 빌드 기준 6.3초 접전 끝 봇 패배(보스 HP 14% 남음) — 시뮬레이션은 로컬 DEV 전용, 프로덕션 번들엔 미포함. r3f 부팅은 클릭 루프보다 느릴 수 있으니 `window.__d100` 등장까지 넉넉히 대기할 것. (아레나 훅은 씬 마운트 직후 passive effect라 같은 evaluate 안에서 tick 몇 번 돌려야 등장.)
 - **밸런스 자동 시뮬레이터** (`src/dev/simBot.ts`, DEV 전용 — 프로덕션 번들 미포함): localhost에서 콘솔에 `__d100sim.start({ runs: 5 })` — 봇이 1층부터 자동 플레이(BFS 길찾기·탄막 회피·두 문 달리기 정답 조향·포털/드래프트/마을 자동 진행, 5층 마을 문은 거절해 체크포인트 비오염) 후 **사망 층 분포 리포트**(console.table + `__d100sim.report` + localStorage `d100sim-report`). 옵션: `maxFloor`(층 캡), `chestEvery: n`(n층마다 전설 보상 = 파밍런 가정, Shift+P 재사용), `stop()`/`status()`. 층 캡·멈춤 복구는 sessionStorage 저장 후 자동 리로드로 이어짐. 헤드리스(?rafshim)에서도 돌지만 **보이는 탭이 안정적**(숨김 탭은 캔버스 미측정 300×150 시 resize 이벤트로 재측정 강제 — 봇에 내장). 봇 좌표는 `__d100.state()`의 `bossWorld`/`eshots`/`enemiesPos`, 지형은 `__d100.grid()`.
 - 배포: main 푸시 → `.github/workflows/deploy-pages.yml` → https://hakhyun-kim.github.io/dungeon100/
 
 ## 구조
-- `src/App.tsx` — phase 상태 머신: `title` → `story`(인트로, 최초 1회·건너뛰기 가능) → `village`(**걸어다니는 3D 마을** — 던전 입장 전·5층 방문·부활 공용) → `run` → **보물상자 미니게임(모드에 따라 갈림)**: 수학 모드 → `doorrun`(두 문 달리기, 최대 3라운드 푸시-유어-럭) / 몬스터 모드 → `arena`(몬스터 무리+보석 3개) → `quiz`(결과/계속 선택) → `portal`(다음 층 내려갈지 선택 — 거절 시 portalRetryRef 증가로 포털 재무장) → `draft`(보상 3택 1) → `run` / `over`(사망 → 재도전 or 마을). HUD·빌드 칩·오버레이는 캔버스 위 DOM. 사망 판정은 hp useEffect. Canvas는 run 계열 phase에만 마운트(배경·fog는 Canvas 레벨 — **마을은 시절 색, 던전은 10층 테마 색(dungeonTheme(floorNo).bg), 던전 안개는 깊을수록 짙어짐**(near 20→11·far 44→28 선형, 미로 난이도 램프; 미니게임·마을은 기본 20/44)), 층 전환은 DungeonScene key 리마운트, 미니게임 라운드는 DoorRunScene/GemArenaScene key 리마운트. 미니게임 결과는 quizResultRef(seq 증가)로 던전 씬에 전달. 보상: 통과한 문·주운 보석 수 = 아이템 수, 3개 완주 = 전설(3개+완전회복), 실패 = 전부 빈손. **보물상자 모드 분기**는 modeRef(onChest useCallback 안 stale 방지)로 판단.
+
+**기능별 1파일 원칙** — 오버레이·화면은 `src/ui/`에 기능 단위로 분리되어 있어 커밋도 기능 단위로 나눌 수 있다. 표시(JSX)는 컴포넌트가, 상태 전이·보상 로직·효과음은 App 콜백이 담당. **주의: 시뮬봇(simBot)·시연 드라이버가 DOM 클래스(.choice-btn/.dialog-choices/.big-btn/.card/.village-action 등)를 셀렉터로 쓰므로 클래스명은 바꾸지 말 것.**
+
+- `src/App.tsx` — phase 상태 머신 + 배선(≈900줄): `title` → `story`(인트로, 최초 1회·건너뛰기 가능) → `village`(**걸어다니는 3D 마을** — 던전 입장 전·5층 방문·부활 공용) → `run` → **보물상자 미니게임(모드에 따라 갈림)**: 수학 모드 → `doorrun`(두 문 달리기, 최대 3라운드 푸시-유어-럭) / 몬스터 모드 → `arena`(몬스터 무리+보석 3개) → `quiz`(결과/계속 선택) → `portal`(다음 층 내려갈지 선택 — 거절 시 portalRetryRef 증가로 포털 재무장) → `draft`(보상 3택 1) → `run` / `over`(사망 → 재도전 or 마을). 사망 판정은 hp useEffect. Canvas는 run 계열 phase에만 마운트(배경·fog는 Canvas 레벨 — **마을은 시절 색, 던전은 10층 테마 색(dungeonTheme(floorNo).bg), 던전 안개는 깊을수록 짙어짐**(near 20→11·far 44→28 선형, 미로 난이도 램프; 미니게임·마을은 기본 20/44)), 층 전환은 DungeonScene key 리마운트, 미니게임 라운드는 DoorRunScene/GemArenaScene key 리마운트. 미니게임 결과는 quizResultRef(seq 증가)로 던전 씬에 전달. 보상: 통과한 문·주운 보석 수 = 아이템 수, 3개 완주 = 전설(3개+완전회복), 실패 = 전부 빈손. **보물상자 모드 분기**는 modeRef(onChest useCallback 안 stale 방지)로 판단.
+- `src/ui/` — **오버레이·HUD 컴포넌트 (기능별 1파일)**:
+  - `Menu.tsx` — 표준 메뉴 선택(ChoiceList·PrimaryButton·useMenuStack). 위 "표준 메뉴 선택 UI" 참조.
+  - `Hud.tsx` — GameHud(층·체력·처치·코인)/ArenaHud/VillageHud/BuildRow(빌드 칩)/BossBar.
+  - `TitleScreen.tsx` / `StoryScreen.tsx`(인트로+책 퀴즈) / `EndingScreen.tsx`(엔딩 선택·슬라이드·통계) / `OverScreen.tsx`(게임오버·부활 선택) / `DraftScreen.tsx`(3택 1).
+  - `VillageOverlay.tsx`(걸어다니는 마을 DOM — 힌트·상호작용 버튼·대화창) / `TownDialogScreen.tsx`(별도 DOM 마을 화면 — 56층 소녀 찻자리) / `ShopScreen.tsx`(대장간).
+  - `FloorPrompts.tsx`(포털·마을 문) / `ChestScreens.tsx`(보물 결과·아레나 재도전) / `LoreScreens.tsx`(벽의 글귀·흔적·기억·기억 완성).
+  - `DebugPanel.tsx`(Shift+D 층 이동) / `DemoOverlay.tsx`(시연 자막·종료·끝 화면).
+- `src/lib/meta.ts` — 대장간 영구 강화 데이터·공식 (Meta·SHOP_ITEMS·shopCost·metaSpeed).
+- `src/demo/useDemoDriver.ts` — 자동 시연(?demo) 시나리오 훅 — App은 조작 프리미티브(DemoActions)만 제공. 프로덕션 번들에 포함(심사자용).
 - **몬스터 아레나** (보물상자 '몬스터' 모드, `arena`/`arenaover` phase + `GemArenaScene`) — 수학 대신 우르르 몰려오는 무리를 뚫고 바닥의 보석 3개를 몸으로 주우면 능력치업(=3문 완주와 동일 보상). **아레나 전용 체력**(ARENA_MAX_HP=100, 본체와 분리)이 0이 되면 `arenaover`로 — 본체는 무사하고 **몇 번이고 재도전**(arenaTry로 리마운트) 또는 모은 보석만큼 받고 나가기(`bailArena`→grantRewards(N)). 아레나 HUD는 👹 + 아레나 체력바 + 💎 진행도. DEV 훅 `__d100arena`(place/state/collect/hurt).
 - `src/three/DungeonScene.tsx` — 층 하나의 씬+시뮬레이션. 지형·적·투사체·파티클 전부 InstancedMesh. **10층 단위 던전 테마**(DUNGEON_THEMES 10종 — 바닥 체커·벽·배경 팔레트: 보랏빛 서장→이끼→가을 잉크→푸른 밤→서리→장미 잉크(56층)→녹슨 철문→잿빛→핏빛→금빛 마지막 장; `dungeonTheme(floorNo)` export, App이 배경·안개색으로 재사용). 시뮬레이션은 useFrame에서 ref 기반(React 상태는 onDamage/onKill/onExit/onChest 이벤트만). 타격감: 피격 흰색 번쩍(인스턴스 색)+넉백+스파크, 처치 폭발, 카메라 셰이크. 파워업 시각화: 멀티샷 궤도 구슬, 공격력별 투사체 크기·색, 체력별 몸집, 보물 획득 황금 잔광. 입력은 useMoveInput 훅 (키보드 + 터치 드래그, button 위에서는 시작 안 함). pausedRef로 퀴즈/드래프트/게임오버 중 정지. DEV 전용 `window.__d100`(teleport/state) — 자동 검증용.
 - `src/lib/dungeon.ts` — 절차 생성. 방 흩뿌리기 + 폭 2 L자 복도 순차 연결(연결 보장). `GRID`=44셀, `CELL`=2. 충돌은 `canStand`(네 모서리 셀 검사). 시작 방 안전지대, 출구 인접 스폰 금지, 층당 보물상자 1개(시작·출구에서 떨어진 곳).
