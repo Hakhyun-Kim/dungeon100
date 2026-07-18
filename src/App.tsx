@@ -3,7 +3,12 @@ import { Canvas } from '@react-three/fiber';
 import DungeonScene, { type QuizResult } from './three/DungeonScene';
 import DoorRunScene from './three/DoorRunScene';
 import GemArenaScene, { ARENA_MAX_HP } from './three/GemArenaScene';
-import TownScene, { type TownTarget } from './three/TownScene';
+import TownScene, {
+  villageStage,
+  VILLAGE_STAGE_NAMES,
+  VILLAGE_STAGE_BG,
+  type TownTarget,
+} from './three/TownScene';
 import { BASE_STATS, SPEED_CAP, UPGRADES, draftThree, type Stats, type Upgrade } from './lib/upgrades';
 import { makeQuiz, type DungeonMode } from './lib/quiz';
 import { mulberry32 } from './lib/rng';
@@ -788,6 +793,12 @@ export default function App() {
     goVillage('death');
   };
 
+  // 마을의 '시절' — 새 도전 허브(enter)는 언제나 처음의 평화로운 마을, 그 외엔 현재 깊이.
+  // 깊이 내려갈수록(=마지막 장이 쓰일수록) 마을에도 시간이 흐른다 (계절·습격 피해·새벽).
+  const villageFloor = villageCtx === 'enter' ? 0 : floorNo;
+  const vStage = villageStage(villageFloor);
+  const canvasBg = phase === 'village' ? VILLAGE_STAGE_BG[vStage] : '#140e22';
+
   const hpRatio = Math.max(0, Math.min(1, hp / stats.maxHp));
   const inGame = !(
     phase === 'title' ||
@@ -800,8 +811,8 @@ export default function App() {
     <div className="app">
       {inGame && (
         <Canvas className="canvas" camera={{ fov: 50, position: [0, 15.5, 9.5] }} dpr={[1, 2]}>
-          <color attach="background" args={['#140e22']} />
-          <fog attach="fog" args={['#140e22', 20, 44]} />
+          <color attach="background" args={[canvasBg]} />
+          <fog attach="fog" args={[canvasBg, 20, 44]} />
           <DungeonScene
             key={`${runId}:${floorNo}`}
             floorNo={floorNo}
@@ -841,7 +852,12 @@ export default function App() {
             />
           )}
           {phase === 'village' && (
-            <TownScene pausedRef={villagePausedRef} onNear={onVillageNear} />
+            <TownScene
+              key={`v${villageFloor}`}
+              floorNo={villageFloor}
+              pausedRef={villagePausedRef}
+              onNear={onVillageNear}
+            />
           )}
         </Canvas>
       )}
@@ -893,7 +909,7 @@ export default function App() {
       {phase === 'village' && (
         <>
           <div className="hud">
-            <div className="hud-chip">🏘️ 마을</div>
+            <div className="hud-chip">{VILLAGE_STAGE_NAMES[vStage]}</div>
             <div className="hud-spacer" />
             <button className="hud-chip mute-btn" onClick={toggleMute}>
               {muted ? '🔇' : '🔊'}
