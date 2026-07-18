@@ -379,85 +379,169 @@ export const TRACES: Record<number, { icon: string; text: string }> = {
 };
 
 // ── 56층, 이야기 속 소녀 '여백' — 작가가 쓰다 만 등장인물 (17층 글귀의 회수)
-export const GIRL_SCRIPT: TownNode[] = [
-  {
-    kind: 'line',
-    icon: '👧',
-    speaker: '???',
-    text: '어…? 손님이다! 진짜 손님!\n42층 초대장 보고 온 거예요?',
-    next: 1,
-  },
-  {
-    kind: 'line',
-    icon: '🧑‍🎓',
-    speaker: '나',
-    text: '너, 여기서 뭐 하는 거야? 이 아래는 위험해!',
-    next: 2,
-  },
-  {
-    kind: 'line',
-    icon: '👧',
-    speaker: '소녀',
-    text: "위험하긴요. 몬스터들은 절 안 건드려요.\n전 '등장인물'이거든요. 그쪽 같은 '읽는 사람'이랑은 다르게요.",
-    next: 3,
-  },
-  {
-    kind: 'line',
-    icon: '👧',
-    speaker: '소녀',
-    text: "작가님이 절 쓰다가 멈추셨어요. 이름도 못 받았고요.\n그래서 다들 절 '여백'이라고 불러요. 페이지 사이 빈 곳에 사니까.",
-    next: 4,
-  },
-  {
-    kind: 'line',
-    icon: '👧',
-    speaker: '여백',
-    text: '그래서 뭐 어때요? 덕분에 전 이 책에서 제일 자유로운걸요.\n(활짝 웃는다)',
-    next: 5,
-  },
-  {
-    kind: 'line',
-    icon: '👧',
-    speaker: '여백',
-    text: "부탁 하나만요. 100층 문에 닿으면 작가님께 전해 주세요.\n— '마지막 장, 여기서 기다리고 있다'고.",
-    next: 6,
-  },
-  {
-    kind: 'line',
-    icon: '👧',
-    speaker: '여백',
-    text: '아, 이것도 가져가요. 손님 대접용으로 아껴 둔 건데,\n차랑은 영 안 어울려서.',
-    gift: 'item',
-    next: 7,
-  },
-  {
-    kind: 'choice',
-    prompt: '화로 위 주전자가 김을 뿜는다.',
-    options: [
-      { label: '🍵 차 한 잔 얻어 마신다', next: 8 },
-      { label: '⚔️ 이만 가 볼게, 고마워', action: 'return' },
-    ],
-  },
-  {
-    kind: 'line',
-    icon: '👧',
-    speaker: '여백',
-    text: '따뜻하죠? 여관 니나 언니 레시피예요.\n…언니도 절 기억하고 있을까요?',
-    gift: 'heal',
-    next: 9,
-  },
-  {
-    kind: 'choice',
-    prompt: '찻잔 바닥에 작게 쓰여 있다: 「다음 이야기에서 만나요」',
-    options: [{ label: '⚔️ 던전으로 돌아간다', action: 'return' }],
-  },
-];
+// 42층 초대장(흔적)을 봤는지에 따라 첫인사가 갈리고, 본 손님에겐 답례 아이템이 하나 더.
+// 두 오프닝은 길이가 같아야 한다(공통 꼬리의 next 인덱스가 3부터 시작).
+export function girlScript(sawInvite: boolean): TownNode[] {
+  const opening: TownNode[] = sawInvite
+    ? [
+        {
+          kind: 'line',
+          icon: '👧',
+          speaker: '???',
+          text: '어…? 손님이다! 진짜 손님!\n그 발소리 — 42층 초대장 보고 온 거죠? 그렇죠?',
+          next: 1,
+        },
+        {
+          kind: 'line',
+          icon: '🧑‍🎓',
+          speaker: '나',
+          text: '(벽의 그 삐뚤빼뚤한 글씨…) 응. 차 마시러 오라길래.',
+          next: 2,
+        },
+        {
+          kind: 'line',
+          icon: '👧',
+          speaker: '???',
+          text: '와아, 초대장이 통했다! 벽에 쓰느라 팔 빠지는 줄 알았단 말이에요.\n답장 대신 — 이거 받아요! 초대에 응해 준 손님 선물!',
+          gift: 'item',
+          next: 3,
+        },
+      ]
+    : [
+        {
+          kind: 'line',
+          icon: '👧',
+          speaker: '???',
+          text: '어…? 손님이다! 진짜 손님!\n…근데 어떻게 알고 왔어요? 42층 벽에 초대장 써 놨는데.',
+          next: 1,
+        },
+        {
+          kind: 'line',
+          icon: '🧑‍🎓',
+          speaker: '나',
+          text: '초대장? …그런 게 있었어? 그냥 내려오다 보니 네가 있던데.',
+          next: 2,
+        },
+        {
+          kind: 'line',
+          icon: '👧',
+          speaker: '???',
+          text: '흐음… 초대장도 없이 왔으면, 그건 운명이네요!\n손님은 손님이니까요. (활짝)',
+          next: 3,
+        },
+      ];
+  const tail: TownNode[] = [
+    {
+      kind: 'line',
+      icon: '🧑‍🎓',
+      speaker: '나',
+      text: '그보다 너, 여기서 뭐 하는 거야? 이 아래는 위험해!',
+      next: 4,
+    },
+    {
+      kind: 'line',
+      icon: '👧',
+      speaker: '소녀',
+      text: "위험하긴요. 몬스터들은 절 안 건드려요.\n전 '등장인물'이거든요. 그쪽 같은 '읽는 사람'이랑은 다르게요.",
+      next: 5,
+    },
+    {
+      kind: 'line',
+      icon: '👧',
+      speaker: '소녀',
+      text: "작가님이 절 쓰다가 멈추셨어요. 이름도 못 받았고요.\n그래서 다들 절 '여백'이라고 불러요. 페이지 사이 빈 곳에 사니까.",
+      next: 6,
+    },
+    {
+      kind: 'line',
+      icon: '👧',
+      speaker: '여백',
+      text: '그래서 뭐 어때요? 덕분에 전 이 책에서 제일 자유로운걸요.\n(활짝 웃는다)',
+      next: 7,
+    },
+    {
+      kind: 'line',
+      icon: '👧',
+      speaker: '여백',
+      text: "비밀 하나 알려 드릴까요? 촌장 할머니… 아니, '작가님' 노트에서 봤는데요.\n원래 전 이 이야기의 「공주님」이 될 예정이었대요.\n이름 칸은… 빈칸이었지만요.",
+      next: 8,
+    },
+    {
+      kind: 'line',
+      icon: '👧',
+      speaker: '여백',
+      text: "부탁 하나만요. 100층 문에 닿으면 작가님께 전해 주세요.\n— '마지막 장, 여기서 기다리고 있다'고.\n…공주 이름도 잊지 말라고요! (웃음)",
+      next: 9,
+    },
+    {
+      kind: 'line',
+      icon: '👧',
+      speaker: '여백',
+      text: '아, 이것도 가져가요. 손님 대접용으로 아껴 둔 건데,\n차랑은 영 안 어울려서.',
+      gift: 'item',
+      next: 10,
+    },
+    {
+      kind: 'choice',
+      prompt: '화로 위 주전자가 김을 뿜는다.',
+      options: [
+        { label: '🍵 차 한 잔 얻어 마신다', next: 11 },
+        { label: '🍰 혹시 케이크는 없어?', next: 12 },
+        { label: '⚔️ 이만 가 볼게, 고마워', action: 'return' },
+      ],
+    },
+    {
+      kind: 'line',
+      icon: '👧',
+      speaker: '여백',
+      text: '따뜻하죠? 여관 니나 언니 레시피예요.\n…언니도 절 기억하고 있을까요?',
+      gift: 'heal',
+      next: 13,
+    },
+    {
+      kind: 'line',
+      icon: '👧',
+      speaker: '여백',
+      text: '없어요. 차만 있어요. (단호)\n…자, 마셔요. 어차피 메뉴는 하나예요.',
+      gift: 'heal',
+      next: 13,
+    },
+    {
+      kind: 'choice',
+      prompt: '찻잔 바닥에 작게 쓰여 있다: 「다음 이야기에서 만나요」',
+      options: [{ label: '⚔️ 던전으로 돌아간다', action: 'return' }],
+    },
+  ];
+  return [...opening, ...tail];
+}
 
 // 여백을 만났다면 엔딩에 한 장면이 더해진다
 export const ENDING_GIRL_EXTRA: { icon: string; text: string } = {
   icon: '🌼',
   text: '문이 닫히기 직전 — 페이지 사이에서\n누군가 폴짝폴짝 뛰며 손을 흔든 것 같았다.\n\n「다음 이야기에서 만나요!」',
 };
+
+// 여백을 만나고 촌장과 '함께' 나가는 엔딩 — 공주의 이름 (소녀의 부탁 회수)
+export const ENDING_NAME_PRINCESS: { icon: string; text: string } = {
+  icon: '👑',
+  text: '"할머니. 56층의 그 아이가… 이름을 기다리고 있어요.\n공주님이 될 예정이었다면서요."\n\n촌장은 눈을 크게 떴다가, 이내 오래오래 웃었다.\n"그래. 돌아가면 제일 먼저 그 아이 이름부터 지어야겠구나.\n공주답게, 아주 근사한 걸로."',
+};
+
+// ── 에필로그 — 10년 후 (성장의 이유, 그리고 2탄 예고). 모든 엔딩 공통.
+export const ENDING_EPILOGUE: { icon: string; text: string }[] = [
+  {
+    icon: '🏙️',
+    text: '— 10년 후.\n\n나는 어른이 되었다. 아침에 일어나 일을 하고, 가끔 라면을 먹고.\n다만 남들과 조금 다른 게 있다면 —\n어떤 문 앞에서도, 망설이지 않게 되었다는 것.',
+  },
+  {
+    icon: '🌆',
+    text: '그리고 오늘, 퇴근길.\n지하철역 계단이 어쩐지… 백 층처럼 깊어 보였다.\n전광판의 글자들이 꿈틀, 하고 움직인 것 같았다.\n\n어디선가 — 사락. 페이지 넘어가는 소리.',
+  },
+  {
+    icon: '📖',
+    text: '나는 웃으며 가방끈을 고쳐 멨다.\n\n괜찮아. 나는 이미 한 번, 끝까지 읽었으니까.\n\n『백층 던전의 비밀』 — 2권에서 계속',
+  },
+];
 
 // ── 엔딩 (100층 — 페이지의 수호자를 쓰러뜨리고 황금 문 앞에서)
 export const ENDING_ALONE: { icon: string; text: string }[] = [
@@ -592,12 +676,22 @@ export function chiefTalk(ctx: TownContext, firstTime: boolean, floorNo: number)
       ];
     return [L('얼마 안 남았구나. 100층의 문은 이 책의 뒤표지란다. 좋은 결말을 부탁한다.', -1)];
   }
-  // enter
+  // enter — 첫 만남엔 고전 개그: 선택지는 있지만 사실 답은 하나다
   if (firstTime) {
     return [
       L('오, 또 떨어졌구먼! 2026년에서 왔다고? 쯧쯧, 집에 가고 싶겠지.', 1),
       L('마을 뒤 백층 던전, 그 가장 깊은 곳에 「집으로 가는 문」이 있단다. 끝까지 간 사람은… 음, 아직 없지만!', 2),
-      L('던전 보물상자는 시험을 걸어와. 두 문의 수수께끼를 풀거나, 겁 없으면 몬스터를 상대해도 되지. 준비되면 저 던전 입구로 가렴.', -1),
+      L('던전 보물상자는 시험을 걸어와. 두 문의 수수께끼를 풀거나, 겁 없으면 몬스터를 상대해도 되지. 준비되면 저 던전 입구로 가렴.', 3),
+      {
+        kind: 'choice',
+        prompt: '어떻게 할까?',
+        options: [
+          { label: '⚔️ 알겠어요. 가 볼게요', action: 'close' },
+          { label: '🙋 혹시… 다른 방법은 없나요?', next: 4 },
+        ],
+      },
+      L('없어.', 5),
+      L('…희망을 담아 다시 물어봐도 없어. 옛날에 어떤 청년이 서른두 번을 물었는데, 서른두 번 다 없었단다. 자, 가렴.', -1),
     ];
   }
   return [L('왔구먼! 던전이 오늘도 입을 벌리고 기다린다. 준비되면 저 입구로 가렴.', -1)];
@@ -611,8 +705,19 @@ export function ninaTalk(ctx: TownContext): TownNode[] {
       { kind: 'line', icon: '👧', speaker: '니나', text: '상처는 제가 다 돌봐 뒀어요. 특제 수프도 한 그릇 — 몸이 개운해질 거예요!', next: -1, gift: 'heal' },
     ];
   }
+  // 어느 쪽을 골라도 수프는 먹게 된다 (가짜 선택 개그)
   return [
-    { kind: 'line', icon: '👧', speaker: '여관 소녀 니나', text: '모험가님! 얼굴이 반쪽이 됐어요. 우리 여관 특제 수프 드시고 가요. 서비스예요!', next: -1, gift: 'heal' },
+    { kind: 'line', icon: '👧', speaker: '여관 소녀 니나', text: '모험가님! 얼굴이 반쪽이 됐어요. 우리 여관 특제 수프 드시고 가요. 서비스예요!', next: 1 },
+    {
+      kind: 'choice',
+      prompt: '김이 모락모락 나는 수프가 눈앞에 놓였다.',
+      options: [
+        { label: '🍲 잘 먹겠습니다!', next: 2 },
+        { label: '🥄 …재료가 뭐예요?', next: 3 },
+      ],
+    },
+    { kind: 'line', icon: '👧', speaker: '니나', text: '많이 드세요! 리필은 무한이에요.', gift: 'heal', next: -1 },
+    { kind: 'line', icon: '👧', speaker: '니나', text: '여관의 비밀이에요. (생긋)\n…무서운 재료는 아니에요. 아마도요. 자, 식기 전에!', gift: 'heal', next: -1 },
   ];
 }
 

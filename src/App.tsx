@@ -17,8 +17,10 @@ import {
   ENDING_ALONE,
   ENDING_TOGETHER,
   ENDING_GIRL_EXTRA,
+  ENDING_NAME_PRINCESS,
+  ENDING_EPILOGUE,
   TRACES,
-  GIRL_SCRIPT,
+  girlScript,
   getLore,
   getDeathLore,
   chiefTalk,
@@ -89,6 +91,10 @@ export default function App() {
   const [meta, setMeta] = useLocalStorage<Meta>('d100-meta', { dmg: 0, hp: 0, spd: 0 });
   const [deaths, setDeaths] = useLocalStorage<number>('d100-deaths', 0);
   const [girlMet, setGirlMet] = useLocalStorage<boolean>('d100-girl', false);
+  // 본 흔적(14·28·42·49층)의 층 번호 — 42층 초대장을 봤으면 56층 소녀의 첫인사·선물이 달라진다
+  const [tracesSeen, setTracesSeen] = useLocalStorage<number[]>('d100-traces', []);
+  const tracesSeenRef = useRef(tracesSeen);
+  tracesSeenRef.current = tracesSeen;
   const [overLore, setOverLore] = useState('');
   const [townScape, setTownScape] = useState<{ sky: string; scape: string }>({
     sky: '🌙',
@@ -548,7 +554,9 @@ export default function App() {
       setHp(stats.maxHp);
       setGiftName('🍲 체력 완전 회복');
     } else {
-      const u = UPGRADES[Math.floor(mulberry32(runId * 31 + floorNo * 7 + 11)() * UPGRADES.length)];
+      // townIdx를 시드에 섞음 — 한 대화에 선물 노드가 둘이어도(예: 소녀 초대 답례) 다른 아이템
+      const u =
+        UPGRADES[Math.floor(mulberry32(runId * 31 + floorNo * 7 + townIdx * 5 + 11)() * UPGRADES.length)];
       gainUpgrade(u);
       setGiftName(`${u.icon} ${u.name} 획득`);
     }
@@ -614,12 +622,18 @@ export default function App() {
   const onHomeDoor = useCallback(() => setPhase('homedoor'), []);
   const onTrace = useCallback(() => {
     sfx.memory();
+    const fl = floorNoRef.current;
+    setTracesSeen((prev) => (prev.includes(fl) ? prev : [...prev, fl]));
     setPhase('trace');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const onGirl = useCallback(() => {
     sfx.gift();
     setGirlMet(true);
-    goTown(GIRL_SCRIPT, 'girl', { sky: '✨', scape: '🕯️ 🫖 📚 🌼 🕯️' });
+    goTown(girlScript(tracesSeenRef.current.includes(42)), 'girl', {
+      sky: '✨',
+      scape: '🕯️ 🫖 📚 🌼 🕯️',
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -950,8 +964,8 @@ export default function App() {
         </div>
       )}
 
-      {/* 보스 체력바 */}
-      {inGame && phase !== 'town' && bossMax > 0 && bossHp > 0 && (
+      {/* 보스 체력바 — 마을(town/village)에서는 숨김 (숨은 DungeonScene이 보고해도 표시 안 함) */}
+      {inGame && phase !== 'town' && phase !== 'village' && bossMax > 0 && bossHp > 0 && (
         <div className="boss-bar-wrap">
           <span className="boss-label">📖 페이지의 수호자</span>
           <div className="boss-bar-outer">
@@ -1381,7 +1395,14 @@ export default function App() {
             );
           }
           const baseSlides = endingVariant === 'alone' ? ENDING_ALONE : ENDING_TOGETHER;
-          const slides = girlMet ? [...baseSlides, ENDING_GIRL_EXTRA] : baseSlides;
+          // 여백을 만났으면: 함께 엔딩엔 '공주의 이름' 장면, 모든 엔딩에 손 흔드는 장면.
+          // 그 뒤로 10년 후 에필로그(2탄 예고)는 공통.
+          const slides = [
+            ...baseSlides,
+            ...(girlMet && endingVariant === 'together' ? [ENDING_NAME_PRINCESS] : []),
+            ...(girlMet ? [ENDING_GIRL_EXTRA] : []),
+            ...ENDING_EPILOGUE,
+          ];
           if (endingIdx < slides.length) {
             const s = slides[endingIdx];
             return (
