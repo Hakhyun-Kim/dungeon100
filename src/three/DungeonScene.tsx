@@ -282,8 +282,8 @@ function DungeonScene({
       ? {
           x: exitX,
           z: exitZ,
-          hp: 450 + floorNo * 45,
-          maxHp: 450 + floorNo * 45,
+          hp: 500 + floorNo * 50,
+          maxHp: 500 + floorNo * 50,
           alive: true,
           hitCd: 0,
           fireTimer: 1.5,
