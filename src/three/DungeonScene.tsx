@@ -469,7 +469,14 @@ function DungeonScene({
           p.position.z = z;
         }
       },
+      // 밸런스 봇용 지형 스냅샷 — 층당 1회 호출해 BFS 길찾기에 사용 (DEV 전용)
+      grid: () => ({
+        cells: Array.from(floor.cells),
+        grid: GRID,
+        cell: CELL,
+      }),
       state: () => ({
+        floorNo,
         player: playerRef.current
           ? [playerRef.current.position.x, playerRef.current.position.z]
           : null,
