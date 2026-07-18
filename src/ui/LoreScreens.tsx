@@ -73,10 +73,11 @@ export function MemFullScreen({
       </p>
       <div className="cards">
         {rewards.map((u, i) => (
-          <div key={`${u.id}${i}`} className="card reward-pop">
+          <div key={`${u.id}${i}`} className={`card reward-pop rarity-${u.rarity}`}>
             <span className="card-icon">{u.icon}</span>
             <span className="card-name">{u.name}</span>
             <span className="card-desc">{u.desc}</span>
+            <span className="card-tag">{u.tag}</span>
           </div>
         ))}
       </div>

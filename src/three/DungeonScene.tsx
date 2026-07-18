@@ -41,6 +41,8 @@ interface Shot {
   dx: number;
   dz: number;
   left: number; // 남은 사거리
+  pierce: number; // 남은 관통 횟수 (관통 서표)
+  last: number; // 마지막으로 맞힌 적 인덱스 (관통탄 연속 타격 방지)
   alive: boolean;
 }
 
@@ -129,6 +131,7 @@ function DungeonScene({
   homeRetryRef,
   homeUsedRef,
   onDamage,
+  onHeal,
   onKill,
   onExit,
   onChest,
@@ -147,6 +150,7 @@ function DungeonScene({
   homeRetryRef: React.MutableRefObject<number>; // 마을 문 "나중에" 선택 시 증가 → 문 재무장
   homeUsedRef: React.MutableRefObject<number>; // 마을 방문 완료 시 증가 → 문 소멸
   onDamage: (dmg: number) => void;
+  onHeal: (amount: number) => void; // 흡혈의 잉크 — 처치 시 회복
   onKill: (bounty: number) => void; // bounty = 코인 (탱커 3, 그 외 1)
   onExit: () => void;
   onChest: () => void;
@@ -234,7 +238,7 @@ function DungeonScene({
     })(),
   );
   const shots = useRef<Shot[]>(
-    Array.from({ length: MAX_SHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, alive: false })),
+    Array.from({ length: MAX_SHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, pierce: 0, last: -1, alive: false })),
   );
   const particles = useRef<Particle[]>(
     Array.from({ length: MAX_PARTICLES }, () => ({
@@ -365,7 +369,7 @@ function DungeonScene({
     [dmgCanvases],
   );
   const dmgSprites = useRef<(THREE.Sprite | null)[]>(Array.from({ length: DMG_POOL }, () => null));
-  const spawnDmg = (x: number, z: number, val: number, color = '#ffe08a') => {
+  const spawnDmg = (x: number, z: number, val: number | string, color = '#ffe08a') => {
     const i = dmgNums.current.findIndex((d) => !d.alive);
     if (i < 0) return;
     const d = dmgNums.current[i];
@@ -535,6 +539,39 @@ function DungeonScene({
     const p = playerRef.current;
     if (!p) return;
 
+    // 플레이어 피격 공통 — 잔상 회피(MISS)·단단한 표지(피해 감소) 반영. 적용된 피해 반환(회피 = 0).
+    const hurtPlayer = (dmg: number): number => {
+      if (stats.dodge > 0 && Math.random() < stats.dodge) {
+        spawnDmg(p.position.x, p.position.z, 'MISS', '#9fe8ff');
+        return 0;
+      }
+      const applied = Math.max(1, Math.round(dmg * (1 - stats.armor)));
+      onDamage(applied);
+      return applied;
+    };
+
+    // 처치 공통 — 코인·흡혈·폭발 구슬(연쇄는 1단계만) 처리
+    const killEnemy = (e: Enemy, chain: boolean) => {
+      e.alive = false;
+      burst(e.x, 0.8, e.z, e.elite ? '#ff3020' : '#ff5d7e', e.elite ? 22 : 12, e.elite ? 2.6 : 2.0);
+      if (e.elite) burst(e.x, 1.3, e.z, '#ffffff', 10, 1.8);
+      shake.current = Math.min(0.6, shake.current + (e.elite ? 0.35 : 0.1));
+      onKill(e.elite ? 12 : e.type === 'tank' ? 3 : 1); // 코인 보상 (수문장 두둑)
+      if (stats.lifesteal > 0) onHeal(stats.lifesteal);
+      if (chain && stats.boom > 0) {
+        burst(e.x, 0.9, e.z, '#ff9a3d', 14, 2.2);
+        for (const e2 of enemies.current) {
+          if (!e2.alive || e2 === e) continue;
+          if (Math.hypot(e2.x - e.x, e2.z - e.z) < 2.4) {
+            e2.hp -= stats.boom;
+            e2.flash = 1;
+            spawnDmg(e2.x, e2.z, Math.round(stats.boom), '#ff9a3d');
+            if (e2.hp <= 0) killEnemy(e2, false);
+          }
+        }
+      }
+    };
+
     if (portalRef.current) {
       portalRef.current.rotation.y = t * 1.4;
       portalRef.current.position.y = 1.1 + Math.sin(t * 2) * 0.12;
@@ -645,18 +682,21 @@ function DungeonScene({
             slot.dx = Math.sin(ang);
             slot.dz = Math.cos(ang);
             slot.left = stats.range;
+            slot.pierce = stats.pierce;
+            slot.last = -1;
             slot.alive = true;
           }
           fireTimer.current = 1 / stats.fireRate;
         }
       }
 
-      // ── 투사체 (명중 시: 번쩍 + 스파크 + 넉백)
+      // ── 투사체 (명중 시: 번쩍 + 스파크 + 넉백 — 치명타·관통·탄속 반영)
+      const shotSpd = SHOT_SPEED * stats.shotSpeed;
       for (const sh of shots.current) {
         if (!sh.alive) continue;
-        sh.x += sh.dx * SHOT_SPEED * dt;
-        sh.z += sh.dz * SHOT_SPEED * dt;
-        sh.left -= SHOT_SPEED * dt;
+        sh.x += sh.dx * shotSpd * dt;
+        sh.z += sh.dz * shotSpd * dt;
+        sh.left -= shotSpd * dt;
         const cx = Math.floor(sh.x / CELL + GRID / 2);
         const cz = Math.floor(sh.z / CELL + GRID / 2);
         if (sh.left <= 0 || !isFloor(floor.cells, cx, cz)) {
@@ -666,39 +706,44 @@ function DungeonScene({
         // 보스 명중
         const bh = boss.current;
         if (bh && bh.alive && Math.hypot(bh.x - sh.x, bh.z - sh.z) < 1.4) {
-          bh.hp -= stats.damage;
+          const crit = stats.crit > 0 && Math.random() < stats.crit;
+          const dmg = stats.damage * (crit ? 2 : 1);
+          bh.hp -= dmg;
           bh.flash = 1;
           sh.alive = false;
           sfx.hit();
           burst(sh.x, 0.9, sh.z, '#e0b3ff', 4, 1.4);
-          spawnDmg(bh.x, bh.z, Math.round(stats.damage));
+          spawnDmg(bh.x, bh.z, Math.round(dmg), crit ? '#ff8a3d' : undefined);
           onBossHp(Math.max(0, bh.hp), bh.maxHp);
           if (bh.hp <= 0) killBoss();
           continue;
         }
-        for (const e of enemies.current) {
+        for (let ei = 0; ei < enemies.current.length; ei++) {
+          const e = enemies.current[ei];
           if (!e.alive) continue;
+          if (ei === sh.last) continue; // 관통탄이 같은 적을 연속 프레임에 다시 때리지 않게
           if (Math.hypot(e.x - sh.x, e.z - sh.z) < 0.62) {
-            e.hp -= stats.damage;
+            const crit = stats.crit > 0 && Math.random() < stats.crit;
+            const dmg = stats.damage * (crit ? 2 : 1);
+            e.hp -= dmg;
             e.flash = 1;
-            sh.alive = false;
+            if (sh.pierce > 0) {
+              sh.pierce -= 1; // 관통 서표 — 꿰뚫고 계속 난다
+              sh.last = ei;
+            } else {
+              sh.alive = false;
+            }
             sfx.hit();
             burst(e.x, 0.7, e.z, '#ffe08a', 4, 1.4);
-            spawnDmg(e.x, e.z, Math.round(stats.damage));
-            // 넉백 (탱커·수문장은 밀리지 않음, 벽은 통과 못 함)
+            spawnDmg(e.x, e.z, Math.round(dmg), crit ? '#ff8a3d' : undefined);
+            // 넉백 (탱커·수문장은 밀리지 않음, 벽은 통과 못 함) — 밀어내기 배율 반영
             if (e.type !== 'tank' && !e.elite) {
-              const kx = e.x + sh.dx * 0.4;
-              const kz = e.z + sh.dz * 0.4;
+              const kx = e.x + sh.dx * 0.4 * stats.knock;
+              const kz = e.z + sh.dz * 0.4 * stats.knock;
               if (canStand(floor.cells, kx, e.z, 0.38)) e.x = kx;
               if (canStand(floor.cells, e.x, kz, 0.38)) e.z = kz;
             }
-            if (e.hp <= 0) {
-              e.alive = false;
-              burst(e.x, 0.8, e.z, e.elite ? '#ff3020' : '#ff5d7e', e.elite ? 22 : 12, e.elite ? 2.6 : 2.0);
-              if (e.elite) burst(e.x, 1.3, e.z, '#ffffff', 10, 1.8);
-              shake.current = Math.min(0.6, shake.current + (e.elite ? 0.35 : 0.1));
-              onKill(e.elite ? 12 : e.type === 'tank' ? 3 : 1); // 코인 보상 (수문장 두둑)
-            }
+            if (e.hp <= 0) killEnemy(e, true);
             break;
           }
         }
@@ -798,17 +843,26 @@ function DungeonScene({
                   ? 8 + floorNo
                   : 6 + floorNo;
           }
-          shake.current = Math.min(0.7, shake.current + (e.elite ? 0.5 : 0.3));
-          burst(
-            p.position.x,
-            0.8,
-            p.position.z,
-            e.elite ? '#ff2030' : '#ff4d5e',
-            e.elite ? 12 : 6,
-            e.elite ? 2.2 : 1.6,
-          );
-          if (e.elite) spawnDmg(p.position.x, p.position.z, dmg, '#ff5566'); // 큰 피해를 숫자로 보여줌
-          onDamage(dmg);
+          const applied = hurtPlayer(dmg); // 회피·방어 반영 (회피 시 0)
+          if (applied > 0) {
+            shake.current = Math.min(0.7, shake.current + (e.elite ? 0.5 : 0.3));
+            burst(
+              p.position.x,
+              0.8,
+              p.position.z,
+              e.elite ? '#ff2030' : '#ff4d5e',
+              e.elite ? 12 : 6,
+              e.elite ? 2.2 : 1.6,
+            );
+            if (e.elite) spawnDmg(p.position.x, p.position.z, applied, '#ff5566'); // 큰 피해를 숫자로 보여줌
+          }
+          // 가시 문장 — 몸에 닿은 적에게 반사 피해 (회피 여부와 무관하게 접촉이면 발동)
+          if (stats.thorns > 0) {
+            e.hp -= stats.thorns;
+            e.flash = 1;
+            spawnDmg(e.x, e.z, Math.round(stats.thorns), '#8de07a');
+            if (e.hp <= 0) killEnemy(e, true);
+          }
         }
       }
 
@@ -845,9 +899,10 @@ function DungeonScene({
         }
         if (bd < 1.6 && bAi.hitCd <= 0) {
           bAi.hitCd = 1.0;
-          shake.current = Math.min(0.7, shake.current + 0.4);
-          burst(p.position.x, 0.8, p.position.z, '#ff4d5e', 8, 1.8);
-          onDamage(16 + Math.round(floorNo * 0.7));
+          if (hurtPlayer(16 + Math.round(floorNo * 0.7)) > 0) {
+            shake.current = Math.min(0.7, shake.current + 0.4);
+            burst(p.position.x, 0.8, p.position.z, '#ff4d5e', 8, 1.8);
+          }
         }
       }
 
@@ -866,9 +921,10 @@ function DungeonScene({
         }
         if (Math.hypot(es.x - p.position.x, es.z - p.position.z) < 0.55) {
           es.alive = false;
-          shake.current = Math.min(0.6, shake.current + 0.25);
-          burst(p.position.x, 0.8, p.position.z, '#ff4d5e', 5, 1.4);
-          onDamage(7 + Math.round(floorNo * 0.4));
+          if (hurtPlayer(7 + Math.round(floorNo * 0.4)) > 0) {
+            shake.current = Math.min(0.6, shake.current + 0.25);
+            burst(p.position.x, 0.8, p.position.z, '#ff4d5e', 5, 1.4);
+          }
         }
       }
 

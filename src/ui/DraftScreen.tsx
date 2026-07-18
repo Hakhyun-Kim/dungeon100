@@ -18,11 +18,13 @@ export default function DraftScreen({
         kind="card"
         items={draft.map((u) => ({
           key: u.id,
+          className: `rarity-${u.rarity}`,
           label: (
             <>
               <span className="card-icon">{u.icon}</span>
               <span className="card-name">{u.name}</span>
               <span className="card-desc">{u.desc}</span>
+              <span className="card-tag">{u.tag}</span>
             </>
           ),
           onPick: () => onPick(u),

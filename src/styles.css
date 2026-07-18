@@ -808,3 +808,21 @@ h2 {
   font-size: 13px;
   color: #c9bfe8;
 }
+
+/* ── 업그레이드 희귀도·시너지 태그 ── */
+.card.rarity-rare {
+  border-color: #6ba8ff;
+}
+
+.card.rarity-legendary {
+  border-color: #ffd166;
+  box-shadow: 0 0 16px rgba(255, 209, 102, 0.35);
+}
+
+.card-tag {
+  font-size: 11px;
+  color: #9c8fc4;
+  border: 1px solid rgba(156, 143, 196, 0.45);
+  border-radius: 999px;
+  padding: 1px 8px;
+}

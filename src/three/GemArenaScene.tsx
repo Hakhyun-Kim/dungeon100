@@ -64,6 +64,8 @@ interface AShot {
   dx: number;
   dz: number;
   left: number;
+  pierce: number; // 남은 관통 횟수 (관통 서표)
+  last: number; // 마지막으로 맞힌 적 인덱스 (관통탄 연속 타격 방지)
   alive: boolean;
 }
 interface AParticle {
@@ -124,7 +126,7 @@ export default function GemArenaScene({
     })),
   );
   const shots = useRef<AShot[]>(
-    Array.from({ length: MAX_SHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, alive: false })),
+    Array.from({ length: MAX_SHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, pierce: 0, last: -1, alive: false })),
   );
   const eshots = useRef<AEShot[]>(
     Array.from({ length: MAX_ESHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, alive: false })),
@@ -294,41 +296,70 @@ export default function GemArenaScene({
             slot.dx = Math.sin(ang);
             slot.dz = Math.cos(ang);
             slot.left = stats.range;
+            slot.pierce = stats.pierce;
+            slot.last = -1;
             slot.alive = true;
           }
           fireTimer.current = 1 / stats.fireRate;
         }
       }
 
-      // ── 투사체 (명중 → 번쩍 + 스파크 + 넉백)
+      // ── 처치 공통 — 흡혈은 아레나 체력을 회복, 폭발 구슬은 무리에 특히 강력
+      const killEnemy = (e: AEnemy, chain: boolean) => {
+        e.alive = false;
+        burst(e.x, 0.7, e.z, palette.base.getStyle(), 12, 2.0);
+        shake.current = Math.min(0.6, shake.current + 0.08);
+        sfx.kill();
+        if (stats.lifesteal > 0 && hp.current > 0) {
+          hp.current = Math.min(ARENA_MAX_HP, hp.current + stats.lifesteal);
+          onArenaHp(hp.current, ARENA_MAX_HP);
+        }
+        if (chain && stats.boom > 0) {
+          burst(e.x, 0.9, e.z, '#ff9a3d', 12, 2.2);
+          for (const e2 of enemies.current) {
+            if (!e2.alive || e2 === e) continue;
+            if (Math.hypot(e2.x - e.x, e2.z - e.z) < 2.4) {
+              e2.hp -= stats.boom;
+              e2.flash = 1;
+              if (e2.hp <= 0) killEnemy(e2, false);
+            }
+          }
+        }
+      };
+
+      // ── 투사체 (명중 → 번쩍 + 스파크 + 넉백 — 치명타·관통·탄속 반영)
+      const shotSpd = SHOT_SPEED * stats.shotSpeed;
       for (const sh of shots.current) {
         if (!sh.alive) continue;
-        sh.x += sh.dx * SHOT_SPEED * dt;
-        sh.z += sh.dz * SHOT_SPEED * dt;
-        sh.left -= SHOT_SPEED * dt;
+        sh.x += sh.dx * shotSpd * dt;
+        sh.z += sh.dz * shotSpd * dt;
+        sh.left -= shotSpd * dt;
         if (sh.left <= 0 || Math.abs(sh.x) > ARENA_R || Math.abs(sh.z) > ARENA_R) {
           sh.alive = false;
           continue;
         }
-        for (const e of enemies.current) {
+        for (let ei = 0; ei < enemies.current.length; ei++) {
+          const e = enemies.current[ei];
           if (!e.alive) continue;
+          if (ei === sh.last) continue;
           if (Math.hypot(e.x - sh.x, e.z - sh.z) < 0.62) {
-            e.hp -= stats.damage;
+            const crit = stats.crit > 0 && Math.random() < stats.crit;
+            e.hp -= stats.damage * (crit ? 2 : 1);
             e.flash = 1;
-            sh.alive = false;
+            if (sh.pierce > 0) {
+              sh.pierce -= 1;
+              sh.last = ei;
+            } else {
+              sh.alive = false;
+            }
             sfx.hit();
-            burst(e.x, 0.7, e.z, '#ffe08a', 4, 1.4);
+            burst(e.x, 0.7, e.z, crit ? '#ff8a3d' : '#ffe08a', 4, 1.4);
             if (e.type !== 'tank') {
-              // 탱커는 넉백 면역
-              e.x = THREE.MathUtils.clamp(e.x + sh.dx * 0.4, -bound, bound);
-              e.z = THREE.MathUtils.clamp(e.z + sh.dz * 0.4, -bound, bound);
+              // 탱커는 넉백 면역 — 밀어내기 배율 반영
+              e.x = THREE.MathUtils.clamp(e.x + sh.dx * 0.4 * stats.knock, -bound, bound);
+              e.z = THREE.MathUtils.clamp(e.z + sh.dz * 0.4 * stats.knock, -bound, bound);
             }
-            if (e.hp <= 0) {
-              e.alive = false;
-              burst(e.x, 0.7, e.z, palette.base.getStyle(), 12, 2.0);
-              shake.current = Math.min(0.6, shake.current + 0.08);
-              sfx.kill();
-            }
+            if (e.hp <= 0) killEnemy(e, true);
             break;
           }
         }
@@ -350,7 +381,13 @@ export default function GemArenaScene({
       // ── 적 AI (타입별) + 접촉 피해 — 본체 던전을 1층부터 미리 맛보게
       const espeed = 2.4 + Math.min(2.2, floorNo * 0.06);
       const hurtPlayer = (dmg: number) => {
-        hp.current = Math.max(0, hp.current - dmg);
+        // 잔상 회피·단단한 표지 — 본체와 동일하게 아레나에서도 적용
+        if (stats.dodge > 0 && Math.random() < stats.dodge) {
+          burst(c.position.x, 0.9, c.position.z, '#9fe8ff', 5, 1.2);
+          return;
+        }
+        const applied = Math.max(1, Math.round(dmg * (1 - stats.armor)));
+        hp.current = Math.max(0, hp.current - applied);
         onArenaHp(hp.current, ARENA_MAX_HP);
         shake.current = Math.min(0.6, shake.current + 0.26);
         burst(c.position.x, 0.8, c.position.z, '#ff4d5e', 6, 1.6);
@@ -434,6 +471,12 @@ export default function GemArenaScene({
                 ? touchDmg + 3
                 : touchDmg;
           hurtPlayer(dmg);
+          // 가시 문장 — 접촉한 적에게 반사 피해
+          if (stats.thorns > 0) {
+            e.hp -= stats.thorns;
+            e.flash = 1;
+            if (e.hp <= 0) killEnemy(e, true);
+          }
         }
       }
 

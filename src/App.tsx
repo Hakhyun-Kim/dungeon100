@@ -9,7 +9,7 @@ import TownScene, {
   VILLAGE_STAGE_BG,
   type TownTarget,
 } from './three/TownScene';
-import { BASE_STATS, UPGRADES, draftThree, type Stats, type Upgrade } from './lib/upgrades';
+import { BASE_STATS, draftThree, pickUpgrades, type Stats, type Upgrade } from './lib/upgrades';
 import { makeQuiz, MAX_DOOR_ROUND, type DungeonMode } from './lib/quiz';
 import { metaSpeed, shopCost, type Meta } from './lib/meta';
 import { mulberry32 } from './lib/rng';
@@ -173,9 +173,10 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hp, phase]);
 
+  // 드래프트 — 희귀도 가중 + 태그 시너지(같은 태그 2개+ 보유 시 그 태그가 더 잘 나온다)
   const draft = useMemo(
-    () => draftThree(mulberry32(runId * 7919 + floorNo * 131 + 7)),
-    [runId, floorNo],
+    () => draftThree(mulberry32(runId * 7919 + floorNo * 131 + 7), build),
+    [runId, floorNo, build],
   );
 
   // 문(라운드)마다 새 문제 — 깊은 라운드일수록 어려운 문제 등급, 던전 종류에 따라 수준 조절
@@ -381,7 +382,7 @@ export default function App() {
       setGoldFlash((f) => f + 1);
       sfx.gift();
     } else {
-      const u = UPGRADES[Math.floor(mulberry32(runId * 41 + floorNo * 13 + 7)() * UPGRADES.length)];
+      const u = pickUpgrades(mulberry32(runId * 41 + floorNo * 13 + 7), 1, build)[0];
       gainUpgrade(u);
       setGiftName(`${u.icon} ${u.name} 획득`);
       setGoldFlash((f) => f + 1);
@@ -469,12 +470,7 @@ export default function App() {
 
   // 통과한 문 수(tier)만큼 보물 지급 — 3문 완주는 전설 보물(전부 + 완전 회복)
   const grantRewards = (tier: number, seed = quizSeed + 991) => {
-    const rand = mulberry32(seed);
-    const pool = [...UPGRADES];
-    const picks: Upgrade[] = [];
-    for (let i = 0; i < tier && pool.length > 0; i++) {
-      picks.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
-    }
+    const picks = pickUpgrades(mulberry32(seed), tier, build);
     const next = picks.reduce((s, u) => u.apply(s), stats);
     setStats(next);
     const healed = picks.filter((u) => u.id === 'hp').length * 25;
@@ -502,8 +498,7 @@ export default function App() {
       setGiftName('🍲 체력 완전 회복');
     } else {
       // townIdx를 시드에 섞음 — 한 대화에 선물 노드가 둘이어도(예: 소녀 초대 답례) 다른 아이템
-      const u =
-        UPGRADES[Math.floor(mulberry32(runId * 31 + floorNo * 7 + townIdx * 5 + 11)() * UPGRADES.length)];
+      const u = pickUpgrades(mulberry32(runId * 31 + floorNo * 7 + townIdx * 5 + 11), 1, build)[0];
       gainUpgrade(u);
       setGiftName(`${u.icon} ${u.name} 획득`);
     }
@@ -517,11 +512,16 @@ export default function App() {
     setFlash((f) => f + 1);
     setHp((h) => Math.max(0, h - dmg));
   }, []);
+  // 흡혈의 잉크 — 처치 시 회복 (씬이 호출)
+  const onHeal = useCallback((amount: number) => {
+    setHp((h) => Math.min(statsRef.current.maxHp, h + amount));
+  }, []);
   const onKill = useCallback(
     (bounty: number) => {
       sfx.kill();
       setKills((k) => k + 1);
-      setCoins((c) => c + bounty);
+      // 탐욕의 책갈피 — 코인 배율
+      setCoins((c) => c + Math.max(1, Math.round(bounty * statsRef.current.greed)));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -539,7 +539,7 @@ export default function App() {
   quizSeedRef.current = quizSeed;
   // 보스 처치 — 확정 보물 1개 + 회복 30 + 코인 25, 포털 봉인 해제
   const onBossDown = useCallback(() => {
-    const pick = UPGRADES[Math.floor(mulberry32(quizSeedRef.current + 777)() * UPGRADES.length)];
+    const pick = pickUpgrades(mulberry32(quizSeedRef.current + 777), 1)[0];
     const next = pick.apply(statsRef.current);
     setStats(next);
     setHp((h) => Math.min(next.maxHp, h + 30 + (pick.id === 'hp' ? 25 : 0)));
@@ -669,12 +669,7 @@ export default function App() {
     setMemCount(newCount);
     if (newCount === MEMORIES.length) {
       // 열두 개의 기억을 모두 되찾음 — 완성 보상
-      const rand = mulberry32(runId * 53 + 12);
-      const pool = [...UPGRADES];
-      const picks: Upgrade[] = [];
-      for (let i = 0; i < 2 && pool.length > 0; i++) {
-        picks.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
-      }
+      const picks = pickUpgrades(mulberry32(runId * 53 + 12), 2, build);
       const next = picks.reduce((s, u) => u.apply(s), stats);
       setStats(next);
       setHp(next.maxHp);
@@ -811,6 +806,7 @@ export default function App() {
             homeRetryRef={homeRetryRef}
             homeUsedRef={homeUsedRef}
             onDamage={onDamage}
+            onHeal={onHeal}
             onKill={onKill}
             onExit={onExit}
             onChest={onChest}
