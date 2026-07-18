@@ -485,6 +485,11 @@ function DungeonScene({
         girlWorld: girlPos,
         enemyTier,
         boss: boss.current ? { hp: boss.current.hp, alive: boss.current.alive } : null,
+        // 밸런스 봇용 좌표 노출 — 보스·탄막·적 위치를 읽어 회피 기동을 계산한다 (DEV 전용)
+        bossWorld:
+          boss.current && boss.current.alive ? [boss.current.x, boss.current.z] : null,
+        eshots: eshots.current.filter((s) => s.alive).map((s) => [s.x, s.z, s.dx, s.dz]),
+        enemiesPos: enemies.current.filter((e) => e.alive).map((e) => [e.x, e.z]),
         guardian: (() => {
           const g = enemies.current.find((e) => e.elite);
           return g ? { hp: Math.round(g.hp), alive: g.alive, mode: g.mode, pos: [g.x, g.z] } : null;
