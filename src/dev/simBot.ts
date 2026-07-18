@@ -371,6 +371,8 @@ async function loop() {
     if (clickBtn('.quiz-screen .choice-btn', '내려간다')) continue;
     // 6) 마을 문 — 던전에 집중 (체크포인트를 만들지 않아 판이 깔끔)
     if (clickBtn('.quiz-screen .choice-btn', '던전에 집중한다')) continue;
+    // 6.5) 방 이벤트(제단·찢어진 페이지) — 그만둔다 (기존 밸런스 측정과 조건을 동일하게 유지)
+    if (clickBtn('.quiz-screen .choice-btn', '그만둔다')) continue;
     // 7) 진행 버튼 (로어·기억·흔적·보상 확인 등)
     if (clickBtn('.screen .big-btn')) continue;
     // 8) 소녀 찻자리 등 town 화면 — 대화 넘기고 돌아간다

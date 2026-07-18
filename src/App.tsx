@@ -39,7 +39,7 @@ import StoryScreen from './ui/StoryScreen';
 import TownDialogScreen from './ui/TownDialogScreen';
 import VillageOverlay, { type VillageTalk } from './ui/VillageOverlay';
 import ShopScreen from './ui/ShopScreen';
-import { PortalScreen, HomeDoorScreen } from './ui/FloorPrompts';
+import { PortalScreen, HomeDoorScreen, AltarScreen, SecretDoorScreen } from './ui/FloorPrompts';
 import { QuizResultScreen, ArenaOverScreen, type QuizView } from './ui/ChestScreens';
 import { LoreScreen, TraceScreen, MemoryScreen, MemFullScreen } from './ui/LoreScreens';
 import DraftScreen from './ui/DraftScreen';
@@ -69,6 +69,8 @@ type Phase =
   | 'draft'
   | 'lore'
   | 'homedoor'
+  | 'altar'
+  | 'secretdoor'
   | 'shop'
   | 'trace'
   | 'ending'
@@ -165,6 +167,11 @@ export default function App() {
   const portalRetryRef = useRef(0);
   const homeRetryRef = useRef(0);
   const homeUsedRef = useRef(0);
+  // 방 이벤트 — 제단·찢어진 페이지 (거절 시 재무장, 제단은 바치면 소멸)
+  const altarRetryRef = useRef(0);
+  const altarUsedRef = useRef(0);
+  const secretRetryRef = useRef(0);
+  const [altarReward, setAltarReward] = useState<Upgrade | null>(null);
   const visitGiftGiven = useRef<Set<number>>(new Set()); // 방문당 노드별 선물 1회
 
   // 일일 던전 기록 갱신 (사망·완주 공용)
@@ -214,6 +221,8 @@ export default function App() {
     else if (phase === 'lore') sfx.lore();
     else if (phase === 'portal') sfx.portal();
     else if (phase === 'homedoor') sfx.bell();
+    else if (phase === 'altar') sfx.lore();
+    else if (phase === 'secretdoor') sfx.portal();
     else if (phase === 'over') sfx.over();
     else if (phase === 'ending') sfx.unlock();
   }, [phase]);
@@ -597,6 +606,21 @@ export default function App() {
     }
   }, []);
   const onHomeDoor = useCallback(() => setPhase('homedoor'), []);
+  // 제단·찢어진 페이지 접촉 → 선택 화면
+  const onAltar = useCallback(() => {
+    setAltarReward(null);
+    setPhase('altar');
+  }, []);
+  const onSecret = useCallback(() => setPhase('secretdoor'), []);
+  // 몬스터 하우스 코인 무더기 (탐욕 배율 적용)
+  const onCoins = useCallback(
+    (n: number) => {
+      sfx.treasure();
+      setCoins((c) => c + Math.max(1, Math.round(n * statsRef.current.greed)));
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   const onTrace = useCallback(() => {
     sfx.memory();
     const fl = floorNoRef.current;
@@ -744,6 +768,37 @@ export default function App() {
     setPhase('run');
   };
 
+  // ── 제단: 체력 30%를 바치고 보물 하나 (수락 시 제단 소멸, 거절 시 벗어나면 재무장)
+  const altarCost = Math.ceil(stats.maxHp * 0.3);
+  const offerAltar = () => {
+    const pick = pickUpgrades(mulberry32(runVar * 977 + floorNo * 31 + 3), 1, build)[0];
+    setHp((h) => Math.max(1, h - altarCost));
+    gainUpgrade(pick);
+    setAltarReward(pick);
+    altarUsedRef.current += 1;
+    setGoldFlash((f) => f + 1);
+    sfx.hurt();
+    sfx.treasure();
+  };
+  const declineAltar = () => {
+    sfx.tap();
+    altarRetryRef.current += 1;
+    setPhase('run');
+  };
+
+  // ── 찢어진 페이지: 2개 층을 건너뛴다 (착지 충격 — 건너뛴 층의 보상도 없다)
+  const jumpSecret = () => {
+    sfx.portal();
+    setFloorNo((n) => Math.min(100, n + 2));
+    setHp((h) => Math.max(1, h - Math.round(stats.maxHp * 0.08))); // 착지 충격
+    setPhase('lore'); // 새 층 도착 — 벽의 글귀부터 (드래프트 없음 = 건너뛴 대가)
+  };
+  const declineSecret = () => {
+    sfx.tap();
+    secretRetryRef.current += 1;
+    setPhase('run');
+  };
+
   // 죽으면 1층이 아니라 마지막으로 다녀온 마을(체크포인트)에서 부활 — 장비 유지·완전 회복.
   // 주민들이 맞아 주고, 거기서 다시 던전으로 내려간다. ('죽음=다시 쓰임' 세계관과 연결)
   const resumeFromCheckpoint = () => {
@@ -831,6 +886,9 @@ export default function App() {
             portalRetryRef={portalRetryRef}
             homeRetryRef={homeRetryRef}
             homeUsedRef={homeUsedRef}
+            altarRetryRef={altarRetryRef}
+            altarUsedRef={altarUsedRef}
+            secretRetryRef={secretRetryRef}
             onDamage={onDamage}
             onHeal={onHeal}
             onKill={onKill}
@@ -841,6 +899,9 @@ export default function App() {
             onBossDown={onBossDown}
             onTrace={onTrace}
             onGirl={onGirl}
+            onAltar={onAltar}
+            onSecret={onSecret}
+            onCoins={onCoins}
           />
           {phase === 'doorrun' && (
             <DoorRunScene key={doorRound} quiz={quiz} onDone={onDoorRunDone} />
@@ -989,6 +1050,22 @@ export default function App() {
         />
       )}
       {phase === 'homedoor' && <HomeDoorScreen onOpen={openHomeDoor} onSkip={skipHomeDoor} />}
+      {phase === 'altar' && (
+        <AltarScreen
+          hp={hp}
+          cost={altarCost}
+          reward={altarReward}
+          onOffer={offerAltar}
+          onDecline={declineAltar}
+          onContinue={() => {
+            sfx.tap();
+            setPhase('run');
+          }}
+        />
+      )}
+      {phase === 'secretdoor' && (
+        <SecretDoorScreen floorNo={floorNo} onJump={jumpSecret} onDecline={declineSecret} />
+      )}
       {phase === 'arenaover' && (
         <ArenaOverScreen gems={arenaDeathGems} onRetry={retryArena} onBail={bailArena} />
       )}

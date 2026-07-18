@@ -131,6 +131,9 @@ function DungeonScene({
   portalRetryRef,
   homeRetryRef,
   homeUsedRef,
+  altarRetryRef,
+  altarUsedRef,
+  secretRetryRef,
   onDamage,
   onHeal,
   onKill,
@@ -141,6 +144,9 @@ function DungeonScene({
   onBossDown,
   onTrace,
   onGirl,
+  onAltar,
+  onSecret,
+  onCoins,
 }: {
   floorNo: number;
   seedOffset?: number; // 일일 던전 — 날짜 시드를 층 시드에 섞는다 (0 = 보통 던전)
@@ -151,6 +157,9 @@ function DungeonScene({
   portalRetryRef: React.MutableRefObject<number>; // "아직 안 내려갈래" 선택 시 증가 → 포털 재무장
   homeRetryRef: React.MutableRefObject<number>; // 마을 문 "나중에" 선택 시 증가 → 문 재무장
   homeUsedRef: React.MutableRefObject<number>; // 마을 방문 완료 시 증가 → 문 소멸
+  altarRetryRef: React.MutableRefObject<number>; // 제단 "그만둔다" → 재무장
+  altarUsedRef: React.MutableRefObject<number>; // 제단에 바침 → 제단 소멸
+  secretRetryRef: React.MutableRefObject<number>; // 찢어진 페이지 "그만둔다" → 재무장
   onDamage: (dmg: number) => void;
   onHeal: (amount: number) => void; // 흡혈의 잉크 — 처치 시 회복
   onKill: (bounty: number) => void; // bounty = 코인 (탱커 3, 그 외 1)
@@ -161,6 +170,9 @@ function DungeonScene({
   onBossDown: () => void;
   onTrace: () => void; // 소녀의 흔적 발견
   onGirl: () => void; // 56층 소녀와 만남
+  onAltar: () => void; // 제단 접촉 → 바칠지 선택
+  onSecret: () => void; // 찢어진 페이지 접촉 → 건너뛸지 선택
+  onCoins: (n: number) => void; // 몬스터 하우스 코인 무더기 줍기
 }) {
   const floor = useMemo(() => generateFloor(floorNo, seedOffset), [floorNo, seedOffset]);
   const isBossFloor = floorNo % 10 === 0;
@@ -345,6 +357,28 @@ function DungeonScene({
   const traceRef = useRef<THREE.Group>(null);
   const girlRef = useRef<THREE.Group>(null);
 
+  // ── 방 이벤트: 제단·찢어진 페이지·몬스터 하우스 코인 무더기
+  const altarPos = useMemo(
+    () => (floor.altar ? cellToWorld(floor.altar.x, floor.altar.y) : null),
+    [floor],
+  );
+  const secretPos = useMemo(
+    () => (floor.secret ? cellToWorld(floor.secret.x, floor.secret.y) : null),
+    [floor],
+  );
+  const orbPos = useMemo(() => floor.houseOrbs.map((o) => cellToWorld(o.x, o.y)), [floor]);
+  const altarState = useRef<'idle' | 'pending' | 'used'>('idle');
+  const altarRetrySeen = useRef(altarRetryRef.current);
+  const altarWaitLeave = useRef(false);
+  const altarUsedSeen = useRef(altarUsedRef.current);
+  const altarRef = useRef<THREE.Group>(null);
+  const secretState = useRef<'idle' | 'pending'>('idle');
+  const secretRetrySeen = useRef(secretRetryRef.current);
+  const secretWaitLeave = useRef(false);
+  const secretRef = useRef<THREE.Group>(null);
+  const orbTaken = useRef<boolean[]>(floor.houseOrbs.map(() => false));
+  const orbRefs = useRef<(THREE.Group | null)[]>([]);
+
   // 나침반 화살표 (플레이어 주위를 돌며 목표 방향 표시)
   const portalArrowRef = useRef<THREE.Group>(null);
   const chestArrowRef = useRef<THREE.Group>(null);
@@ -438,6 +472,9 @@ function DungeonScene({
     if (fm) {
       const c1 = new THREE.Color(theme.f1);
       const c2 = new THREE.Color(theme.f2);
+      const houseTint = new THREE.Color('#7a2030'); // 몬스터 하우스 방은 불길한 붉은 기
+      const tmp = new THREE.Color();
+      const house = floor.house;
       floorCells.forEach(([x, y], i) => {
         const [wx, wz] = cellToWorld(x, y);
         dummy.position.set(wx, -0.15, wz);
@@ -445,7 +482,11 @@ function DungeonScene({
         dummy.scale.set(1, 1, 1);
         dummy.updateMatrix();
         fm.setMatrixAt(i, dummy.matrix);
-        fm.setColorAt(i, (x + y) % 2 === 0 ? c1 : c2);
+        tmp.copy((x + y) % 2 === 0 ? c1 : c2);
+        if (house && x >= house.x && x < house.x + house.w && y >= house.y && y < house.y + house.h) {
+          tmp.lerp(houseTint, 0.24);
+        }
+        fm.setColorAt(i, tmp);
       });
       fm.instanceMatrix.needsUpdate = true;
       if (fm.instanceColor) fm.instanceColor.needsUpdate = true;
@@ -496,6 +537,12 @@ function DungeonScene({
         traceWorld: tracePos,
         traceSeen: traceSeen.current,
         girlWorld: girlPos,
+        altarWorld: altarPos,
+        altarState: altarState.current,
+        secretWorld: secretPos,
+        secretState: secretState.current,
+        orbsLeft: orbTaken.current.filter((v) => !v).length,
+        orbWorlds: orbPos.filter((_, i) => !orbTaken.current[i]),
         enemyTier,
         boss: boss.current ? { hp: boss.current.hp, alive: boss.current.alive } : null,
         // 밸런스 봇용 좌표 노출 — 보스·탄막·적 위치를 읽어 회피 기동을 계산한다 (DEV 전용)
@@ -627,6 +674,38 @@ function DungeonScene({
         homeState.current = 'used';
         if (homePos) burst(homePos[0], 1.2, homePos[1], '#ffcf8a', 14, 1.6);
         for (const e of enemies.current) e.hitCd = Math.max(e.hitCd, 0.9);
+      }
+    }
+
+    // ── 제단: "그만둔다" → 벗어나면 재무장 / 바침 → 소멸 + 자비
+    if (altarRetryRef.current !== altarRetrySeen.current) {
+      altarRetrySeen.current = altarRetryRef.current;
+      altarWaitLeave.current = true;
+    }
+    if (altarWaitLeave.current && altarPos) {
+      if (Math.hypot(p.position.x - altarPos[0], p.position.z - altarPos[1]) > 2.4) {
+        altarWaitLeave.current = false;
+        altarState.current = 'idle';
+      }
+    }
+    if (altarUsedRef.current !== altarUsedSeen.current) {
+      altarUsedSeen.current = altarUsedRef.current;
+      if (altarState.current === 'pending') {
+        altarState.current = 'used';
+        if (altarPos) burst(altarPos[0], 0.9, altarPos[1], '#ff5d7e', 16, 1.8);
+        for (const e of enemies.current) e.hitCd = Math.max(e.hitCd, 0.9);
+      }
+    }
+
+    // ── 찢어진 페이지: "그만둔다" → 벗어나면 재무장 (수락하면 층이 바뀌며 씬이 사라진다)
+    if (secretRetryRef.current !== secretRetrySeen.current) {
+      secretRetrySeen.current = secretRetryRef.current;
+      secretWaitLeave.current = true;
+    }
+    if (secretWaitLeave.current && secretPos) {
+      if (Math.hypot(p.position.x - secretPos[0], p.position.z - secretPos[1]) > 2.4) {
+        secretWaitLeave.current = false;
+        secretState.current = 'idle';
       }
     }
 
@@ -964,6 +1043,32 @@ function DungeonScene({
         }
       }
 
+      // ── 제단 접촉 → 바칠지 선택
+      if (altarState.current === 'idle' && altarPos) {
+        if (Math.hypot(p.position.x - altarPos[0], p.position.z - altarPos[1]) < 1.05) {
+          altarState.current = 'pending';
+          onAltar();
+        }
+      }
+
+      // ── 찢어진 페이지 접촉 → 건너뛸지 선택
+      if (secretState.current === 'idle' && secretPos) {
+        if (Math.hypot(p.position.x - secretPos[0], p.position.z - secretPos[1]) < 1.05) {
+          secretState.current = 'pending';
+          onSecret();
+        }
+      }
+
+      // ── 몬스터 하우스 코인 무더기 — 몸으로 줍기 (오버레이 없이 흐름 유지)
+      orbPos.forEach((op, i) => {
+        if (orbTaken.current[i]) return;
+        if (Math.hypot(p.position.x - op[0], p.position.z - op[1]) < 0.9) {
+          orbTaken.current[i] = true;
+          burst(op[0], 0.8, op[1], '#ffd166', 12, 1.8);
+          onCoins(5 + Math.floor(floorNo / 2));
+        }
+      });
+
       // ── 상자 대기 반짝임
       if (chestState.current === 'idle' && chestPos) {
         sparkleTimer.current -= dt;
@@ -1229,6 +1334,27 @@ function DungeonScene({
       hd.position.y = Math.sin(t * 1.6) * 0.05;
     }
 
+    // ── 방 이벤트 연출: 제단(바치면 소멸)·찢어진 페이지(팔랑팔랑)·코인 무더기(반짝 회전)
+    if (altarRef.current) {
+      const target = altarState.current === 'used' ? 0.0001 : 1;
+      altarRef.current.scale.setScalar(
+        altarRef.current.scale.x + (target - altarRef.current.scale.x) * Math.min(1, dt * 8),
+      );
+    }
+    if (secretRef.current) {
+      secretRef.current.rotation.y = Math.sin(t * 0.9) * 0.3;
+      secretRef.current.position.y = 1.05 + Math.sin(t * 1.7) * 0.12;
+    }
+    orbRefs.current.forEach((g, i) => {
+      if (!g) return;
+      if (orbTaken.current[i]) {
+        g.scale.setScalar(0.0001);
+      } else {
+        g.rotation.y = t * 2.2;
+        g.position.y = 0.5 + Math.sin(t * 3 + i * 2) * 0.08;
+      }
+    });
+
     // ── 보물상자 연출 (개봉·실패 시 사라짐)
     const ch = chestRef.current;
     if (ch) {
@@ -1366,6 +1492,56 @@ function DungeonScene({
           <pointLight color="#ffcf8a" intensity={1.5} distance={6} position={[0, 1.6, 0.7]} />
         </group>
       )}
+
+      {/* 낡은 제단 — 「피를 잉크로.」 HP를 바치면 보물 */}
+      {altarPos && (
+        <group ref={altarRef} position={[altarPos[0], 0, altarPos[1]]}>
+          <mesh position={[0, 0.3, 0]}>
+            <cylinderGeometry args={[0.55, 0.7, 0.6, 6]} />
+            <meshStandardMaterial color="#3a3344" />
+          </mesh>
+          <mesh position={[0, 0.85, 0]}>
+            <octahedronGeometry args={[0.28]} />
+            <meshStandardMaterial color="#ff4d6e" emissive="#a01030" emissiveIntensity={1.3} />
+          </mesh>
+          <pointLight color="#ff5d7e" intensity={1.2} distance={5} position={[0, 1.2, 0]} />
+        </group>
+      )}
+
+      {/* 찢어진 페이지 — 층을 건너뛰는 비밀 문 (공중에 팔랑이는 종잇조각) */}
+      {secretPos && (
+        <group ref={secretRef} position={[secretPos[0], 1.05, secretPos[1]]}>
+          <mesh rotation={[0, 0.35, 0.06]}>
+            <planeGeometry args={[0.85, 1.5]} />
+            <meshStandardMaterial
+              color="#f4efe0"
+              emissive="#8d86a8"
+              emissiveIntensity={0.35}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+          <mesh position={[0.1, -0.05, -0.04]} rotation={[0, -0.3, -0.1]}>
+            <planeGeometry args={[0.7, 1.3]} />
+            <meshStandardMaterial
+              color="#d9d2c0"
+              emissive="#6a638a"
+              emissiveIntensity={0.3}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+          <pointLight color="#cfd8ff" intensity={1.1} distance={5} position={[0, 0.4, 0.4]} />
+        </group>
+      )}
+
+      {/* 몬스터 하우스 코인 무더기 (몸으로 줍기) */}
+      {orbPos.map((op, i) => (
+        <group key={i} ref={(g) => (orbRefs.current[i] = g)} position={[op[0], 0.5, op[1]]}>
+          <mesh>
+            <octahedronGeometry args={[0.3]} />
+            <meshStandardMaterial color="#ffd166" emissive="#c98f1e" emissiveIntensity={1.1} />
+          </mesh>
+        </group>
+      ))}
 
       {/* 보스 — 페이지의 수호자 (10층마다, 출구를 지킨다) */}
       {isBossFloor && (

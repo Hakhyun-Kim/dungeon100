@@ -45,7 +45,7 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
     const key = (code: string, down: boolean) =>
       window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true }));
     const releaseAll = () => ['ArrowLeft', 'ArrowRight', ...MOVE_KEYS].forEach((c) => key(c, false));
-    const OVERLAYS = ['lore', 'memory', 'trace', 'quiz', 'portal', 'draft', 'homedoor', 'memfull', 'arenaover', 'over'];
+    const OVERLAYS = ['lore', 'memory', 'trace', 'quiz', 'portal', 'draft', 'homedoor', 'altar', 'secretdoor', 'memfull', 'arenaover', 'over'];
     // 떠 있는 오버레이를 잠깐 보여준 뒤 자연스럽게 넘긴다 (스토리도 시연의 일부)
     const clickOverlay = () => {
       const card = document.querySelector<HTMLButtonElement>('.draft-screen .card');
@@ -53,8 +53,9 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
       const choices = [
         ...document.querySelectorAll<HTMLButtonElement>('.screen .dialog-choices .choice-btn'),
       ].filter((b) => !b.disabled);
-      // 포털·마을 문은 거절 — 시연 동선은 드라이버가 층 점프로 직접 잡는다
-      if (choices.length >= 2 && (act().phase() === 'portal' || act().phase() === 'homedoor'))
+      // 포털·마을 문·방 이벤트는 거절 — 시연 동선은 드라이버가 층 점프로 직접 잡는다
+      const declinePhases = ['portal', 'homedoor', 'altar', 'secretdoor'];
+      if (choices.length >= 2 && declinePhases.includes(act().phase()))
         return choices[1].click();
       if (choices.length > 0) return choices[0].click();
       document.querySelector<HTMLButtonElement>('.screen .big-btn')?.click();

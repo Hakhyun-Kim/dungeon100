@@ -23,6 +23,11 @@ export interface FloorMap {
   homeDoor: { x: number; y: number } | null; // 5층마다 나타나는 마을로 가는 문 (이유는 아무도 모른다)
   trace: { x: number; y: number } | null; // 소녀의 흔적 (14·28·42·49층 — 56층 복선)
   girl: { x: number; y: number } | null; // 56층, 이야기 속 소녀 '여백'의 찻자리
+  // ── 방 이벤트 (2026-07-19) — 방에 태그만 얹는 절차 생성 확장
+  altar: { x: number; y: number } | null; // 낡은 제단 — HP를 바치면 보물 (3층+, 30% 층)
+  house: Room | null; // 몬스터 하우스 — 적이 빽빽한 방 (5층+, 22% 층, 흔적·소녀 층 제외)
+  houseOrbs: { x: number; y: number }[]; // 몬스터 하우스 바닥의 코인 무더기 (3개)
+  secret: { x: number; y: number } | null; // 찢어진 페이지 — 층 건너뛰는 비밀 문 (6~96층, 22% 층)
 }
 
 // 소녀의 흔적이 놓이는 층
@@ -152,7 +157,67 @@ export function generateFloor(floorNo: number, seedOffset = 0): FloorMap {
         })
       : spawns;
 
-  return { cells, rooms, start, exit, spawns: safeSpawns, chest, homeDoor, trace, girl };
+  // ── 방 이벤트 — 기존 배치(시작·출구·상자·문·흔적·소녀)를 전부 피해서 놓는다.
+  //    (모든 rand 호출이 기존 배치 이후라 예전 층 구조는 그대로 재현된다)
+  const avoid = [start, exit, chest, homeDoor, trace, girl].filter(
+    (p): p is { x: number; y: number } => p !== null,
+  );
+  const placeEvent = (): { x: number; y: number } | null => {
+    for (let tries = 0; tries < 24; tries++) {
+      const r = rooms[Math.floor(rand() * rooms.length)];
+      const px = r.x + 1 + Math.floor(rand() * (r.w - 2));
+      const py = r.y + 1 + Math.floor(rand() * (r.h - 2));
+      if (avoid.some((a) => Math.abs(px - a.x) + Math.abs(py - a.y) < 3)) continue;
+      avoid.push({ x: px, y: py });
+      return { x: px, y: py };
+    }
+    return null;
+  };
+
+  // 제단 — 「피를 잉크로.」 HP를 바치면 보물 하나 (3층부터, 30% 확률)
+  const altar = floorNo >= 3 && rand() < 0.3 ? placeEvent() : null;
+
+  // 찢어진 페이지(비밀 문) — 층을 건너뛴다 (6~96층, 22% 확률). 보스 층에는 안 놓는다.
+  const secret =
+    floorNo >= 6 && floorNo <= 96 && floorNo % 10 !== 0 && rand() < 0.22 ? placeEvent() : null;
+
+  // 몬스터 하우스 — 중간 방 하나가 적으로 빽빽, 대신 코인 무더기 3개 (5층+, 22% 확률).
+  // 흔적·소녀 층은 제외 (안전지대 필터와 얽히지 않게).
+  let house: Room | null = null;
+  const houseOrbs: { x: number; y: number }[] = [];
+  if (floorNo >= 5 && !trace && !girl && rooms.length >= 4 && rand() < 0.22) {
+    const mid = rooms.slice(1, -1);
+    house = mid[Math.floor(rand() * mid.length)];
+    const perRoom2 = Math.min(7, 2 + Math.floor(floorNo / 3));
+    for (let k = 0; k < perRoom2 + 3; k++) {
+      const sx = house.x + 1 + Math.floor(rand() * (house.w - 2));
+      const sy = house.y + 1 + Math.floor(rand() * (house.h - 2));
+      if (Math.abs(sx - exit.x) + Math.abs(sy - exit.y) < 3) continue;
+      safeSpawns.push({ x: sx, y: sy }); // 흔적·소녀 층 제외라 필터와 무관
+    }
+    for (let k = 0; k < 3; k++) {
+      houseOrbs.push({
+        x: house.x + 1 + Math.floor(rand() * (house.w - 2)),
+        y: house.y + 1 + Math.floor(rand() * (house.h - 2)),
+      });
+    }
+  }
+
+  return {
+    cells,
+    rooms,
+    start,
+    exit,
+    spawns: safeSpawns,
+    chest,
+    homeDoor,
+    trace,
+    girl,
+    altar,
+    house,
+    houseOrbs,
+    secret,
+  };
 }
 
 // 폭 2짜리 L자 복도
