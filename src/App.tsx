@@ -145,10 +145,19 @@ export default function App() {
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugFloor, setDebugFloor] = useState('');
 
+  // ── 자동 시연 모드 (?demo) — 클릭 한 번이면 게임이 스스로 쇼케이스를 진행 (심사·시연용).
+  //    프로덕션에서도 동작 (DEV 훅과 무관하게 App 내부 함수 + 합성 키 입력으로 조종).
+  const demoMode = useMemo(() => new URLSearchParams(location.search).has('demo'), []);
+  const [demoRunning, setDemoRunning] = useState(false);
+  const [demoCaption, setDemoCaption] = useState('');
+  const [demoDone, setDemoDone] = useState(false);
+
   const statsRef = useRef(stats);
   statsRef.current = stats;
   const floorNoRef = useRef(floorNo);
   floorNoRef.current = floorNo;
+  const phaseRef = useRef(phase); // 자동 시연 드라이버가 최신 phase 참조
+  phaseRef.current = phase;
   const modeRef = useRef(mode); // onChest(useCallback) 안에서 최신 모드 참조
   modeRef.current = mode;
   const pausedRef = useRef(false);
@@ -794,6 +803,156 @@ export default function App() {
     goVillage('death');
   };
 
+  // ── 자동 시연 드라이버 (?demo) — 실제 게임을 그대로 플레이하며 자막과 함께 보여준다.
+  //    이동은 합성 키보드 이벤트(useMoveInput/useSteer가 window 키 이벤트 기반이라 그대로 먹힘),
+  //    장면 전환은 App 내부 함수(goVillage/enterDungeon/debugJump/debugGrantRef)로 직접 진행.
+  //    DEV 훅을 안 쓰므로 프로덕션 빌드에서도 동작 — 심사자가 링크 클릭 한 번으로 관람.
+  useEffect(() => {
+    if (!demoRunning) return;
+    let stop = false;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
+    const key = (code: string, down: boolean) =>
+      window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true }));
+    const releaseAll = () => ['ArrowLeft', 'ArrowRight', ...MOVE_KEYS].forEach((c) => key(c, false));
+    const OVERLAYS = ['lore', 'memory', 'trace', 'quiz', 'portal', 'draft', 'homedoor', 'memfull', 'arenaover', 'over'];
+    // 떠 있는 오버레이를 잠깐 보여준 뒤 자연스럽게 넘긴다 (스토리도 시연의 일부)
+    const clickOverlay = () => {
+      const card = document.querySelector<HTMLButtonElement>('.draft-screen .card');
+      if (card) return card.click();
+      const choices = [
+        ...document.querySelectorAll<HTMLButtonElement>('.screen .dialog-choices .choice-btn'),
+      ].filter((b) => !b.disabled);
+      // 포털·마을 문은 거절 — 시연 동선은 드라이버가 debugJump로 직접 잡는다
+      if (choices.length >= 2 && (phaseRef.current === 'portal' || phaseRef.current === 'homedoor'))
+        return choices[1].click();
+      if (choices.length > 0) return choices[0].click();
+      document.querySelector<HTMLButtonElement>('.screen .big-btn')?.click();
+    };
+    const settle = async () => {
+      if (OVERLAYS.includes(phaseRef.current)) {
+        await sleep(1500); // 관객이 읽을 시간
+        if (!stop) clickOverlay();
+        await sleep(400);
+      }
+    };
+    // 무작위 산책 — 전투·마을 구경용 (자동 조준이 알아서 싸운다)
+    const wander = async (ms: number) => {
+      const until = Date.now() + ms;
+      while (Date.now() < until && !stop) {
+        await settle();
+        const c = MOVE_KEYS[Math.floor(Math.random() * MOVE_KEYS.length)];
+        key(c, true);
+        await sleep(450 + Math.random() * 450);
+        key(c, false);
+      }
+      releaseAll();
+    };
+    // 원하는 phase가 될 때까지 오버레이를 넘기며 대기 (두 문 달리기 중이면 조향도)
+    const settleUntil = async (want: string[], maxMs: number) => {
+      const until = Date.now() + maxMs;
+      while (Date.now() < until && !stop && !want.includes(phaseRef.current)) {
+        if (phaseRef.current === 'doorrun') {
+          const c = Math.random() < 0.5 ? 'ArrowLeft' : 'ArrowRight';
+          key(c, true);
+          await sleep(320);
+          key(c, false);
+          continue;
+        }
+        await settle();
+        await sleep(300);
+      }
+    };
+    const caption = async (text: string) => {
+      setDemoCaption(text);
+      sfx.tap();
+      await sleep(1900);
+    };
+
+    const tour = async () => {
+      await caption('🏘️ 모험은 걸어다니는 마을에서 — NPC와 대화하고 던전 입구로!');
+      goVillage('enter');
+      await wander(5500);
+      if (stop) return;
+
+      await caption('⚔️ 매판 새로 생성되는 던전 — 가까운 적은 자동 조준!');
+      enterDungeon('kids');
+      await wander(7500);
+      if (stop) return;
+
+      await caption('🎁 보물은 빌드로 바로 보입니다 — 궤도 구슬, 커지는 투사체!');
+      for (let i = 0; i < 3 && !stop; i++) {
+        debugGrantRef.current();
+        await sleep(1200);
+      }
+      await wander(3500);
+      if (stop) return;
+
+      await caption('🚪 미니게임 ① 두 문 달리기 — 정답이 적힌 문을 몸으로!');
+      setDoorRound(1);
+      setPhase('doorrun');
+      {
+        const until = Date.now() + 11000;
+        while (Date.now() < until && !stop && phaseRef.current === 'doorrun') {
+          const c = Math.random() < 0.5 ? 'ArrowLeft' : 'ArrowRight';
+          key(c, true);
+          await sleep(320 + Math.random() * 320);
+          key(c, false);
+        }
+        releaseAll();
+      }
+      await settleUntil(['run'], 12000); // 결과·기억 회상까지 넘기고 던전 복귀
+      if (stop) return;
+
+      await caption('👹 미니게임 ② 몬스터 아레나 — 무리를 뚫고 보석 3개!');
+      setArenaGems(0);
+      setArenaHp(ARENA_MAX_HP);
+      setArenaMax(ARENA_MAX_HP);
+      setArenaTry((t) => t + 1);
+      setPhase('arena');
+      await wander(11000);
+      if (stop) return;
+
+      await caption('🌊 깊이 = 이야기의 진행 — 10층마다 던전의 색이 변하고 안개가 짙어집니다');
+      debugJump(45);
+      await sleep(300);
+      debugGrantRef.current();
+      await wander(6000);
+      debugJump(75);
+      await sleep(300);
+      debugGrantRef.current();
+      await wander(6000);
+      if (stop) return;
+
+      await caption('🌅 깊이 내려가면 마을에도 시간이 흐릅니다 — 습격, 방벽, 그리고 폐허와 새벽');
+      setFloorNo(85);
+      goVillage('visit');
+      await wander(7000);
+      if (stop) return;
+
+      await caption('📖 10층마다 페이지의 수호자가 포털을 봉인합니다 — 탄막을 뚫어라!');
+      debugJump(30);
+      await sleep(300);
+      debugGrantRef.current();
+      await wander(12000);
+      if (stop) return;
+
+      await caption('✨ 56층의 소녀, 100층의 황금 문, 엔딩과 에필로그는 — 직접 확인해 보세요!');
+      await sleep(2600);
+      releaseAll();
+      setPhase('title');
+      setDemoCaption('');
+      setDemoRunning(false);
+      setDemoDone(true);
+    };
+    void tour();
+    return () => {
+      stop = true;
+      releaseAll();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoRunning]);
+
   // 마을의 '시절' — 새 도전 허브(enter)는 언제나 처음의 평화로운 마을, 그 외엔 현재 깊이.
   // 깊이 내려갈수록(=마지막 장이 쓰일수록) 마을에도 시간이 흐른다 (계절·습격 피해·새벽).
   const villageFloor = villageCtx === 'enter' ? 0 : floorNo;
@@ -1044,6 +1203,39 @@ export default function App() {
         </div>
       )}
 
+      {/* 자동 시연 (?demo) — 자막·종료 버튼·끝 화면 */}
+      {demoRunning && demoCaption && <div className="demo-caption">{demoCaption}</div>}
+      {demoRunning && (
+        <button className="demo-exit" onClick={() => (location.href = location.pathname)}>
+          ✕ 시연 종료
+        </button>
+      )}
+      {demoMode && demoDone && !demoRunning && (
+        <div className="screen demo-end">
+          <h2>🎬 시연 끝!</h2>
+          <p className="quiz-sub">
+            방금 본 것은 절반도 안 됩니다 — 56층의 소녀 '여백', 층층이 숨은 흔적과 벽의 글귀,
+            <br />
+            100층의 황금 문과 두 가지 엔딩, 그리고 10년 후의 에필로그….
+          </p>
+          <div className="dialog-choices">
+            <button
+              className="choice-btn"
+              onClick={() => {
+                sfx.tap();
+                setDemoDone(false);
+                setDemoRunning(true);
+              }}
+            >
+              🔁 다시 보기
+            </button>
+            <button className="choice-btn" onClick={() => (location.href = location.pathname)}>
+              🎮 직접 플레이하러 가기
+            </button>
+          </div>
+        </div>
+      )}
+
       {phase === 'title' && (
         <div className="screen title-screen">
           <button className="hud-chip mute-btn title-mute" onClick={toggleMute}>
@@ -1058,6 +1250,18 @@ export default function App() {
             <p>🌀 포털로 다음 층 — 내려갈지는 당신의 선택</p>
           </div>
           {best > 0 && <p className="best">최고 기록: {best}층 · 되찾은 기억 {Math.min(memCount, MEMORIES.length)}개</p>}
+          {demoMode && (
+            <button
+              className="big-btn demo-start"
+              onClick={() => {
+                sfx.enter();
+                setDemoDone(false);
+                setDemoRunning(true);
+              }}
+            >
+              🎬 자동 시연 보기 (약 90초)
+            </button>
+          )}
           <button className="big-btn" onClick={startAdventure}>
             모험 시작
           </button>
