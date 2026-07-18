@@ -645,6 +645,10 @@ export function deathVisitScript(floorNo: number): TownNode[] {
 // line 노드의 next가 음수면 대화 종료(마을로 복귀).
 export type TownContext = 'enter' | 'visit' | 'death';
 
+// 마을의 '시절' (20층 단위) — TownScene villageStage와 동일한 계산.
+// 0 고요한 밤 / 1 가을바람 / 2 습격의 흔적 / 3 방벽의 시간 / 4 폐허와 새벽
+const villageStageOf = (floorNo: number) => Math.min(4, Math.floor(Math.max(0, floorNo) / 20));
+
 // 촌장 — 퀘스트·세계관. 깊이(층) 방문마다 진실에 한 걸음씩 다가간다.
 export function chiefTalk(ctx: TownContext, firstTime: boolean, floorNo: number): TownNode[] {
   const L = (text: string, next: number): TownNode => ({ kind: 'line', icon: '👵', speaker: '촌장', text, next });
@@ -674,7 +678,27 @@ export function chiefTalk(ctx: TownContext, firstTime: boolean, floorNo: number)
         L("나는 이 책을 '읽다가' 떨어진 게 아니야. 이 책을 '쓰던' 사람이란다. 마지막 장이 안 써져서… 이야기 안에 갇혔지.", 2),
         L('네가 한 층 내려갈 때마다 벽에 문장이 하나씩 늘어. 네 모험이 마지막 장을 대신 쓰고 있는 거야. …부디, 좋은 결말이 되어 다오.', -1),
       ];
-    return [L('얼마 안 남았구나. 100층의 문은 이 책의 뒤표지란다. 좋은 결말을 부탁한다.', -1)];
+    // 25층 이후 — 마을의 시절(계절·습격 피해)에 따라 근황이 달라진다
+    const stg = villageStageOf(floorNo);
+    if (stg <= 1)
+      return [
+        L('요즘 밤바람이 차구나. 마당의 나뭇잎이 물드는 게 보이니? …책에도 계절이 흐르는 모양이야.', 1),
+        L('얼마 안 남았구나. 100층의 문은 이 책의 뒤표지란다. 좋은 결말을 부탁한다.', -1),
+      ];
+    if (stg === 2)
+      return [
+        L('간밤에 놈들이 담장을 넘어왔단다. 다친 사람은 없어 — 무크가 밤새 문을 지켰지.', 1),
+        L('네가 깊이 내려갈수록 이야기가 거칠어지는구나. 그래도 멈추지 말거라. 결말만이 이 마을을 구한단다.', -1),
+      ];
+    if (stg === 3)
+      return [
+        L('방벽을 보았니? 마을이 버티는 법을 배우고 있단다. 다들 네 이야기를 하며 버텨.', 1),
+        L('이야기의 절정이 가까워. 몬스터들도 그걸 아는 게지. …부탁한다, 100층의 문.', -1),
+      ];
+    return [
+      L('마을 꼴이 이렇지만… 잔해 틈에 핀 꽃을 보렴. 끝이 가까울수록 새벽도 가까운 법이야.', 1),
+      L('마지막 장이 눈앞이구나. 네 걸음이 이 폐허를 다시 좋은 이야기로 쓸 게다.', -1),
+    ];
   }
   // enter — 첫 만남엔 고전 개그: 선택지는 있지만 사실 답은 하나다
   if (firstTime) {
@@ -698,16 +722,25 @@ export function chiefTalk(ctx: TownContext, firstTime: boolean, floorNo: number)
 }
 
 // 여관 소녀 니나 — 수프로 회복. 부활 직후엔 '죽지 않는다'는 진실을 넌지시.
-export function ninaTalk(ctx: TownContext): TownNode[] {
+export function ninaTalk(ctx: TownContext, floorNo = 0): TownNode[] {
   if (ctx === 'death') {
     return [
       { kind: 'line', icon: '👧', speaker: '여관 소녀 니나', text: '또 눈을 떴네요! 놀라지 마요 — 전에 말했잖아요. "주인공은 안 죽어요. 다시 쓰일 뿐이죠."', next: 1 },
       { kind: 'line', icon: '👧', speaker: '니나', text: '상처는 제가 다 돌봐 뒀어요. 특제 수프도 한 그릇 — 몸이 개운해질 거예요!', next: -1, gift: 'heal' },
     ];
   }
-  // 어느 쪽을 골라도 수프는 먹게 된다 (가짜 선택 개그)
+  // 어느 쪽을 골라도 수프는 먹게 된다 (가짜 선택 개그). 첫마디는 마을 시절 따라.
+  const stg = villageStageOf(floorNo);
+  const opener =
+    stg >= 4
+      ? '모험가님! 마을이 이래도… 봐요, 아침이 오고 있어요. 수프는 여전히 따뜻하답니다!'
+      : stg === 3
+        ? '모닥불 곁이 제일 안전해요. 방벽 지키는 아저씨들도 다 제 수프 먹고 버틴다구요. 한 그릇 드세요!'
+        : stg === 2
+          ? '간밤엔 무서웠어요. 창문까지 두드리고 갔다니까요. …그래도 수프 솥은 제가 지켰어요!'
+          : '모험가님! 얼굴이 반쪽이 됐어요. 우리 여관 특제 수프 드시고 가요. 서비스예요!';
   return [
-    { kind: 'line', icon: '👧', speaker: '여관 소녀 니나', text: '모험가님! 얼굴이 반쪽이 됐어요. 우리 여관 특제 수프 드시고 가요. 서비스예요!', next: 1 },
+    { kind: 'line', icon: '👧', speaker: '여관 소녀 니나', text: opener, next: 1 },
     {
       kind: 'choice',
       prompt: '김이 모락모락 나는 수프가 눈앞에 놓였다.',
@@ -721,10 +754,19 @@ export function ninaTalk(ctx: TownContext): TownNode[] {
   ];
 }
 
-// 대장장이 무크 — 대화 끝에 강화 상점(대장간)을 연다.
-export function mukTalk(): TownNode[] {
+// 대장장이 무크 — 대화 끝에 강화 상점(대장간)을 연다. 첫마디는 마을 시절 따라.
+export function mukTalk(floorNo = 0): TownNode[] {
+  const stg = villageStageOf(floorNo);
+  const opener =
+    stg >= 4
+      ? '왔나. 마을은 부서져도 대장간 불은 안 꺼져. 마지막 장까지 벼려 주마.'
+      : stg === 3
+        ? '방벽 봤나? 내 솜씨야. 사흘 밤을 새웠더니 망치질이 자장가로 들리더군. 자, 단련도 해야지!'
+        : stg === 2
+          ? '간밤에 담장이 뚫렸지 뭔가. 무기 벼리랴 담장 고치랴 손이 열 개라도 모자라!'
+          : '오, 잠옷 모험가! 죽어도 몸에 남는 단련이 있지. 코인만 있으면 몇 번이고 벼려 주마.';
   return [
-    { kind: 'line', icon: '🧔', speaker: '대장장이 무크', text: '오, 잠옷 모험가! 죽어도 몸에 남는 단련이 있지. 코인만 있으면 몇 번이고 벼려 주마.', next: 1 },
+    { kind: 'line', icon: '🧔', speaker: '대장장이 무크', text: opener, next: 1 },
     {
       kind: 'choice',
       prompt: '무크의 손은 쇳가루가 아니라… 잉크로 얼룩져 있었다.',

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import DungeonScene, { type QuizResult } from './three/DungeonScene';
+import DungeonScene, { dungeonTheme, type QuizResult } from './three/DungeonScene';
 import DoorRunScene from './three/DoorRunScene';
 import GemArenaScene, { ARENA_MAX_HP } from './three/GemArenaScene';
 import TownScene, {
@@ -431,9 +431,10 @@ export default function App() {
     if (!target) return;
     sfx.tap();
     let script: TownNode[] = [];
-    if (target === 'chief') script = chiefTalk(villageCtx, villageFirst, floorNo);
-    else if (target === 'nina') script = ninaTalk(villageCtx);
-    else if (target === 'muk') script = mukTalk();
+    // 시절 연동 대사는 villageFloor 기준 (enter 허브는 0 = 평화로운 시절)
+    if (target === 'chief') script = chiefTalk(villageCtx, villageFirst, villageFloor);
+    else if (target === 'nina') script = ninaTalk(villageCtx, villageFloor);
+    else if (target === 'muk') script = mukTalk(villageFloor);
     else if (target === 'entrance') script = entranceOptions(villageCtx, floorNo);
     if (!script.length) return;
     applyVillageGift(script[0]);
@@ -797,7 +798,14 @@ export default function App() {
   // 깊이 내려갈수록(=마지막 장이 쓰일수록) 마을에도 시간이 흐른다 (계절·습격 피해·새벽).
   const villageFloor = villageCtx === 'enter' ? 0 : floorNo;
   const vStage = villageStage(villageFloor);
-  const canvasBg = phase === 'village' ? VILLAGE_STAGE_BG[vStage] : '#140e22';
+  // 배경·안개 — 마을은 시절 색, 미니게임은 기본, 던전은 10층 단위 테마 색.
+  // 던전 안개는 깊을수록 짙어진다(시야 축소 = 미로 난이도 램프): near 20→11, far 44→28.
+  const inMinigame = phase === 'doorrun' || phase === 'arena' || phase === 'arenaover';
+  const canvasBg =
+    phase === 'village' ? VILLAGE_STAGE_BG[vStage] : inMinigame ? '#140e22' : dungeonTheme(floorNo).bg;
+  const fogDepth = Math.min(1, floorNo / 100);
+  const fogNear = phase === 'village' || inMinigame ? 20 : 20 - 9 * fogDepth;
+  const fogFar = phase === 'village' || inMinigame ? 44 : 44 - 16 * fogDepth;
 
   const hpRatio = Math.max(0, Math.min(1, hp / stats.maxHp));
   const inGame = !(
@@ -812,7 +820,7 @@ export default function App() {
       {inGame && (
         <Canvas className="canvas" camera={{ fov: 50, position: [0, 15.5, 9.5] }} dpr={[1, 2]}>
           <color attach="background" args={[canvasBg]} />
-          <fog attach="fog" args={[canvasBg, 20, 44]} />
+          <fog attach="fog" args={[canvasBg, fogNear, fogFar]} />
           <DungeonScene
             key={`${runId}:${floorNo}`}
             floorNo={floorNo}

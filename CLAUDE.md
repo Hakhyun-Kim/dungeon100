@@ -12,10 +12,9 @@
 1. **밸런스 자동 시뮬레이터** — `__pump`+`__d100fixdt` 하네스로 자동 봇 N판 → 사망 층 분포 리포트 (AI 활용 문서 하이라이트). 적 4타입·메타 성장·몬스터 아레나가 생겨 밸런스 점검 필요성 커짐.
 2. **몬스터 아레나 밸런스 튜닝** — 4타입 전부 1층부터 섞임(완료). 남은 것: 보석 근처 스폰 몰림 방지·유도, 클리어 난이도 층별 곡선 조정(aliveCap/enemyMaxHp/touchDmg — 현재 dasher+탄막 때문에 가만히 있으면 금방 죽음), 타입 분포 비율 튜닝. 처치가 코인에 반영 안 됨(무한 재도전 파밍 방지) — 의도된 것.
 3. **처치 콤보** — 연속 처치 시 코인 배율(x2·x3), 콤보 이펙트 — 전투 몰입 + 코인 경제 연결.
-4. **층 테마 색 변화** — 10층 단위 바닥·벽·안개 팔레트 교체 (절차 생성이라 저비용).
-5. **모바일 진동** (navigator.vibrate) — 피격·처치·보물에 짧은 진동.
-6. **두 게임 통합** — 두 문 러너를 백층 던전의 정식 모드로 흡수 (README에 계획 명시됨). 해커톤 이후 검토.
-7. **제출 준비** — 플레이 영상 촬영(SUBMISSION.md 가이드), 문서 PDF 변환, 마감일 기입, **디버그 키(Shift+D) 게이트 재도입 여부 결정**.
+4. **모바일 진동** (navigator.vibrate) — 피격·처치·보물에 짧은 진동.
+5. **두 게임 통합** — 두 문 러너를 백층 던전의 정식 모드로 흡수 (README에 계획 명시됨). 해커톤 이후 검토.
+6. **제출 준비** — 플레이 영상 촬영(SUBMISSION.md 가이드), 문서 PDF 변환, 마감일 기입, **디버그 키(Shift+D) 게이트 재도입 여부 결정**.
 
 ## 실행
 - `npm install` — 최초 1회
@@ -32,9 +31,9 @@
 - 배포: main 푸시 → `.github/workflows/deploy-pages.yml` → https://hakhyun-kim.github.io/dungeon100/
 
 ## 구조
-- `src/App.tsx` — phase 상태 머신: `title` → `story`(인트로, 최초 1회·건너뛰기 가능) → `village`(**걸어다니는 3D 마을** — 던전 입장 전·5층 방문·부활 공용) → `run` → **보물상자 미니게임(모드에 따라 갈림)**: 수학 모드 → `doorrun`(두 문 달리기, 최대 3라운드 푸시-유어-럭) / 몬스터 모드 → `arena`(몬스터 무리+보석 3개) → `quiz`(결과/계속 선택) → `portal`(다음 층 내려갈지 선택 — 거절 시 portalRetryRef 증가로 포털 재무장) → `draft`(보상 3택 1) → `run` / `over`(사망 → 재도전 or 마을). HUD·빌드 칩·오버레이는 캔버스 위 DOM. 사망 판정은 hp useEffect. Canvas는 run 계열 phase에만 마운트(배경·fog는 Canvas 레벨), 층 전환은 DungeonScene key 리마운트, 미니게임 라운드는 DoorRunScene/GemArenaScene key 리마운트. 미니게임 결과는 quizResultRef(seq 증가)로 던전 씬에 전달. 보상: 통과한 문·주운 보석 수 = 아이템 수, 3개 완주 = 전설(3개+완전회복), 실패 = 전부 빈손. **보물상자 모드 분기**는 modeRef(onChest useCallback 안 stale 방지)로 판단.
+- `src/App.tsx` — phase 상태 머신: `title` → `story`(인트로, 최초 1회·건너뛰기 가능) → `village`(**걸어다니는 3D 마을** — 던전 입장 전·5층 방문·부활 공용) → `run` → **보물상자 미니게임(모드에 따라 갈림)**: 수학 모드 → `doorrun`(두 문 달리기, 최대 3라운드 푸시-유어-럭) / 몬스터 모드 → `arena`(몬스터 무리+보석 3개) → `quiz`(결과/계속 선택) → `portal`(다음 층 내려갈지 선택 — 거절 시 portalRetryRef 증가로 포털 재무장) → `draft`(보상 3택 1) → `run` / `over`(사망 → 재도전 or 마을). HUD·빌드 칩·오버레이는 캔버스 위 DOM. 사망 판정은 hp useEffect. Canvas는 run 계열 phase에만 마운트(배경·fog는 Canvas 레벨 — **마을은 시절 색, 던전은 10층 테마 색(dungeonTheme(floorNo).bg), 던전 안개는 깊을수록 짙어짐**(near 20→11·far 44→28 선형, 미로 난이도 램프; 미니게임·마을은 기본 20/44)), 층 전환은 DungeonScene key 리마운트, 미니게임 라운드는 DoorRunScene/GemArenaScene key 리마운트. 미니게임 결과는 quizResultRef(seq 증가)로 던전 씬에 전달. 보상: 통과한 문·주운 보석 수 = 아이템 수, 3개 완주 = 전설(3개+완전회복), 실패 = 전부 빈손. **보물상자 모드 분기**는 modeRef(onChest useCallback 안 stale 방지)로 판단.
 - **몬스터 아레나** (보물상자 '몬스터' 모드, `arena`/`arenaover` phase + `GemArenaScene`) — 수학 대신 우르르 몰려오는 무리를 뚫고 바닥의 보석 3개를 몸으로 주우면 능력치업(=3문 완주와 동일 보상). **아레나 전용 체력**(ARENA_MAX_HP=100, 본체와 분리)이 0이 되면 `arenaover`로 — 본체는 무사하고 **몇 번이고 재도전**(arenaTry로 리마운트) 또는 모은 보석만큼 받고 나가기(`bailArena`→grantRewards(N)). 아레나 HUD는 👹 + 아레나 체력바 + 💎 진행도. DEV 훅 `__d100arena`(place/state/collect/hurt).
-- `src/three/DungeonScene.tsx` — 층 하나의 씬+시뮬레이션. 지형·적·투사체·파티클 전부 InstancedMesh. 시뮬레이션은 useFrame에서 ref 기반(React 상태는 onDamage/onKill/onExit/onChest 이벤트만). 타격감: 피격 흰색 번쩍(인스턴스 색)+넉백+스파크, 처치 폭발, 카메라 셰이크. 파워업 시각화: 멀티샷 궤도 구슬, 공격력별 투사체 크기·색, 체력별 몸집, 보물 획득 황금 잔광. 입력은 useMoveInput 훅 (키보드 + 터치 드래그, button 위에서는 시작 안 함). pausedRef로 퀴즈/드래프트/게임오버 중 정지. DEV 전용 `window.__d100`(teleport/state) — 자동 검증용.
+- `src/three/DungeonScene.tsx` — 층 하나의 씬+시뮬레이션. 지형·적·투사체·파티클 전부 InstancedMesh. **10층 단위 던전 테마**(DUNGEON_THEMES 10종 — 바닥 체커·벽·배경 팔레트: 보랏빛 서장→이끼→가을 잉크→푸른 밤→서리→장미 잉크(56층)→녹슨 철문→잿빛→핏빛→금빛 마지막 장; `dungeonTheme(floorNo)` export, App이 배경·안개색으로 재사용). 시뮬레이션은 useFrame에서 ref 기반(React 상태는 onDamage/onKill/onExit/onChest 이벤트만). 타격감: 피격 흰색 번쩍(인스턴스 색)+넉백+스파크, 처치 폭발, 카메라 셰이크. 파워업 시각화: 멀티샷 궤도 구슬, 공격력별 투사체 크기·색, 체력별 몸집, 보물 획득 황금 잔광. 입력은 useMoveInput 훅 (키보드 + 터치 드래그, button 위에서는 시작 안 함). pausedRef로 퀴즈/드래프트/게임오버 중 정지. DEV 전용 `window.__d100`(teleport/state) — 자동 검증용.
 - `src/lib/dungeon.ts` — 절차 생성. 방 흩뿌리기 + 폭 2 L자 복도 순차 연결(연결 보장). `GRID`=44셀, `CELL`=2. 충돌은 `canStand`(네 모서리 셀 검사). 시작 방 안전지대, 출구 인접 스폰 금지, 층당 보물상자 1개(시작·출구에서 떨어진 곳).
 - `src/three/DoorRunScene.tsx` — **두 문 달리기 미니게임** (두 문 러너 인게임 재현). 자동 달리기 + 좌우 조작(useSteer: 화면 좌/우 꾹·←/→), 보라 게이트·유리 옆벽·문제판, 문 사이 벽 막힘, 몸으로 정답 문 통과 → onDone(true)·색종이 / 오답 💥 뒤로 넘어짐·정답 문 초록 표시 → onDone(false). 미니게임 동안 DungeonScene은 hidden(보임·카메라 양보). DEV 훅 `__d100run`(place/state), 시간 가속 `__d100speed`.
 - `src/three/GemArenaScene.tsx` — **몬스터 아레나 미니게임** (보물상자 '몬스터' 모드). 오픈 아레나(반경 ARENA_R=9, 그리드 없이 경계 클램프) + 계속 몰려오는 무리(aliveCap까지 재스폰) + 고정 위치 보석 3개(octahedron). **무리는 1층부터 4타입 전부 섞임**(pickArenaType — chaser/shooter/dasher/tank, 본체 던전을 미리 맛보게 + 긴장감) — 타입별 AI·실루엣·슈터 탄막(eshots)까지 본체 이식. 본체와 동일한 useMoveInput·자동조준 발사·넉백(탱커 면역)·파티클 재사용. 보석 3개 완수 → onDone(true,3)·전설 보상, 체력 0 → onDone(false, 모은 보석 수). 아레나 동안 DungeonScene은 hidden(카메라 양보). DEV 훅 `__d100arena`.
@@ -49,7 +48,7 @@
 - **기억 완성 보상** — 12번째 기억 회수 시 `memfull` phase: 아이템 2개 + 완전 회복.
 - **위기 연출** — HP 30% 미만: 붉은 비네트 펄스 + 심장박동음(1초 간격).
 - **인터랙티브 인트로** — STORY_NODES에 quiz 노드(책이 "7×8=?"을 물음, 정답/오답 모두 빨려 들어가는 개그). 배경 클릭 진행은 퀴즈 미답변 중 잠금.
-- `src/lib/story.ts` — 인트로 슬라이드·회상 기억 12개(MEMORIES)·층별 벽의 글귀(getLore). **걸어다니는 마을 NPC 대화는 상황(TownContext: enter/visit/death)별 함수**로: `chiefTalk`(촌장 — 첫 입장 퀘스트·5층마다 세계관 회수·부활 격려), `ninaTalk`(니나 — 수프 회복, 부활 직후 '다시 쓰일 뿐'), `mukTalk`(무크 — 대장간 상점 진입), `entranceOptions`(던전 입구 — enter는 난이도 선택, 그 외는 이어서 내려가기). line 노드 `next<0`이면 대화 종료. **가짜 선택 개그**(선택지는 있지만 결과는 하나): 촌장 첫 대화 "다른 방법은 없나요?"→"없어.", 니나 수프(재료를 물어도 결국 먹음), 여백 찻자리(케이크는 없음). **세계관: 던전=쓰이다 만 책, 마을=서문, 촌장=작가, 100층 문=뒤표지, 여백=쓰다 만 「공주님」(이름 빈칸).** 엔딩 뒤 **10년 후 에필로그**(ENDING_EPILOGUE, 전 엔딩 공통 — 성장 회수 + 『2권에서 계속』 예고). localStorage: `d100-story`(인트로 1회), `d100-mem`(되찾은 기억 수).
+- `src/lib/story.ts` — 인트로 슬라이드·회상 기억 12개(MEMORIES)·층별 벽의 글귀(getLore). **걸어다니는 마을 NPC 대화는 상황(TownContext: enter/visit/death)별 함수**로: `chiefTalk`(촌장 — 첫 입장 퀘스트·5층마다 세계관 회수·부활 격려), `ninaTalk`(니나 — 수프 회복, 부활 직후 '다시 쓰일 뿐'), `mukTalk`(무크 — 대장간 상점 진입), `entranceOptions`(던전 입구 — enter는 난이도 선택, 그 외는 이어서 내려가기). line 노드 `next<0`이면 대화 종료. **가짜 선택 개그**(선택지는 있지만 결과는 하나): 촌장 첫 대화 "다른 방법은 없나요?"→"없어.", 니나 수프(재료를 물어도 결국 먹음), 여백 찻자리(케이크는 없음). **마을 시절 연동 대사**(villageStageOf=20층 단위, TownScene 시절과 동기화): 촌장 25층+ 방문 근황(가을→습격→방벽→폐허와 새벽), 니나·무크 첫마디 변화 — App talkTo가 villageFloor 전달(enter 허브=0). **세계관: 던전=쓰이다 만 책, 마을=서문, 촌장=작가, 100층 문=뒤표지, 여백=쓰다 만 「공주님」(이름 빈칸).** 엔딩 뒤 **10년 후 에필로그**(ENDING_EPILOGUE, 전 엔딩 공통 — 성장 회수 + 『2권에서 계속』 예고). localStorage: `d100-story`(인트로 1회), `d100-mem`(되찾은 기억 수).
 - 새 층 도착 시 `lore` phase로 벽의 글귀 1개 노출, 보물 획득 후 `memory` phase로 기억 1개 복원. 5의 배수 층엔 마을 문(dungeon.ts homeDoor) — 방문은 층 유지(townMode 'visit'), 문은 1회용(homeUsedRef), 거절 시 재무장(homeRetryRef). 몬스터는 5층 단위 티어로 모양·색 변화(DungeonScene ENEMY_TIER_*).
 - `src/lib/rng.ts` — mulberry32 시드 난수. **층 번호 = 시드** → 같은 층은 항상 같은 구조 (재현성).
 - `src/lib/upgrades.ts` — 스탯·보상 카드 풀. 드래프트는 `draftThree(rand)`, 보물 보상도 이 풀에서 지급. **이동 속도는 소프트 캡**(SPEED_CAP=12, 캡까지 남은 거리의 15%씩) — 예전 곱연산 ×1.12는 픽마다 절대 증가량이 커져 고속에서 던전 조작이 불편했음(2026-07-17 변경).

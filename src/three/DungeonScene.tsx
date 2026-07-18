@@ -95,6 +95,29 @@ const AGGRO = 9;
 const ENEMY_TIER_COLORS = ['#ff5d7e', '#7be07a', '#5aa0ff', '#c06bff', '#ffa03d', '#8de0e0'];
 const ENEMY_TIER_EMISSIVE = ['#5c1024', '#124d18', '#10315c', '#3c1060', '#5c3a10', '#105050'];
 
+// ── 10층 단위 던전 테마 — 깊이 = 이야기의 진행. 바닥·벽 팔레트가 바뀌고,
+//    App이 dungeonTheme(floorNo).bg로 배경·안개색을 맞추며 깊을수록 안개를 짙게 한다.
+export interface DungeonTheme {
+  f1: string; // 바닥 체커 밝은 칸
+  f2: string; // 바닥 체커 어두운 칸
+  wall: string;
+  bg: string; // 배경·안개색 (App Canvas)
+}
+export const DUNGEON_THEMES: DungeonTheme[] = [
+  { f1: '#3a2f55', f2: '#453a63', wall: '#251c3d', bg: '#140e22' }, // 1~10 보랏빛 서장
+  { f1: '#2f4a44', f2: '#3a5850', wall: '#1c332c', bg: '#0e1a16' }, // 11~20 이끼 낀 페이지
+  { f1: '#4d3a30', f2: '#5a463a', wall: '#33241c', bg: '#1a120e' }, // 21~30 가을 잉크
+  { f1: '#2f3a55', f2: '#3a4663', wall: '#1c2540', bg: '#0e1224' }, // 31~40 푸른 밤
+  { f1: '#3a4a5c', f2: '#46586a', wall: '#243440', bg: '#101a20' }, // 41~50 서리 내린 행간
+  { f1: '#4a2f44', f2: '#583a52', wall: '#33202e', bg: '#180e16' }, // 51~60 장미 잉크 (56층 소녀)
+  { f1: '#4a332f', f2: '#57403a', wall: '#33211c', bg: '#170f0d' }, // 61~70 녹슨 철문
+  { f1: '#3d3d44', f2: '#4a4a52', wall: '#28282e', bg: '#121216' }, // 71~80 잿빛 침묵
+  { f1: '#4a2530', f2: '#57303a', wall: '#331821', bg: '#170a0e' }, // 81~90 핏빛 절정
+  { f1: '#4a3f2a', f2: '#5a4d34', wall: '#332a18', bg: '#171208' }, // 91~100 금빛 마지막 장
+];
+export const dungeonTheme = (floorNo: number) =>
+  DUNGEON_THEMES[Math.max(0, Math.min(DUNGEON_THEMES.length - 1, Math.floor((floorNo - 1) / 10)))];
+
 function DungeonScene({
   floorNo,
   hidden,
@@ -401,12 +424,13 @@ function DungeonScene({
     return { floorCells: f, wallCells: w };
   }, [floor]);
 
-  // 정적 지형 인스턴스 배치 (마운트 시 1회)
+  // 정적 지형 인스턴스 배치 (마운트 시 1회) — 색은 10층 단위 테마
+  const theme = dungeonTheme(floorNo);
   useLayoutEffect(() => {
     const fm = floorMeshRef.current;
     if (fm) {
-      const c1 = new THREE.Color('#3a2f55');
-      const c2 = new THREE.Color('#453a63');
+      const c1 = new THREE.Color(theme.f1);
+      const c2 = new THREE.Color(theme.f2);
       floorCells.forEach(([x, y], i) => {
         const [wx, wz] = cellToWorld(x, y);
         dummy.position.set(wx, -0.15, wz);
@@ -431,7 +455,7 @@ function DungeonScene({
       });
       wm.instanceMatrix.needsUpdate = true;
     }
-  }, [floorCells, wallCells, dummy]);
+  }, [floorCells, wallCells, dummy, theme]);
 
   // 개발 검증용 훅 (프로덕션 빌드에서는 제외)
   useEffect(() => {
@@ -1182,10 +1206,10 @@ function DungeonScene({
         <meshStandardMaterial />
       </instancedMesh>
 
-      {/* 벽 */}
+      {/* 벽 — 10층 단위 테마 색 */}
       <instancedMesh ref={wallMeshRef} args={[undefined, undefined, wallCells.length]} frustumCulled={false}>
         <boxGeometry args={[CELL, 2.6, CELL]} />
-        <meshStandardMaterial color="#251c3d" />
+        <meshStandardMaterial color={theme.wall} />
       </instancedMesh>
 
       {/* 적 — 5층 단위 티어마다 모양·색이 달라진다 (피격 시 흰색 번쩍) */}
