@@ -69,6 +69,11 @@ export type TownNode =
       }[];
     };
 
+// 대화 선택지 하나 (UI 컴포넌트·App 핸들러가 공유하는 타입)
+export type TownOption = Extract<TownNode, { kind: 'choice' }>['options'][number];
+// 대사 노드 하나 (진행 클릭·키보드 핸들러용)
+export type TownLine = Extract<TownNode, { kind: 'line' }>;
+
 // ── 소녀의 흔적 (14·28·42·49층) — 56층으로 이어지는 복선
 export const TRACES: Record<number, { icon: string; text: string }> = {
   14: {

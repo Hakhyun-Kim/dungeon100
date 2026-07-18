@@ -9,8 +9,9 @@ import TownScene, {
   VILLAGE_STAGE_BG,
   type TownTarget,
 } from './three/TownScene';
-import { BASE_STATS, SPEED_CAP, UPGRADES, draftThree, type Stats, type Upgrade } from './lib/upgrades';
-import { makeQuiz, type DungeonMode } from './lib/quiz';
+import { BASE_STATS, UPGRADES, draftThree, type Stats, type Upgrade } from './lib/upgrades';
+import { makeQuiz, MAX_DOOR_ROUND, type DungeonMode } from './lib/quiz';
+import { metaSpeed, shopCost, type Meta } from './lib/meta';
 import { mulberry32 } from './lib/rng';
 import { useLocalStorage } from './lib/store';
 import { sfx, isMuted, setMuted } from './lib/sound';
@@ -19,44 +20,38 @@ import { shareCard } from './lib/shareCard';
 import {
   STORY_NODES,
   MEMORIES,
-  ENDING_ALONE,
-  ENDING_TOGETHER,
-  ENDING_GIRL_EXTRA,
-  ENDING_NAME_PRINCESS,
-  ENDING_EPILOGUE,
-  TRACES,
   girlScript,
-  getLore,
   getDeathLore,
   chiefTalk,
   ninaTalk,
   mukTalk,
   entranceOptions,
   type TownContext,
+  type TownLine,
   type TownNode,
+  type TownOption,
 } from './lib/story';
+import { useDemoDriver } from './demo/useDemoDriver';
+import { GameHud, ArenaHud, VillageHud, BuildRow, BossBar } from './ui/Hud';
+import TitleScreen from './ui/TitleScreen';
+import StoryScreen from './ui/StoryScreen';
+import TownDialogScreen from './ui/TownDialogScreen';
+import VillageOverlay, { type VillageTalk } from './ui/VillageOverlay';
+import ShopScreen from './ui/ShopScreen';
+import { PortalScreen, HomeDoorScreen } from './ui/FloorPrompts';
+import { QuizResultScreen, ArenaOverScreen, type QuizView } from './ui/ChestScreens';
+import { LoreScreen, TraceScreen, MemoryScreen, MemFullScreen } from './ui/LoreScreens';
+import DraftScreen from './ui/DraftScreen';
+import OverScreen from './ui/OverScreen';
+import EndingScreen, { type EndingVariant } from './ui/EndingScreen';
+import DebugPanel from './ui/DebugPanel';
+import { DemoCaption, DemoExitButton, DemoEndScreen } from './ui/DemoOverlay';
 
-// 대장간 영구 강화 (죽어도 유지 — localStorage d100-meta)
-interface Meta {
-  dmg: number;
-  hp: number;
-  spd: number;
-}
-// 레벨 상한 없음 — 비용이 (lv+1)×25로 계속 오르는 무한 단련. 신속만 소프트 캡(아래 metaSpeed).
-const SHOP_ITEMS: { key: keyof Meta; icon: string; name: string; desc: string }[] = [
-  { key: 'dmg', icon: '⚔️', name: '공격 단련', desc: '시작 공격력 +2' },
-  { key: 'hp', icon: '💖', name: '생명 단련', desc: '시작 체력 +15' },
-  { key: 'spd', icon: '👟', name: '신속 단련', desc: '시작 이동 증가 (갈수록 완만)' },
-];
-const shopCost = (lv: number) => (lv + 1) * 25;
-// 신속 단련은 레벨당 캡까지 남은 거리의 8%씩 — 1레벨은 예전과 같은 +0.4, 무한 구매해도 캡(12) 안쪽.
-const metaSpeed = (lv: number) => SPEED_CAP - (SPEED_CAP - BASE_STATS.speed) * Math.pow(0.92, lv);
-
-// 흐름: title → story(인트로) → town(마을) → run
+// 흐름: title → story(인트로) → village(마을) → run
 //  - 보물상자(수학 모드): run → doorrun(두 문 달리기, 최대 3연속) → quiz(결과) → memory(되찾은 기억) → run
 //  - 보물상자(몬스터 모드): run → arena(무리 처치+보석 3개) → quiz(보상) / arenaover(쓰러짐 → 재도전·포기) → memory → run
 //  - 층 이동: run → portal(내려갈지 선택) → draft(보상 3택 1) → lore(벽의 글귀) → run(다음 층)
-//  - 5층마다: run → homedoor(마을 문 선택) → town(방문 — 층 유지) → run
+//  - 5층마다: run → homedoor(마을 문 선택) → village(방문 — 층 유지) → run
 type Phase =
   | 'title'
   | 'story'
@@ -77,8 +72,6 @@ type Phase =
   | 'trace'
   | 'ending'
   | 'over';
-type QuizView = 'ok' | 'no' | 'choice';
-const MAX_DOOR_ROUND = 3;
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('title');
@@ -127,14 +120,14 @@ export default function App() {
   const [villageCtx, setVillageCtx] = useState<TownContext>('enter');
   const [villageFirst, setVillageFirst] = useState(false);
   const [villageNear, setVillageNear] = useState<TownTarget>(null);
-  const [villageTalk, setVillageTalk] = useState<{ script: TownNode[]; idx: number } | null>(null);
+  const [villageTalk, setVillageTalk] = useState<VillageTalk | null>(null);
   const [mode, setMode] = useState<DungeonMode>('kids');
   const [muted, setMutedState] = useState(isMuted());
   const [bossHp, setBossHp] = useState(0);
   const [bossMax, setBossMax] = useState(0);
   const [storyAnswer, setStoryAnswer] = useState<'ok' | 'no' | null>(null);
   const [memRewards, setMemRewards] = useState<Upgrade[]>([]);
-  const [endingVariant, setEndingVariant] = useState<'alone' | 'together' | null>(null);
+  const [endingVariant, setEndingVariant] = useState<EndingVariant>(null);
   const [endingIdx, setEndingIdx] = useState(0);
 
   // 디버그 (Shift+D): 개발 모드 또는 ?debug 쿼리에서만 (제출 심사자 오작동 방지)
@@ -143,10 +136,8 @@ export default function App() {
     [],
   );
   const [debugOpen, setDebugOpen] = useState(false);
-  const [debugFloor, setDebugFloor] = useState('');
 
-  // ── 자동 시연 모드 (?demo) — 클릭 한 번이면 게임이 스스로 쇼케이스를 진행 (심사·시연용).
-  //    프로덕션에서도 동작 (DEV 훅과 무관하게 App 내부 함수 + 합성 키 입력으로 조종).
+  // 자동 시연 모드 (?demo) — 클릭 한 번이면 게임이 스스로 쇼케이스를 진행 (심사·시연용)
   const demoMode = useMemo(() => new URLSearchParams(location.search).has('demo'), []);
   const [demoRunning, setDemoRunning] = useState(false);
   const [demoCaption, setDemoCaption] = useState('');
@@ -296,77 +287,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', h);
   }, [debugAllowed]);
 
-  // 오버레이 키보드 선택 — 마우스 없이 화살표/숫자/Enter로 즉시 선택
-  //  · 두 갈래 선택(두 문 보상, 포털, 마을 문 등): ←/↑ = 첫 번째, →/↓ = 두 번째
-  //  · 3장 카드(드래프트): ← / ↑↓ / → 또는 1·2·3
-  //  · 진행 버튼(계속 탐험 등): Enter/Space/→
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
-      if (debugOpen) return;
-      // 자동 반복(키를 누르고 있을 때) 입력은 무시 — 이동하려고 누른 채로 포털·대화 화면이
-      // 떠도 눌러져 있던 키가 자동으로 선택되지 않게. 한 번 떼었다 다시 눌러야 반응한다.
-      if (e.repeat) return;
-      const k = e.key;
-      const isEnter = k === 'Enter' || k === ' ';
-      const isLeft = k === 'ArrowLeft';
-      const isRight = k === 'ArrowRight';
-      const isUp = k === 'ArrowUp';
-      const isDown = k === 'ArrowDown';
-      const num = ['1', '2', '3', '4'].indexOf(k);
-      if (!isEnter && !isLeft && !isRight && !isUp && !isDown && num < 0) return;
-
-      const buttons = (sel: string) =>
-        [...document.querySelectorAll<HTMLButtonElement>(sel)].filter((b) => !b.disabled);
-      const click = (b?: HTMLButtonElement) => {
-        if (b) {
-          e.preventDefault();
-          b.click();
-        }
-      };
-      // 두 갈래/여러 갈래 선택지
-      const choices = buttons('.screen .dialog-choices .choice-btn, .story-quiz-choices .choice-btn');
-      if (choices.length >= 2) {
-        if (num >= 0) return click(choices[num]);
-        if (isLeft || isUp) return click(choices[0]);
-        if (isRight || isDown) return click(choices[1]);
-        return;
-      }
-      // 드래프트 카드 3장
-      const cards = buttons('.draft-screen .card');
-      if (cards.length >= 2) {
-        if (num >= 0) return click(cards[num]);
-        if (isLeft) return click(cards[0]);
-        if (isUp || isDown) return click(cards[1]);
-        if (isRight) return click(cards[cards.length - 1]);
-        return;
-      }
-      // 진행 버튼 하나 (계속 탐험, 가슴에 담는다, 다음 등)
-      const primary = buttons('.screen .big-btn');
-      if (primary.length >= 1 && (isEnter || isRight)) return click(primary[0]);
-      // 마을(비주얼노벨/걸어다니는 마을) 대사 진행
-      if ((phase === 'town' || phase === 'village') && (isEnter || isRight)) {
-        const dlg = document.querySelector<HTMLElement>(
-          '.town-screen .dialog-box, .village-talk .dialog-box',
-        );
-        if (dlg && dlg.querySelector('.dialog-next')) {
-          e.preventDefault();
-          dlg.click();
-          return;
-        }
-        // 대화창이 없으면 근처 상호작용 버튼 (말 걸기/던전 입구) — Enter/Space만.
-        // →는 이동 키라 여기서 반응하면 걷다가 대화가 열려 버림.
-        const act = document.querySelector<HTMLButtonElement>('.village-action');
-        if (phase === 'village' && act && isEnter) {
-          e.preventDefault();
-          act.click();
-        }
-      }
-    };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [phase, debugOpen]);
-
   const debugJump = (n: number) => {
     if (!Number.isFinite(n)) return;
     const fl = Math.max(1, Math.min(100, Math.round(n)));
@@ -472,7 +392,7 @@ export default function App() {
   const closeTalk = () => setVillageTalk(null);
 
   // 대화 진행 — line은 next(<0이면 종료), choice는 action 처리
-  const advanceTalkLine = (node: Extract<TownNode, { kind: 'line' }>) => {
+  const advanceTalkLine = (node: TownLine) => {
     sfx.tap();
     if (node.next < 0 || !villageTalk || node.next >= villageTalk.script.length) {
       closeTalk();
@@ -482,12 +402,7 @@ export default function App() {
     applyVillageGift(nextNode);
     setVillageTalk({ script: villageTalk.script, idx: node.next });
   };
-  const chooseTalkOption = (o: {
-    label: string;
-    next?: number;
-    action?: 'enter' | 'return' | 'shop' | 'close';
-    mode?: DungeonMode;
-  }) => {
+  const chooseTalkOption = (o: TownOption) => {
     sfx.tap();
     if (o.action === 'enter') {
       closeTalk();
@@ -515,6 +430,14 @@ export default function App() {
     setPhase('story');
   };
 
+  // 인트로 진행 — 마지막 장이면 마을로
+  const advanceStory = () => {
+    sfx.tap();
+    setStoryAnswer(null);
+    if (storyIdx >= STORY_NODES.length - 1) goVillage('enter', true);
+    else setStoryIdx((i) => i + 1);
+  };
+
   const goTown = (
     script: TownNode[],
     mode: 'pre' | 'visit' | 'girl' = 'pre',
@@ -527,6 +450,15 @@ export default function App() {
     visitGiftGiven.current.clear();
     setTownScape(scape ?? { sky: '🌙', scape: '🏔️ 🏚️ ⛲ 🏘️ 🌲' });
     setPhase('town');
+  };
+
+  // 별도 DOM 마을 화면('town')의 선택지 처리
+  const chooseTownOption = (o: TownOption) => {
+    sfx.tap();
+    if (o.action === 'enter') enterDungeon(o.mode);
+    else if (o.action === 'return') setPhase('run');
+    else if (o.action === 'shop') setPhase('shop');
+    else setTownIdx(o.next ?? townIdx);
   };
 
   const gainUpgrade = (u: Upgrade) => {
@@ -621,14 +553,19 @@ export default function App() {
     setPhase('quiz');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const startArena = () => {
+    setArenaGems(0);
+    setArenaHp(ARENA_MAX_HP);
+    setArenaMax(ARENA_MAX_HP);
+    setArenaTry((t) => t + 1);
+    setPhase('arena');
+  };
+  const startArenaRef = useRef(startArena);
+  startArenaRef.current = startArena;
   const onChest = useCallback(() => {
     if (modeRef.current === 'monster') {
       // 몬스터 모드 — 보물상자는 몬스터 아레나를 연다
-      setArenaGems(0);
-      setArenaHp(ARENA_MAX_HP);
-      setArenaMax(ARENA_MAX_HP);
-      setArenaTry((t) => t + 1);
-      setPhase('arena');
+      startArenaRef.current();
     } else {
       setDoorRound(1);
       setPhase('doorrun');
@@ -703,11 +640,7 @@ export default function App() {
   };
   const retryArena = () => {
     sfx.tap();
-    setArenaGems(0);
-    setArenaHp(ARENA_MAX_HP);
-    setArenaMax(ARENA_MAX_HP);
-    setArenaTry((t) => t + 1);
-    setPhase('arena');
+    startArena();
   };
   const bailArena = () => {
     sfx.tap();
@@ -803,191 +736,32 @@ export default function App() {
     goVillage('death');
   };
 
-  // ── 자동 시연 드라이버 (?demo) — 실제 게임을 그대로 플레이하며 자막과 함께 보여준다.
-  //    이동은 합성 키보드 이벤트(useMoveInput/useSteer가 window 키 이벤트 기반이라 그대로 먹힘),
-  //    장면 전환은 App 내부 함수(goVillage/enterDungeon/debugJump/debugGrantRef)로 직접 진행.
-  //    DEV 훅을 안 쓰므로 프로덕션 빌드에서도 동작 — 심사자가 링크 클릭 한 번으로 관람.
-  useEffect(() => {
-    if (!demoRunning) return;
-    let stop = false;
-    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
-    const key = (code: string, down: boolean) =>
-      window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true }));
-    const releaseAll = () => ['ArrowLeft', 'ArrowRight', ...MOVE_KEYS].forEach((c) => key(c, false));
-    const OVERLAYS = ['lore', 'memory', 'trace', 'quiz', 'portal', 'draft', 'homedoor', 'memfull', 'arenaover', 'over'];
-    // 떠 있는 오버레이를 잠깐 보여준 뒤 자연스럽게 넘긴다 (스토리도 시연의 일부)
-    const clickOverlay = () => {
-      const card = document.querySelector<HTMLButtonElement>('.draft-screen .card');
-      if (card) return card.click();
-      const choices = [
-        ...document.querySelectorAll<HTMLButtonElement>('.screen .dialog-choices .choice-btn'),
-      ].filter((b) => !b.disabled);
-      // 포털·마을 문은 거절 — 시연 동선은 드라이버가 debugJump로 직접 잡는다
-      if (choices.length >= 2 && (phaseRef.current === 'portal' || phaseRef.current === 'homedoor'))
-        return choices[1].click();
-      if (choices.length > 0) return choices[0].click();
-      document.querySelector<HTMLButtonElement>('.screen .big-btn')?.click();
-    };
-    const settle = async () => {
-      if (OVERLAYS.includes(phaseRef.current)) {
-        await sleep(1500); // 관객이 읽을 시간
-        if (!stop) clickOverlay();
-        await sleep(400);
-      }
-    };
-    // 마을(.village-talk)·소녀 찻자리(.town-screen) 대화를 읽는 속도로 진행.
-    // 선택지가 나오면 "다른 방법은 없나요?" 같은 개그 선택지를 우선 고른다.
-    const clickTalk = () => {
-      const choices = [
-        ...document.querySelectorAll<HTMLButtonElement>(
-          '.village-talk .choice-btn, .town-screen .dialog-choices .choice-btn',
-        ),
-      ].filter((b) => !b.disabled);
-      if (choices.length > 0) {
-        const gag = choices.find((b) => b.textContent?.includes('다른 방법'));
-        return (gag ?? choices[0]).click();
-      }
-      document
-        .querySelector<HTMLElement>('.village-talk .dialog-box, .town-screen .dialog-box')
-        ?.click();
-    };
-    const talkFor = async (ms: number) => {
-      const until = Date.now() + ms;
-      while (Date.now() < until && !stop) {
-        await sleep(1800);
-        if (!stop) clickTalk();
-      }
-    };
-    // 무작위 산책 — 전투·마을 구경용 (자동 조준이 알아서 싸운다)
-    const wander = async (ms: number) => {
-      const until = Date.now() + ms;
-      while (Date.now() < until && !stop) {
-        await settle();
-        const c = MOVE_KEYS[Math.floor(Math.random() * MOVE_KEYS.length)];
-        key(c, true);
-        await sleep(450 + Math.random() * 450);
-        key(c, false);
-      }
-      releaseAll();
-    };
-    // 원하는 phase가 될 때까지 오버레이를 넘기며 대기 (두 문 달리기 중이면 조향도)
-    const settleUntil = async (want: string[], maxMs: number) => {
-      const until = Date.now() + maxMs;
-      while (Date.now() < until && !stop && !want.includes(phaseRef.current)) {
-        if (phaseRef.current === 'doorrun') {
-          const c = Math.random() < 0.5 ? 'ArrowLeft' : 'ArrowRight';
-          key(c, true);
-          await sleep(320);
-          key(c, false);
-          continue;
-        }
-        await settle();
-        await sleep(300);
-      }
-    };
-    const caption = async (text: string) => {
-      setDemoCaption(text);
-      sfx.tap();
-      await sleep(1900);
-    };
-
-    const tour = async () => {
-      await caption('🏘️ 모험은 걸어다니는 마을에서 시작됩니다');
-      goVillage('enter');
-      await wander(2600);
-      if (stop) return;
-
-      await caption('👵 촌장과 대화 — "혹시 다른 방법은 없나요?" …선택지는 가끔 하나뿐!');
-      setVillageTalk({ script: chiefTalk('enter', true, 0), idx: 0 });
-      await talkFor(11000);
-      if (stop) return;
-
-      await caption('⚔️ 매판 새로 생성되는 던전 — 가까운 적은 자동 조준!');
-      enterDungeon('kids');
-      await wander(5000);
-      if (stop) return;
-
-      await caption('🎁 보물은 빌드로 바로 보입니다 — 궤도 구슬, 커지는 투사체!');
-      for (let i = 0; i < 3 && !stop; i++) {
-        debugGrantRef.current();
-        await sleep(1200);
-      }
-      await wander(2500);
-      if (stop) return;
-
-      await caption('🚪 미니게임 ① 두 문 달리기 — 정답이 적힌 문을 몸으로!');
+  // 자동 시연 드라이버 — 시나리오는 src/demo/useDemoDriver.ts, 여기선 조작 프리미티브만 제공
+  useDemoDriver(demoRunning, {
+    caption: setDemoCaption,
+    phase: () => phaseRef.current,
+    village: (ctx) => goVillage(ctx),
+    chiefTalk: () => setVillageTalk({ script: chiefTalk('enter', true, 0), idx: 0 }),
+    dungeon: () => enterDungeon('kids'),
+    treasure: () => debugGrantRef.current(),
+    doorrun: () => {
       setDoorRound(1);
       setPhase('doorrun');
-      {
-        const until = Date.now() + 9000;
-        while (Date.now() < until && !stop && phaseRef.current === 'doorrun') {
-          const c = Math.random() < 0.5 ? 'ArrowLeft' : 'ArrowRight';
-          key(c, true);
-          await sleep(320 + Math.random() * 320);
-          key(c, false);
-        }
-        releaseAll();
-      }
-      await settleUntil(['run'], 10000); // 결과·기억 회상까지 넘기고 던전 복귀
-      if (stop) return;
-
-      await caption('👹 미니게임 ② 몬스터 아레나 — 무리를 뚫고 보석 3개!');
-      setArenaGems(0);
-      setArenaHp(ARENA_MAX_HP);
-      setArenaMax(ARENA_MAX_HP);
-      setArenaTry((t) => t + 1);
-      setPhase('arena');
-      await wander(9000);
-      if (stop) return;
-
-      await caption('🌊 깊이 = 이야기의 진행 — 10층마다 던전의 색이 변하고 안개가 짙어집니다');
-      debugJump(45);
-      await sleep(300);
-      debugGrantRef.current();
-      await wander(4000);
-      debugJump(75);
-      await sleep(300);
-      debugGrantRef.current();
-      await wander(4000);
-      if (stop) return;
-
-      await caption('🫖 56층의 소녀 — 작가가 쓰다 만 「공주님」, 여백의 찻자리');
-      setFloorNo(56);
-      await sleep(300);
+    },
+    arena: startArena,
+    jump: debugJump,
+    setFloor: setFloorNo,
+    girlTea: () => {
       sfx.gift();
       goTown(girlScript(false), 'girl', { sky: '✨', scape: '🕯️ 🫖 📚 🌼 🕯️' });
-      await talkFor(9500);
-      if (stop) return;
-
-      await caption('🌅 깊이 내려가면 마을에도 시간이 흐릅니다 — 습격, 방벽, 그리고 폐허와 새벽');
-      setFloorNo(85);
-      goVillage('visit');
-      await wander(6000);
-      if (stop) return;
-
-      await caption('📖 10층마다 페이지의 수호자가 포털을 봉인합니다 — 탄막을 뚫어라!');
-      debugJump(30);
-      await sleep(300);
-      debugGrantRef.current();
-      await wander(9000);
-      if (stop) return;
-
-      await caption('✨ 56층의 소녀, 100층의 황금 문, 엔딩과 에필로그는 — 직접 확인해 보세요!');
-      await sleep(2600);
-      releaseAll();
+    },
+    finish: () => {
       setPhase('title');
       setDemoCaption('');
       setDemoRunning(false);
       setDemoDone(true);
-    };
-    void tour();
-    return () => {
-      stop = true;
-      releaseAll();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoRunning]);
+    },
+  });
 
   // 마을의 '시절' — 새 도전 허브(enter)는 언제나 처음의 평화로운 마을, 그 외엔 현재 깊이.
   // 깊이 내려갈수록(=마지막 장이 쓰일수록) 마을에도 시간이 흐른다 (계절·습격 피해·새벽).
@@ -1002,13 +776,18 @@ export default function App() {
   const fogNear = phase === 'village' || inMinigame ? 20 : 20 - 9 * fogDepth;
   const fogFar = phase === 'village' || inMinigame ? 44 : 44 - 16 * fogDepth;
 
-  const hpRatio = Math.max(0, Math.min(1, hp / stats.maxHp));
   const inGame = !(
     phase === 'title' ||
     phase === 'story' ||
     phase === 'shop' ||
     (phase === 'town' && townMode === 'pre')
   );
+  const inDungeonUi =
+    inGame &&
+    phase !== 'town' &&
+    phase !== 'village' &&
+    phase !== 'arena' &&
+    phase !== 'arenaover';
 
   return (
     <div className="app">
@@ -1065,132 +844,50 @@ export default function App() {
         </Canvas>
       )}
 
-      {inGame &&
-        phase !== 'town' &&
-        phase !== 'village' &&
-        phase !== 'arena' &&
-        phase !== 'arenaover' && (
-        <div className="hud">
-          <div className="hud-chip">
-            {mode === 'kids' ? '🎒' : mode === 'adult' ? '🧠' : '👹'} {floorNo}층
-          </div>
-          <div className="hp-wrap">
-            <div className="hp-bar" style={{ width: `${hpRatio * 100}%` }} />
-            <span className="hp-text">
-              {Math.ceil(hp)} / {Math.round(stats.maxHp)}
-            </span>
-          </div>
-          <div className="hud-chip">💀 {kills}</div>
-          <div className="hud-chip">🪙 {coins}</div>
-          <button className="hud-chip mute-btn" onClick={toggleMute}>
-            {muted ? '🔇' : '🔊'}
-          </button>
-        </div>
+      {/* ── HUD (z-index 50 — 오버레이 위) ── */}
+      {inDungeonUi && (
+        <GameHud
+          mode={mode}
+          floorNo={floorNo}
+          hp={hp}
+          maxHp={stats.maxHp}
+          kills={kills}
+          coins={coins}
+          muted={muted}
+          onToggleMute={toggleMute}
+        />
       )}
-
-      {/* 몬스터 아레나 HUD — 아레나 전용 체력 + 보석 진행도 */}
       {phase === 'arena' && (
-        <div className="hud">
-          <div className="hud-chip">👹 아레나</div>
-          <div className="hp-wrap">
-            <div
-              className="hp-bar"
-              style={{ width: `${Math.max(0, (arenaHp / arenaMax) * 100)}%` }}
-            />
-            <span className="hp-text">
-              {Math.ceil(arenaHp)} / {arenaMax}
-            </span>
-          </div>
-          <div className="hud-chip">💎 {arenaGems} / 3</div>
-          <button className="hud-chip mute-btn" onClick={toggleMute}>
-            {muted ? '🔇' : '🔊'}
-          </button>
-        </div>
+        <ArenaHud
+          hp={arenaHp}
+          max={arenaMax}
+          gems={arenaGems}
+          muted={muted}
+          onToggleMute={toggleMute}
+        />
       )}
+      {inDungeonUi && Object.keys(build).length > 0 && <BuildRow build={build} />}
+      {/* 보스 체력바 — 마을(town/village)에서는 숨김 (숨은 DungeonScene이 보고해도 표시 안 함) */}
+      {inDungeonUi && bossMax > 0 && bossHp > 0 && <BossBar hp={bossHp} max={bossMax} />}
 
-      {/* 걸어다니는 마을 — 상단 안내 + 상호작용 버튼 + 대화창 */}
+      {/* ── 걸어다니는 마을 오버레이 ── */}
       {phase === 'village' && (
         <>
-          <div className="hud">
-            <div className="hud-chip">{VILLAGE_STAGE_NAMES[vStage]}</div>
-            <div className="hud-spacer" />
-            <button className="hud-chip mute-btn" onClick={toggleMute}>
-              {muted ? '🔇' : '🔊'}
-            </button>
-          </div>
-          {!villageTalk && (
-            <div className="village-hint">
-              드래그 / WASD로 걷기 · 사람에게 다가가 대화 · 던전 입구로 가면 내려가요
-            </div>
-          )}
-          {villageNear && !villageTalk && (
-            <button className="village-action" onClick={() => talkTo(villageNear)}>
-              {villageNear === 'entrance'
-                ? '🌀 던전 입구 — 내려가기'
-                : villageNear === 'chief'
-                  ? '💬 촌장과 대화'
-                  : villageNear === 'nina'
-                    ? '💬 니나와 대화'
-                    : '💬 무크와 대화'}
-            </button>
-          )}
-          {villageTalk &&
-            (() => {
-              const node = villageTalk.script[villageTalk.idx];
-              if (!node) return null;
-              return (
-                <div className="screen village-talk">
-                  {node.kind === 'line' ? (
-                    <div className="dialog-box" onClick={() => advanceTalkLine(node)}>
-                      <div className="dialog-speaker">
-                        <span className="dialog-icon">{node.icon}</span> {node.speaker}
-                      </div>
-                      <p className="dialog-text">{node.text}</p>
-                      {node.gift && giftName && <p className="dialog-gift">🎁 {giftName}!</p>}
-                      <span className="dialog-next">▼ 터치해서 계속</span>
-                    </div>
-                  ) : (
-                    <div className="dialog-box">
-                      <p className="dialog-text">{node.prompt}</p>
-                      <div className="dialog-choices">
-                        {node.options.map((o) => (
-                          <button
-                            key={o.label}
-                            className="choice-btn"
-                            onClick={() => chooseTalkOption(o)}
-                          >
-                            {o.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+          <VillageHud
+            stageName={VILLAGE_STAGE_NAMES[vStage]}
+            muted={muted}
+            onToggleMute={toggleMute}
+          />
+          <VillageOverlay
+            near={villageNear}
+            talk={villageTalk}
+            giftName={giftName}
+            keysLocked={debugOpen}
+            onTalk={talkTo}
+            onAdvanceLine={advanceTalkLine}
+            onChoose={chooseTalkOption}
+          />
         </>
-      )}
-
-      {/* 현재 빌드 (획득한 아이템) */}
-      {inGame && phase !== 'town' && phase !== 'village' && Object.keys(build).length > 0 && (
-        <div className="build-row">
-          {UPGRADES.filter((u) => build[u.id]).map((u) => (
-            <span key={u.id} className="build-chip">
-              {u.icon}
-              {build[u.id] > 1 && <em>×{build[u.id]}</em>}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* 보스 체력바 — 마을(town/village)에서는 숨김 (숨은 DungeonScene이 보고해도 표시 안 함) */}
-      {inGame && phase !== 'town' && phase !== 'village' && bossMax > 0 && bossHp > 0 && (
-        <div className="boss-bar-wrap">
-          <span className="boss-label">📖 페이지의 수호자</span>
-          <div className="boss-bar-outer">
-            <div className="boss-bar" style={{ width: `${(bossHp / bossMax) * 100}%` }} />
-          </div>
-        </div>
       )}
 
       {/* 전체 화면 플래시·펄스는 디버그 모드에서 끔 — 반복 테스트 시 눈 피로 (소리 신호는 유지) */}
@@ -1198,662 +895,211 @@ export default function App() {
       {!debugAllowed && goldFlash > 0 && <div key={`g${goldFlash}`} className="hit-flash gold" />}
       {!debugAllowed && lowHp && <div className="low-hp" />}
 
-      {/* 디버그 층 이동 (Shift+D — DEV 또는 ?debug) */}
-      {debugAllowed && debugOpen && runId > 0 && (
-        <div className="screen debug-screen">
-          <h2>🛠️ 디버그 — 층 이동</h2>
-          <div className="debug-grid">
-            {[1, 5, 10, 20, 30, 50, 56, 70, 90, 100].map((n) => (
-              <button key={n} className="choice-btn debug-jump" onClick={() => debugJump(n)}>
-                {n}층
-              </button>
-            ))}
-          </div>
-          <div className="debug-row">
-            <input
-              className="debug-input"
-              type="number"
-              min={1}
-              max={100}
-              placeholder="층 번호"
-              value={debugFloor}
-              onChange={(e) => setDebugFloor(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && debugFloor) debugJump(Number(debugFloor));
-              }}
-            />
-            <button
-              className="choice-btn"
-              onClick={() => debugFloor && debugJump(Number(debugFloor))}
-            >
-              이동
-            </button>
-          </div>
-          <p className="quiz-sub">
-            Shift+D 열기/닫기 · Esc 닫기 · 이동하면 체력 회복 · Shift+P 보물(아이템 3개+회복) ·
-            Shift+M 코인 +100
-          </p>
-          <button className="skip-btn" onClick={() => setDebugOpen(false)}>
-            닫기
-          </button>
-        </div>
-      )}
-
-      {/* 자동 시연 (?demo) — 자막·종료 버튼·끝 화면 */}
-      {demoRunning && demoCaption && <div className="demo-caption">{demoCaption}</div>}
-      {demoRunning && (
-        <button className="demo-exit" onClick={() => (location.href = location.pathname)}>
-          ✕ 시연 종료
-        </button>
-      )}
-      {demoMode && demoDone && !demoRunning && (
-        <div className="screen demo-end">
-          <h2>🎬 시연 끝!</h2>
-          <p className="quiz-sub">
-            방금 본 것은 절반도 안 됩니다 — 56층의 소녀 '여백', 층층이 숨은 흔적과 벽의 글귀,
-            <br />
-            100층의 황금 문과 두 가지 엔딩, 그리고 10년 후의 에필로그….
-          </p>
-          <div className="dialog-choices">
-            <button
-              className="choice-btn"
-              onClick={() => {
-                sfx.tap();
-                setDemoDone(false);
-                setDemoRunning(true);
-              }}
-            >
-              🔁 다시 보기
-            </button>
-            <button className="choice-btn" onClick={() => (location.href = location.pathname)}>
-              🎮 직접 플레이하러 가기
-            </button>
-          </div>
-        </div>
-      )}
-
-      {phase === 'title' && (
-        <div className="screen title-screen">
-          <button className="hud-chip mute-btn title-mute" onClick={toggleMute}>
-            {muted ? '🔇' : '🔊'}
-          </button>
-          <h1>백층 던전</h1>
-          <p className="tagline">책 속으로 떨어진 대학생의 귀환 대작전 — 100층까지 내려가라!</p>
-          <div className="howto">
-            <p>🕹️ 이동: 화면 드래그 (PC는 WASD/방향키)</p>
-            <p>⚔️ 공격: 가까운 적을 자동으로 조준</p>
-            <p>🗝️ 보물상자 = 두 문 달리기! 깊이 달릴수록 좋은 보물</p>
-            <p>🌀 포털로 다음 층 — 내려갈지는 당신의 선택</p>
-          </div>
-          {best > 0 && <p className="best">최고 기록: {best}층 · 되찾은 기억 {Math.min(memCount, MEMORIES.length)}개</p>}
-          {demoMode && (
-            <button
-              className="big-btn demo-start"
-              onClick={() => {
-                sfx.enter();
-                setDemoDone(false);
-                setDemoRunning(true);
-              }}
-            >
-              🎬 자동 시연 보기 (약 100초)
-            </button>
-          )}
-          <button className="big-btn" onClick={startAdventure}>
-            모험 시작
-          </button>
-          {storySeen && (
-            <button className="skip-btn" onClick={replayStory}>
-              📖 스토리 다시 보기
-            </button>
-          )}
-        </div>
-      )}
-
-      {phase === 'story' &&
-        (() => {
-          const node = STORY_NODES[storyIdx];
-          const isLast = storyIdx >= STORY_NODES.length - 1;
-          const advance = () => {
-            sfx.tap();
-            setStoryAnswer(null);
-            if (isLast) goVillage('enter', true);
-            else setStoryIdx((i) => i + 1);
-          };
-          const quizPending = node.kind === 'quiz' && storyAnswer === null;
-          return (
-            <div className="screen story-screen" onClick={() => !quizPending && advance()}>
-              <div className="story-icon">{node.icon}</div>
-              {node.kind === 'slide' && <p className="story-text">{node.text}</p>}
-              {node.kind === 'quiz' && storyAnswer === null && (
-                <>
-                  <p className="story-text">{node.intro}</p>
-                  <h2 className="story-quiz-q">{node.q}</h2>
-                  <div className="dialog-choices story-quiz-choices">
-                    {node.answers.map((a, i) => (
-                      <button
-                        key={a}
-                        className="choice-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (i === node.correct) {
-                            sfx.pass();
-                            setStoryAnswer('ok');
-                          } else {
-                            sfx.crash();
-                            setStoryAnswer('no');
-                          }
-                        }}
-                      >
-                        🚪 {a}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-              {node.kind === 'quiz' && storyAnswer !== null && (
-                <p className="story-text">{storyAnswer === 'ok' ? node.okText : node.noText}</p>
-              )}
-              <div className="story-btns">
-                {!quizPending && (
-                  <button
-                    className="big-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      advance();
-                    }}
-                  >
-                    {isLast ? '마을로 가 본다' : '다음 ▶'}
-                  </button>
-                )}
-                <button
-                  className="skip-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    sfx.tap();
-                    setStoryAnswer(null);
-                    goVillage('enter', true);
-                  }}
-                >
-                  건너뛰기 ⏭
-                </button>
-              </div>
-              <p className="story-page">
-                {storyIdx + 1} / {STORY_NODES.length}
-              </p>
-            </div>
-          );
-        })()}
-
-      {phase === 'town' && townNode && (
-        <div className="screen town-screen">
-          <div className="town-sky">{townScape.sky}</div>
-          <div className="town-scape">{townScape.scape}</div>
-          {townMode === 'visit' && <div className="town-floor-chip">🔔 {floorNo}층의 문 → 마을</div>}
-          {townMode === 'girl' && <div className="town-floor-chip">🍵 {floorNo}층 — 페이지 사이의 찻자리</div>}
-          {townNode.kind === 'line' ? (
-            <div
-              className="dialog-box"
-              onClick={() => {
-                sfx.tap();
-                setTownIdx(townNode.next);
-              }}
-            >
-              <div className="dialog-speaker">
-                <span className="dialog-icon">{townNode.icon}</span> {townNode.speaker}
-              </div>
-              <p className="dialog-text">{townNode.text}</p>
-              {townNode.gift && giftName && <p className="dialog-gift">🎁 {giftName}!</p>}
-              <span className="dialog-next">▼ 터치해서 계속</span>
-            </div>
-          ) : (
-            <div className="dialog-box">
-              <p className="dialog-text">{townNode.prompt}</p>
-              <div className="dialog-choices">
-                {townNode.options.map((o) => (
-                  <button
-                    key={o.label}
-                    className="choice-btn"
-                    onClick={() => {
-                      sfx.tap();
-                      if (o.action === 'enter') enterDungeon(o.mode);
-                      else if (o.action === 'return') setPhase('run');
-                      else if (o.action === 'shop') setPhase('shop');
-                      else setTownIdx(o.next ?? townIdx);
-                    }}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
+      {/* ── 미니게임 조작 힌트 ── */}
       {phase === 'doorrun' && (
         <div className="doorrun-hint">
           🚪 {doorRound}번째 문 / {MAX_DOOR_ROUND} — 정답 문으로 달려요! (화면 좌/우 꾹 또는 ←/→)
         </div>
       )}
-
       {phase === 'arena' && (
         <div className="doorrun-hint">
           💎 보석 3개를 모아라! 무리를 뚫고 몸으로 줍기 (드래그 / WASD) — 쓰러져도 다시 도전 가능
         </div>
       )}
 
+      {/* ── phase별 오버레이 화면 ── */}
+      {phase === 'title' && (
+        <TitleScreen
+          best={best}
+          memCount={memCount}
+          storySeen={storySeen}
+          demoMode={demoMode}
+          muted={muted}
+          onToggleMute={toggleMute}
+          onStart={startAdventure}
+          onReplay={replayStory}
+          onDemo={() => {
+            sfx.enter();
+            setDemoDone(false);
+            setDemoRunning(true);
+          }}
+        />
+      )}
+      {phase === 'story' && (
+        <StoryScreen
+          idx={storyIdx}
+          answer={storyAnswer}
+          onAnswer={setStoryAnswer}
+          onAdvance={advanceStory}
+          onSkip={() => {
+            sfx.tap();
+            setStoryAnswer(null);
+            goVillage('enter', true);
+          }}
+        />
+      )}
+      {phase === 'town' && townNode && (
+        <TownDialogScreen
+          node={townNode}
+          floorNo={floorNo}
+          townMode={townMode}
+          scape={townScape}
+          giftName={giftName}
+          keysLocked={debugOpen}
+          onAdvance={(next) => {
+            sfx.tap();
+            setTownIdx(next);
+          }}
+          onChoose={chooseTownOption}
+        />
+      )}
       {phase === 'portal' && (
-        <div className="screen quiz-screen">
-          <h2>🌀 아래로 내려가는 포털이 열려 있다</h2>
-          <p className="quiz-sub">다음 층은 더 위험하다. {floorNo + 1}층으로 내려가시겠습니까?</p>
-          <div className="dialog-choices">
-            <button
-              className="choice-btn"
-              onClick={() => {
-                sfx.tap();
-                setPhase('draft');
-              }}
-            >
-              ⬇️ 내려간다
-            </button>
-            <button className="choice-btn" onClick={stayOnFloor}>
-              🕐 아직 이 층을 더 둘러볼래
-            </button>
-          </div>
-        </div>
+        <PortalScreen
+          floorNo={floorNo}
+          onDescend={() => {
+            sfx.tap();
+            setPhase('draft');
+          }}
+          onStay={stayOnFloor}
+        />
       )}
-
-      {phase === 'homedoor' && (
-        <div className="screen quiz-screen">
-          <h2>🔔 어디선가 은은한 종소리…</h2>
-          <p className="quiz-sub">
-            따뜻한 빛이 새어 나오는 나무 문이다. 마을로 이어지는 것 같다.
-            <br />
-            (5층마다 나타난다는 그 문인가? 왜 있는지는 아무도 모른다.)
-          </p>
-          <div className="dialog-choices">
-            <button className="choice-btn" onClick={openHomeDoor}>
-              🚪 문을 연다 — 마을에 들른다
-            </button>
-            <button className="choice-btn" onClick={skipHomeDoor}>
-              🕯️ 지금은 던전에 집중한다
-            </button>
-          </div>
-        </div>
-      )}
-
+      {phase === 'homedoor' && <HomeDoorScreen onOpen={openHomeDoor} onSkip={skipHomeDoor} />}
       {phase === 'arenaover' && (
-        <div className="screen quiz-screen">
-          <h2>💥 아레나에서 쓰러졌다</h2>
-          <p className="quiz-sub">
-            하지만 본체는 무사하다 — 이 상자는 몇 번이고 다시 도전할 수 있다.
-            {arenaDeathGems > 0 && (
-              <>
-                <br />
-                지금까지 💎 {arenaDeathGems}개를 모았다.
-              </>
-            )}
-          </p>
-          <div className="dialog-choices">
-            <button className="choice-btn" onClick={retryArena}>
-              🔁 다시 도전 (보석 초기화)
-            </button>
-            <button className="choice-btn" onClick={bailArena}>
-              {arenaDeathGems > 0
-                ? `🎁 여기까지 — 보석 ${arenaDeathGems}개 받기`
-                : '🏳️ 포기하고 나간다'}
-            </button>
-          </div>
-        </div>
+        <ArenaOverScreen gems={arenaDeathGems} onRetry={retryArena} onBail={bailArena} />
       )}
-
       {phase === 'quiz' && (
-        <div className="screen quiz-screen">
-          {quizView === 'choice' && (
-            <>
-              <h2>🚪 {doorRound}번째 문 통과!</h2>
-              <p className="quiz-sub">
-                더 깊이 달릴수록 보물이 좋아진다… 하지만 틀리면 전부 빈손!
-              </p>
-              <div className="dialog-choices">
-                <button className="choice-btn" onClick={takeRewardNow}>
-                  🎁 여기서 보상 받기 — 아이템 {doorRound}개
-                </button>
-                <button className="choice-btn" onClick={runDeeper}>
-                  {doorRound + 1 >= MAX_DOOR_ROUND
-                    ? '🔥 마지막 문에 도전! (전설의 보물)'
-                    : '🔥 더 달린다!'}
-                </button>
-              </div>
-            </>
-          )}
-          {quizView === 'ok' && rewards.length > 0 && (
-            <>
-              <h2>
-                {rewards.length >= MAX_DOOR_ROUND
-                  ? mode === 'monster'
-                    ? '🏆 세 보석의 축복!'
-                    : '🏆 전설의 보물이다!'
-                  : '🎉 보물을 얻었다!'}
-              </h2>
-              {rewards.length >= MAX_DOOR_ROUND && (
-                <p className="quiz-sub">
-                  {mode === 'monster'
-                    ? '세 개의 보석을 모두 손에 넣었다! 체력도 가득 찼다.'
-                    : '세 개의 문을 모두 통과! 체력도 가득 찼다.'}
-                </p>
-              )}
-              <div className="cards">
-                {rewards.map((u, i) => (
-                  <div key={`${u.id}${i}`} className="card reward-pop">
-                    <span className="card-icon">{u.icon}</span>
-                    <span className="card-name">{u.name}</span>
-                    <span className="card-desc">{u.desc}</span>
-                  </div>
-                ))}
-              </div>
-              <button className="big-btn" onClick={continueFromQuiz}>
-                계속 탐험
-              </button>
-            </>
-          )}
-          {quizView === 'no' && (
-            <>
-              {mode === 'monster' ? (
-                <>
-                  <h2>💨 보석을 하나도 줍지 못했다…</h2>
-                  <p className="quiz-sub">무리에 밀려 빈손으로 물러났다. 상자가 먼지가 되어 사라졌다…</p>
-                </>
-              ) : (
-                <>
-                  <h2>💨 아쉽다! 정답은 {quiz.answers[quiz.correct]}</h2>
-                  <p className="quiz-sub">
-                    {doorRound > 1
-                      ? `${doorRound - 1}개의 문을 통과했지만… 보물은 전부 먼지가 되었다.`
-                      : '상자가 먼지가 되어 사라졌다…'}
-                  </p>
-                </>
-              )}
-              <button className="big-btn" onClick={continueFromQuiz}>
-                계속 탐험
-              </button>
-            </>
-          )}
-        </div>
+        <QuizResultScreen
+          view={quizView}
+          mode={mode}
+          doorRound={doorRound}
+          rewards={rewards}
+          answerText={quiz.answers[quiz.correct]}
+          onTakeReward={takeRewardNow}
+          onRunDeeper={runDeeper}
+          onContinue={continueFromQuiz}
+        />
       )}
-
       {phase === 'memory' && (
-        <div className="screen memory-screen">
-          <p className="memory-label">보물의 빛이 스며들자, 잊고 있던 기억이 하나 돌아왔다</p>
-          <div className="memory-icon">{memory.icon}</div>
-          <h2 className="memory-title">{memory.title}</h2>
-          <p className="memory-text">{memory.text}</p>
-          <p className="memory-count">되찾은 기억 {Math.min(memCount + 1, MEMORIES.length)} / {MEMORIES.length}</p>
-          <button className="big-btn" onClick={closeMemory}>
-            가슴에 담는다
-          </button>
-        </div>
+        <MemoryScreen
+          memory={memory}
+          count={Math.min(memCount + 1, MEMORIES.length)}
+          max={MEMORIES.length}
+          onClose={closeMemory}
+        />
       )}
-
       {phase === 'memfull' && (
-        <div className="screen memory-screen">
-          <div className="memory-icon">💫</div>
-          <h2 className="memory-title">모든 기억을 되찾았다!</h2>
-          <p className="memory-text">
-            열두 개의 기억이 가슴 속에서 빛난다.{'\n'}이제 이 던전이 앗아갈 수 있는 것은, 아무것도
-            없다.
-          </p>
-          <div className="cards">
-            {memRewards.map((u, i) => (
-              <div key={`${u.id}${i}`} className="card reward-pop">
-                <span className="card-icon">{u.icon}</span>
-                <span className="card-name">{u.name}</span>
-                <span className="card-desc">{u.desc}</span>
-              </div>
-            ))}
-          </div>
-          <p className="memory-count">체력도 가득 찼다</p>
-          <button
-            className="big-btn"
-            onClick={() => {
-              sfx.tap();
-              setPhase('run');
-            }}
-          >
-            힘이 차오른다!
-          </button>
-        </div>
+        <MemFullScreen
+          rewards={memRewards}
+          onContinue={() => {
+            sfx.tap();
+            setPhase('run');
+          }}
+        />
       )}
-
-      {phase === 'ending' &&
-        (() => {
-          if (endingVariant === null) {
-            return (
-              <div className="screen ending-screen">
-                <div className="story-icon">🚪</div>
-                <h2>황금빛 문이 열려 있다</h2>
-                <p className="story-text">
-                  100층 — 페이지의 수호자는 쓰러졌고,{'\n'}이 문을 넘으면, 집이다.
-                </p>
-                <div className="dialog-choices story-quiz-choices">
-                  <button
-                    className="choice-btn"
-                    onClick={() => {
-                      sfx.tap();
-                      setEndingVariant('alone');
-                    }}
-                  >
-                    🚶 혼자 문을 연다
-                  </button>
-                  <button
-                    className="choice-btn"
-                    onClick={() => {
-                      sfx.tap();
-                      setEndingVariant('together');
-                    }}
-                  >
-                    👵 촌장을 데리러 간다
-                  </button>
-                </div>
-              </div>
-            );
-          }
-          const baseSlides = endingVariant === 'alone' ? ENDING_ALONE : ENDING_TOGETHER;
-          // 여백을 만났으면: 함께 엔딩엔 '공주의 이름' 장면, 모든 엔딩에 손 흔드는 장면.
-          // 그 뒤로 10년 후 에필로그(2탄 예고)는 공통.
-          const slides = [
-            ...baseSlides,
-            ...(girlMet && endingVariant === 'together' ? [ENDING_NAME_PRINCESS] : []),
-            ...(girlMet ? [ENDING_GIRL_EXTRA] : []),
-            ...ENDING_EPILOGUE,
-          ];
-          if (endingIdx < slides.length) {
-            const s = slides[endingIdx];
-            return (
-              <div
-                className="screen ending-screen"
-                onClick={() => {
-                  sfx.tap();
-                  setEndingIdx((i) => i + 1);
-                }}
-              >
-                <div className="story-icon">{s.icon}</div>
-                <p className="story-text">{s.text}</p>
-                <button
-                  className="big-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    sfx.tap();
-                    setEndingIdx((i) => i + 1);
-                  }}
-                >
-                  다음 ▶
-                </button>
-              </div>
-            );
-          }
-          return (
-            <div className="screen ending-screen">
-              <h1 className="ending-title">— 끝 —</h1>
-              <p className="story-text">
-                🏰 100층 완주 · 💀 처치 {kills} · 💭 되찾은 기억{' '}
-                {Math.min(memCount, MEMORIES.length)} / {MEMORIES.length}
-              </p>
-              <p className="quiz-sub">당신이 이 책의 마지막 장을 썼다.</p>
-              <button
-                className="big-btn"
-                onClick={() => {
-                  sfx.tap();
-                  setPhase('title');
-                }}
-              >
-                처음부터
-              </button>
-              <button
-                className="skip-btn"
-                onClick={() => {
-                  sfx.tap();
-                  void shareCard({
-                    floor: 100,
-                    kills,
-                    mem: memCount,
-                    memMax: MEMORIES.length,
-                    best,
-                    mode,
-                    cleared: true,
-                  });
-                }}
-              >
-                📸 완주 카드 저장
-              </button>
-            </div>
-          );
-        })()}
-
-      {phase === 'trace' && TRACES[floorNo] && (
-        <div className="screen lore-screen">
-          <div className="story-icon">{TRACES[floorNo].icon}</div>
-          <p className="lore-label">{floorNo}층 — 누군가의 흔적</p>
-          <p className="lore-text">{TRACES[floorNo].text}</p>
-          <button
-            className="big-btn"
-            onClick={() => {
-              sfx.tap();
-              setPhase('run');
-            }}
-          >
-            …계속 가 보자
-          </button>
-        </div>
+      {phase === 'ending' && (
+        <EndingScreen
+          variant={endingVariant}
+          idx={endingIdx}
+          girlMet={girlMet}
+          kills={kills}
+          memCount={memCount}
+          onPickVariant={(v) => {
+            sfx.tap();
+            setEndingVariant(v);
+          }}
+          onNext={() => {
+            sfx.tap();
+            setEndingIdx((i) => i + 1);
+          }}
+          onTitle={() => {
+            sfx.tap();
+            setPhase('title');
+          }}
+          onShare={() => {
+            sfx.tap();
+            void shareCard({
+              floor: 100,
+              kills,
+              mem: memCount,
+              memMax: MEMORIES.length,
+              best,
+              mode,
+              cleared: true,
+            });
+          }}
+        />
       )}
-
+      {phase === 'trace' && (
+        <TraceScreen
+          floorNo={floorNo}
+          onContinue={() => {
+            sfx.tap();
+            setPhase('run');
+          }}
+        />
+      )}
       {phase === 'lore' && (
-        <div className="screen lore-screen">
-          <p className="lore-label">🕯️ {floorNo}층 — 벽에 긁어 쓴 글씨가 보인다</p>
-          <p className="lore-text">{getLore(floorNo)}</p>
-          <button
-            className="big-btn"
-            onClick={() => {
-              sfx.tap();
-              setPhase('run');
-            }}
-          >
-            계속 내려간다
-          </button>
-        </div>
+        <LoreScreen
+          floorNo={floorNo}
+          onContinue={() => {
+            sfx.tap();
+            setPhase('run');
+          }}
+        />
       )}
-
-      {phase === 'draft' && (
-        <div className="screen draft-screen">
-          <h2>{floorNo}층 돌파! 보상을 골라요</h2>
-          <div className="cards">
-            {draft.map((u) => (
-              <button key={u.id} className="card" onClick={() => pickUpgrade(u)}>
-                <span className="card-icon">{u.icon}</span>
-                <span className="card-name">{u.name}</span>
-                <span className="card-desc">{u.desc}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
+      {phase === 'draft' && <DraftScreen floorNo={floorNo} draft={draft} onPick={pickUpgrade} />}
       {phase === 'over' && (
-        <div className="screen over-screen">
-          <h2>💀 {floorNo}층에서 쓰러졌다…</h2>
-          <p>
-            처치 {kills} · 최고 기록 {Math.max(best, floorNo)}층
-          </p>
-          <p className="over-lore">{overLore}</p>
-          <p className="quiz-sub">🪙 {coins} — 코인은 사라지지 않았다. 이야기도, 이어진다.</p>
-          <div className="dialog-choices">
-            {checkpointFloor >= 5 ? (
-              <button className="choice-btn" onClick={resumeFromCheckpoint}>
-                🏘️ {checkpointFloor}층 마을에서 다시 (장비 유지)
-              </button>
-            ) : (
-              <button className="choice-btn" onClick={() => enterDungeon()}>
-                ⚔️ 바로 다시 도전
-              </button>
-            )}
-            <button className="choice-btn" onClick={() => goVillage('enter')}>
-              🏘️ 처음부터 (마을·대장간 🛠️)
-            </button>
-          </div>
-          <button
-            className="skip-btn"
-            onClick={() => {
-              sfx.tap();
-              void shareCard({ floor: floorNo, kills, mem: memCount, memMax: MEMORIES.length, best, mode });
-            }}
-          >
-            📸 기록 카드 저장
-          </button>
-        </div>
+        <OverScreen
+          floorNo={floorNo}
+          kills={kills}
+          best={best}
+          coins={coins}
+          lore={overLore}
+          checkpointFloor={checkpointFloor}
+          onResume={resumeFromCheckpoint}
+          onRetry={() => enterDungeon()}
+          onVillage={() => goVillage('enter')}
+          onShare={() => {
+            sfx.tap();
+            void shareCard({
+              floor: floorNo,
+              kills,
+              mem: memCount,
+              memMax: MEMORIES.length,
+              best,
+              mode,
+            });
+          }}
+        />
+      )}
+      {phase === 'shop' && (
+        <ShopScreen
+          coins={coins}
+          meta={meta}
+          onBuy={buyUpgrade}
+          onBack={() => {
+            sfx.tap();
+            setPhase('village');
+          }}
+        />
       )}
 
-      {phase === 'shop' && (
-        <div className="screen town-screen">
-          <div className="town-sky">🌙</div>
-          <div className="town-scape">🔥 ⚒️ 🛠️ 🧱</div>
-          <div className="dialog-box">
-            <div className="dialog-speaker">
-              <span className="dialog-icon">🧔</span> 대장장이 무크
-            </div>
-            <p className="dialog-text">
-              "죽어도 몸에 남는 단련이지. 코인만 있으면 몇 번이고 벼려 주마."
-            </p>
-            <p className="shop-coins">보유 🪙 {coins}</p>
-            <div className="dialog-choices">
-              {SHOP_ITEMS.map((it) => {
-                const lv = meta[it.key];
-                const cost = shopCost(lv);
-                return (
-                  <button
-                    key={it.key}
-                    className="choice-btn shop-item"
-                    disabled={coins < cost}
-                    onClick={() => buyUpgrade(it.key)}
-                  >
-                    <span>
-                      {it.icon} {it.name} Lv.{lv}
-                    </span>
-                    <span className="shop-cost">{`${it.desc} · 🪙 ${cost}`}</span>
-                  </button>
-                );
-              })}
-              <button
-                className="choice-btn"
-                onClick={() => {
-                  sfx.tap();
-                  setPhase('village');
-                }}
-              >
-                ↩️ 마을로 돌아간다
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* ── 디버그 층 이동 (Shift+D) — 메뉴 스택 맨 위라 아래 메뉴 키 입력 차단 ── */}
+      {debugAllowed && debugOpen && runId > 0 && (
+        <DebugPanel onJump={debugJump} onClose={() => setDebugOpen(false)} />
+      )}
+
+      {/* ── 자동 시연 (?demo) — JSX 맨 끝 = 메뉴 스택 맨 위 (타이틀 메뉴보다 우선) ── */}
+      {demoRunning && demoCaption && <DemoCaption text={demoCaption} />}
+      {demoRunning && <DemoExitButton />}
+      {demoMode && demoDone && !demoRunning && (
+        <DemoEndScreen
+          onReplay={() => {
+            sfx.tap();
+            setDemoDone(false);
+            setDemoRunning(true);
+          }}
+        />
       )}
     </div>
   );

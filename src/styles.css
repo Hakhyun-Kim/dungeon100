@@ -355,6 +355,40 @@ body {
   background: linear-gradient(180deg, #5b48a5, #443480);
 }
 
+/* ── 표준 메뉴 선택 — 항상 한 항목이 선택돼 있고, 방향키 이동·Enter/Space 확정 ── */
+.choice-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.choice-btn.focused {
+  border-color: #ffd166;
+  background: linear-gradient(180deg, #5b48a5, #443480);
+  box-shadow: 0 0 0 2px rgba(255, 209, 102, 0.3), 0 0 18px rgba(255, 209, 102, 0.25);
+}
+
+.card.focused {
+  border-color: #ffd166;
+  transform: translateY(-5px);
+  box-shadow: 0 0 22px rgba(255, 209, 102, 0.4);
+}
+
+.big-btn.focused {
+  box-shadow: 0 6px 0 #4a2f8f, 0 0 0 3px rgba(255, 209, 102, 0.55), 0 0 22px rgba(255, 209, 102, 0.3);
+}
+
+.big-btn.focused:active {
+  box-shadow: 0 3px 0 #4a2f8f, 0 0 0 3px rgba(255, 209, 102, 0.55);
+}
+
+/* 타이틀 등 큰 버튼 세로 메뉴 컨테이너 */
+.menu-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
 .quiz-screen .dialog-choices {
   max-width: 420px;
 }

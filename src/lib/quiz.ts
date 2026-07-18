@@ -5,6 +5,9 @@ import { mulberry32 } from './rng';
 // 'monster'는 수학 대신 몬스터 아레나로 보물을 얻는 모드 — makeQuiz는 호출되지 않는다.
 export type DungeonMode = 'kids' | 'adult' | 'monster';
 
+// 두 문 달리기 최대 연속 라운드 — 완주(3문) = 전설 보물
+export const MAX_DOOR_ROUND = 3;
+
 export interface Quiz {
   q: string;
   answers: [string, string]; // 왼쪽 문 / 오른쪽 문
