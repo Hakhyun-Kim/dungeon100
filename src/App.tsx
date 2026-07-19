@@ -14,7 +14,7 @@ import { makeQuiz, MAX_DOOR_ROUND, type DungeonMode } from './lib/quiz';
 import { metaSpeed, shopCost, type Meta } from './lib/meta';
 import { todayKey, dailySeed, type DailyRecord } from './lib/daily';
 import { mulberry32 } from './lib/rng';
-import { useLocalStorage } from './lib/store';
+import { useLocalStorage, suspendPersistence } from './lib/store';
 import { sfx, isMuted, setMuted } from './lib/sound';
 import { music } from './lib/music';
 import { shareCard } from './lib/shareCard';
@@ -75,6 +75,9 @@ type Phase =
   | 'trace'
   | 'ending'
   | 'over';
+
+// 시연 '다시 보기'는 리로드 후 자동 재생 — 리로드 너머로 의도를 실어 나르는 세션 키
+const DEMO_AUTO_KEY = 'd100-demo-auto';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('title');
@@ -146,6 +149,9 @@ export default function App() {
 
   // 자동 시연 — 타이틀에서 언제든 볼 수 있는 상시 쇼케이스 (2026-07-19 ?demo 게이트 해제).
   // 제출 영상은 확정본이라 더 갱신하지 않는 대신, 이 시연이 최신 콘텐츠를 계속 보여 준다.
+  // **세이브 격리**: 시연은 실제 게임을 그대로 플레이하므로 시작 시 저장을 끄고(suspendPersistence),
+  // 나가는 모든 경로(종료 버튼·다시 보기·직접 플레이)를 리로드로 통일한다 —
+  // 시연이 만든 진행(코인·기억·최고 층·일일 기록)이 세이브에도, 화면에도 남지 않는다.
   const [demoRunning, setDemoRunning] = useState(false);
   const [demoCaption, setDemoCaption] = useState('');
   const [demoDone, setDemoDone] = useState(false);
@@ -369,6 +375,28 @@ export default function App() {
     setRunId((id) => id + 1);
     setPhase('run');
   };
+
+  // ── 자동 시연 (세이브 격리) — 시작 시 저장을 끄고, 나갈 때는 리로드로 원래 세이브 복귀
+  const startDemo = () => {
+    suspendPersistence(true);
+    sfx.enter();
+    setDemoDone(false);
+    setDemoRunning(true);
+  };
+  // 다시 보기도 리로드로 — 시연이 남긴 화면 상태 없이 처음부터 재생된다
+  const replayDemo = () => {
+    sfx.tap();
+    sessionStorage.setItem(DEMO_AUTO_KEY, '1');
+    location.href = location.pathname;
+  };
+  // 리로드 직후 자동 재생 (다시 보기 경로)
+  useEffect(() => {
+    if (sessionStorage.getItem(DEMO_AUTO_KEY)) {
+      sessionStorage.removeItem(DEMO_AUTO_KEY);
+      startDemo();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const startAdventure = () => {
     sfx.tap();
@@ -1008,11 +1036,7 @@ export default function App() {
           onStart={startAdventure}
           onDaily={() => enterDungeon(undefined, 'daily')}
           onReplay={replayStory}
-          onDemo={() => {
-            sfx.enter();
-            setDemoDone(false);
-            setDemoRunning(true);
-          }}
+          onDemo={startDemo}
         />
       )}
       {phase === 'story' && (
@@ -1201,15 +1225,7 @@ export default function App() {
       {/* ── 자동 시연 (?demo) — JSX 맨 끝 = 메뉴 스택 맨 위 (타이틀 메뉴보다 우선) ── */}
       {demoRunning && demoCaption && <DemoCaption text={demoCaption} />}
       {demoRunning && <DemoExitButton />}
-      {demoDone && !demoRunning && (
-        <DemoEndScreen
-          onReplay={() => {
-            sfx.tap();
-            setDemoDone(false);
-            setDemoRunning(true);
-          }}
-        />
-      )}
+      {demoDone && !demoRunning && <DemoEndScreen onReplay={replayDemo} />}
     </div>
   );
 }

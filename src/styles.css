@@ -202,6 +202,12 @@ body {
   border-color: #8f6bff;
 }
 
+/* 시연 끝 화면 — 세이브 격리 안내 */
+.demo-note {
+  color: #8de0a0;
+  font-size: 14px;
+}
+
 .title-screen {
   background: radial-gradient(ellipse at 50% 30%, #2c2050 0%, #140e22 70%);
 }

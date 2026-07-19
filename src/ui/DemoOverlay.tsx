@@ -24,6 +24,9 @@ export function DemoEndScreen({ onReplay }: { onReplay: () => void }) {
         <br />
         100층의 황금 문과 두 가지 엔딩, 그리고 10년 후의 에필로그….
       </p>
+      <p className="quiz-sub demo-note">
+        🔒 시연 내용은 저장되지 않았습니다 — 기록·코인은 그대로, 처음부터 플레이하세요.
+      </p>
       <ChoiceList
         items={[
           { key: 'replay', label: '🔁 다시 보기', onPick: onReplay },
