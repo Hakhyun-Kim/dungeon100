@@ -1,5 +1,13 @@
 import { useEffect, useRef } from 'react';
+import { generateFloor } from '../lib/dungeon';
 import { sfx } from '../lib/sound';
+
+// 층 번호 = 시드라 방 이벤트 배치도 결정적 — 시연에 쓸 '그 층'을 미리 찾아 둔다.
+// (없으면 null → 해당 장면은 건너뛴다)
+const findFloor = (pred: (m: ReturnType<typeof generateFloor>) => boolean): number | null => {
+  for (let f = 6; f <= 40; f++) if (pred(generateFloor(f))) return f;
+  return null;
+};
 
 // ── 자동 시연 드라이버 (?demo) — 실제 게임을 그대로 플레이하며 자막과 함께 보여준다.
 //    이동은 합성 키보드 이벤트(useMoveInput/useSteer가 window 키 이벤트 기반이라 그대로 먹힘),
@@ -24,6 +32,10 @@ export interface DemoActions {
   arena: () => void;
   /** 층 점프 (체력 회복 포함) */
   jump: (floor: number) => void;
+  /** 낡은 제단 선택 화면 열기 (방 이벤트 쇼케이스) */
+  altar: () => void;
+  /** 찢어진 페이지(비밀 문) 선택 화면 열기 */
+  secretDoor: () => void;
   /** 층 번호만 변경 (장면 연출용) */
   setFloor: (n: number) => void;
   /** 56층 소녀 찻자리 직접 진입 (girlMet 저장 안 함 — 심사자 세이브 비오염) */
@@ -67,6 +79,14 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
         await sleep(400);
       }
     };
+    // 선택지를 명시적으로 고른다 (방 이벤트처럼 '수락'을 보여줘야 하는 장면)
+    const clickChoice = (idx: number) => {
+      const btns = [
+        ...document.querySelectorAll<HTMLButtonElement>('.screen .dialog-choices .choice-btn'),
+      ].filter((b) => !b.disabled);
+      btns[idx]?.click();
+    };
+    const clickPrimary = () => document.querySelector<HTMLButtonElement>('.screen .big-btn')?.click();
     // 마을(.village-talk)·소녀 찻자리(.town-screen) 대화를 읽는 속도로 진행.
     // 선택지가 나오면 "다른 방법은 없나요?" 같은 개그 선택지를 우선 고른다.
     const clickTalk = () => {
@@ -139,12 +159,23 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
       await wander(5000);
       if (stop) return;
 
-      await caption('🎁 보물은 빌드로 바로 보입니다 — 궤도 구슬, 커지는 투사체!');
+      await caption('🎁 보물 16종 — 희귀도(레어·전설)와 시너지 태그, 빌드가 바로 눈에 보입니다!');
       for (let i = 0; i < 3 && !stop; i++) {
         act().treasure();
         await sleep(1200);
       }
-      await wander(2500);
+      await wander(2200);
+      if (stop) return;
+
+      // ── 방 이벤트 ① 낡은 제단 — 「피를 잉크로.」 (수락까지 보여 준다)
+      await caption('🕯️ 방 이벤트 — 낡은 제단: 「피를 잉크로. 이야기는 대가를 원한다.」');
+      act().altar();
+      await sleep(2800);
+      if (stop) return;
+      clickChoice(0); // 체력을 바친다
+      await sleep(2600);
+      clickPrimary(); // 계속 탐험
+      await sleep(600);
       if (stop) return;
 
       await caption('🚪 미니게임 ① 두 문 달리기 — 정답이 적힌 문을 몸으로!');
@@ -164,18 +195,38 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
 
       await caption('👹 미니게임 ② 몬스터 아레나 — 무리를 뚫고 보석 3개!');
       act().arena();
-      await wander(9000);
+      await wander(8500);
+      if (stop) return;
+
+      // ── 방 이벤트 ② 몬스터 하우스 (층=시드라 배치가 결정적 — 있는 층을 찾아 간다)
+      const houseFloor = findFloor((m) => !!m.house);
+      if (houseFloor && !stop) {
+        await caption('🏚️ 방 이벤트 — 몬스터 하우스: 붉게 물든 방, 두 배로 몰려오는 무리와 코인 무더기');
+        act().jump(houseFloor);
+        await sleep(300);
+        act().treasure();
+        await wander(6000);
+        if (stop) return;
+      }
+
+      // ── 방 이벤트 ③ 찢어진 페이지 — 층을 건너뛰는 비밀 문
+      await caption('📄 방 이벤트 — 찢어진 페이지: 몇 장을 그냥 넘겨 버릴까? (건너뛴 층의 보물은 포기)');
+      act().secretDoor();
+      await sleep(3000);
+      if (stop) return;
+      clickChoice(0); // 페이지를 넘긴다 — 2개 층 건너뛰기
+      await settleUntil(['run'], 6000);
       if (stop) return;
 
       await caption('🌊 깊이 = 이야기의 진행 — 10층마다 던전의 색이 변하고 안개가 짙어집니다');
       act().jump(45);
       await sleep(300);
       act().treasure();
-      await wander(4000);
+      await wander(3800);
       act().jump(75);
       await sleep(300);
       act().treasure();
-      await wander(4000);
+      await wander(3800);
       if (stop) return;
 
       await caption('🫖 56층의 소녀 — 작가가 쓰다 만 「공주님」, 여백의 찻자리');
@@ -198,7 +249,9 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
       await wander(9000);
       if (stop) return;
 
-      await caption('✨ 56층의 소녀, 100층의 황금 문, 엔딩과 에필로그는 — 직접 확인해 보세요!');
+      await caption('📅 오늘의 던전 — 날짜가 시드, 모두가 같은 맵에 도전하고 기록 카드로 인증!');
+      await sleep(1200);
+      await caption('✨ 100층의 황금 문, 두 엔딩과 10년 후 에필로그는 — 직접 확인해 보세요!');
       await sleep(2600);
       releaseAll();
       act().finish();

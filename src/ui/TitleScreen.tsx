@@ -2,12 +2,12 @@ import type { DailyRecord } from '../lib/daily';
 import { MEMORIES } from '../lib/story';
 import { ChoiceList } from './Menu';
 
-// 타이틀 화면 — 모험 시작·일일 던전 세로 메뉴 (?demo에서는 시연 버튼 추가).
+// 타이틀 화면 — 모험 시작 · 오늘의 던전 · 자동 시연 세로 메뉴.
+// 시연은 언제든 볼 수 있게 상시 노출 (제출 영상 대신 최신 콘텐츠를 계속 보여 주는 쇼케이스).
 export default function TitleScreen({
   best,
   memCount,
   storySeen,
-  demoMode,
   muted,
   dailyRecord,
   onToggleMute,
@@ -19,7 +19,6 @@ export default function TitleScreen({
   best: number;
   memCount: number;
   storySeen: boolean;
-  demoMode: boolean;
   muted: boolean;
   dailyRecord: DailyRecord | null; // 오늘 날짜의 기록 (없으면 null)
   onToggleMute: () => void;
@@ -51,30 +50,19 @@ export default function TitleScreen({
           📅 오늘의 던전 기록: {dailyRecord.cleared ? '100층 완주!' : `${dailyRecord.floor}층`}
         </p>
       )}
+      {/* 첫 항목이 기본 하이라이트 — Enter는 언제나 '모험 시작' */}
       <ChoiceList
         kind="big"
         items={[
-          ...(demoMode
-            ? [
-                {
-                  key: 'demo',
-                  label: '🎬 자동 시연 보기 (약 100초)',
-                  className: 'demo-start',
-                  onPick: onDemo,
-                },
-              ]
-            : []),
           { key: 'start', label: '모험 시작', onPick: onStart },
-          {
-            key: 'daily',
-            label: '📅 오늘의 던전',
-            className: 'daily-btn',
-            onPick: onDaily,
-          },
+          { key: 'daily', label: '📅 오늘의 던전', className: 'daily-btn', onPick: onDaily },
+          { key: 'demo', label: '🎬 자동 시연 보기', className: 'demo-start', onPick: onDemo },
         ]}
       />
       <p className="quiz-sub daily-hint">
-        오늘의 던전: 날짜가 시드 — 모두가 같은 맵에 도전 (어른 문제 고정, 기록 카드로 인증)
+        📅 오늘의 던전: 날짜가 시드 — 모두가 같은 맵에 도전 (기록 카드로 인증)
+        <br />
+        🎬 자동 시연: 게임이 스스로 주요 장면을 보여 줍니다 (약 2분, 언제든 중단 가능)
       </p>
       {storySeen && (
         <button className="skip-btn" onClick={onReplay}>

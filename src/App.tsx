@@ -144,8 +144,8 @@ export default function App() {
   );
   const [debugOpen, setDebugOpen] = useState(false);
 
-  // 자동 시연 모드 (?demo) — 클릭 한 번이면 게임이 스스로 쇼케이스를 진행 (심사·시연용)
-  const demoMode = useMemo(() => new URLSearchParams(location.search).has('demo'), []);
+  // 자동 시연 — 타이틀에서 언제든 볼 수 있는 상시 쇼케이스 (2026-07-19 ?demo 게이트 해제).
+  // 제출 영상은 확정본이라 더 갱신하지 않는 대신, 이 시연이 최신 콘텐츠를 계속 보여 준다.
   const [demoRunning, setDemoRunning] = useState(false);
   const [demoCaption, setDemoCaption] = useState('');
   const [demoDone, setDemoDone] = useState(false);
@@ -825,6 +825,11 @@ export default function App() {
     },
     arena: startArena,
     jump: debugJump,
+    altar: () => {
+      setAltarReward(null);
+      setPhase('altar');
+    },
+    secretDoor: () => setPhase('secretdoor'),
     setFloor: setFloorNo,
     girlTea: () => {
       sfx.gift();
@@ -997,7 +1002,6 @@ export default function App() {
           best={best}
           memCount={memCount}
           storySeen={storySeen}
-          demoMode={demoMode}
           muted={muted}
           dailyRecord={dailyBest?.date === todayKey() ? dailyBest : null}
           onToggleMute={toggleMute}
@@ -1197,7 +1201,7 @@ export default function App() {
       {/* ── 자동 시연 (?demo) — JSX 맨 끝 = 메뉴 스택 맨 위 (타이틀 메뉴보다 우선) ── */}
       {demoRunning && demoCaption && <DemoCaption text={demoCaption} />}
       {demoRunning && <DemoExitButton />}
-      {demoMode && demoDone && !demoRunning && (
+      {demoDone && !demoRunning && (
         <DemoEndScreen
           onReplay={() => {
             sfx.tap();
