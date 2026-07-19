@@ -80,6 +80,22 @@
             clearInterval(this._iv);
           };
           window.ResizeObserver = RO;
+
+          // 완전 헤드리스 페인(뷰포트 0×0)에서도 r3f가 부팅하게 — 요소가 0×0으로
+          // 측정되면 가상 뷰포트(1280×800)로 보고한다. react-use-measure가
+          // getBoundingClientRect를 직접 읽으므로 폴리필 entries만으론 부족하다.
+          var realGBCR = Element.prototype.getBoundingClientRect;
+          Element.prototype.getBoundingClientRect = function () {
+            var r = realGBCR.call(this);
+            if (r.width === 0 && r.height === 0 && this.isConnected && window.innerWidth === 0) {
+              return {
+                x: 0, y: 0, top: 0, left: 0, right: 1280, bottom: 800,
+                width: 1280, height: 800,
+                toJSON: function () {},
+              };
+            }
+            return r;
+          };
         })();
       }
     </script>

@@ -91,9 +91,10 @@ export function generateFloor(floorNo: number, seedOffset = 0): FloorMap {
   const exit = { x: last.cx, y: last.cy };
 
   // 적 스폰 — 시작 방은 안전지대, 출구 바로 옆도 비워 즉사 방지
-  // 층당 밀도 램프: 3층마다 방당 +1 (최대 7) — 내려갈수록 확실히 붐빈다
+  // 층당 밀도 램프: 3층마다 방당 +1 (최대 9 — 21층에 도달) — 내려갈수록 확실히 붐빈다.
+  // 예전 캡 7(15층)은 깊은 층이 더 붐비지 않아 파밍 빌드가 무적 순항하는 원인 중 하나였다.
   const spawns: { x: number; y: number }[] = [];
-  const perRoom = Math.min(7, 2 + Math.floor(floorNo / 3));
+  const perRoom = Math.min(9, 2 + Math.floor(floorNo / 3));
   for (let i = 1; i < rooms.length; i++) {
     const r = rooms[i];
     for (let k = 0; k < perRoom; k++) {
@@ -188,7 +189,7 @@ export function generateFloor(floorNo: number, seedOffset = 0): FloorMap {
   if (floorNo >= 5 && !trace && !girl && rooms.length >= 4 && rand() < 0.22) {
     const mid = rooms.slice(1, -1);
     house = mid[Math.floor(rand() * mid.length)];
-    const perRoom2 = Math.min(7, 2 + Math.floor(floorNo / 3));
+    const perRoom2 = Math.min(9, 2 + Math.floor(floorNo / 3));
     for (let k = 0; k < perRoom2 + 3; k++) {
       const sx = house.x + 1 + Math.floor(rand() * (house.w - 2));
       const sy = house.y + 1 + Math.floor(rand() * (house.h - 2));

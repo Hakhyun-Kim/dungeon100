@@ -33,6 +33,9 @@ let running = false;
 let results: RunResult[] = [];
 let lastFloor = 1;
 let villageStall = 0; // 마을에서 씬 마운트 정체 감지 (스로틀링 워치독)
+// runBrain이 한 번이라도 돈 판만 기록 — 이전 세트가 남긴 스테일 over-screen을
+// 새 세트 첫 틱에 사망으로 세는 유령 기록 방지 (실측: death@1 아이템48)
+let playedThisRun = false;
 
 // ── 키 합성 (useMoveInput/useSteer는 window 키 이벤트 기반)
 // 주의: 층 전환마다 씬이 리마운트되어 새 리스너는 기존에 눌린 키를 모른다 —
@@ -205,6 +208,7 @@ function steerDoorRun(): void {
 function runBrain() {
   const s = W.__d100?.state?.();
   if (!s || !s.player) return;
+  playedThisRun = true;
   lastFloor = s.floorNo;
 
   // 새 층 감지 → 지형 스냅샷·길 초기화 (+ 보물 완주 가정 시 전설 보상)
@@ -414,15 +418,18 @@ async function loop() {
       break;
     }
 
-    // 1) 사망 화면
+    // 1) 사망 화면 (실제로 플레이한 판만 기록 — 스테일 화면은 넘기기만)
     if (document.querySelector('.over-screen')) {
       releaseKeys();
-      recordRun('death', lastFloor);
-      resetFloorNav();
-      lastFloor = 1;
-      if (results.length >= opts.runs) {
-        finish();
-        break;
+      if (playedThisRun) {
+        playedThisRun = false;
+        recordRun('death', lastFloor);
+        resetFloorNav();
+        lastFloor = 1;
+        if (results.length >= opts.runs) {
+          finish();
+          break;
+        }
       }
       if (!clickBtn('.over-screen .choice-btn', '바로 다시 도전')) {
         reloadForNextRun(); // 체크포인트 화면이면 리로드로 새 판

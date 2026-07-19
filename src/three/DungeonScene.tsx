@@ -831,6 +831,11 @@ function DungeonScene({
       }
 
       // ── 적 AI (타입별) + 접촉 피해 — 내려갈수록 확실히 빨라진다 (스릴 램프)
+      // 깊은 층 위협 램프(2026-07-19): 30층부터 '받는 피해'가 추가로 가파르게 —
+      // 적 스탯 캡(스폰·속도)이 15~21층에 걸린 뒤에도 아이템은 복리로 쌓여
+      // 파밍 빌드가 무적 순항했다 (시뮬 실측: 160아이템 61층 무저항). 피해만 올려
+      // 얕은 층(≤30)과 이동·조작 감각은 그대로 둔다.
+      const threatFloor = floorNo + Math.max(0, floorNo - 30) * 0.6;
       const espeed = 2.5 + Math.min(3.3, floorNo * 0.16);
       for (const e of enemies.current) {
         if (!e.alive) continue;
@@ -914,15 +919,16 @@ function DungeonScene({
           if (e.elite) {
             // 수문장: 돌진 강타는 HP를 크게 깎는다 (깊이 내려갈수록 위협적)
             e.hitCd = e.mode === 2 ? 0.7 : 1.0;
-            dmg = e.mode === 2 ? Math.round(16 + floorNo * 0.9) : Math.round(9 + floorNo * 0.5);
+            dmg =
+              e.mode === 2 ? Math.round(16 + threatFloor * 0.9) : Math.round(9 + threatFloor * 0.5);
           } else {
             e.hitCd = e.type === 'dasher' && e.mode === 2 ? 0.6 : 0.8;
             dmg =
               e.type === 'tank'
-                ? Math.round((6 + floorNo) * 1.5)
+                ? Math.round((6 + threatFloor) * 1.5)
                 : e.type === 'dasher' && e.mode === 2
-                  ? 8 + floorNo
-                  : 6 + floorNo;
+                  ? Math.round(8 + threatFloor)
+                  : Math.round(6 + threatFloor);
           }
           const applied = hurtPlayer(dmg); // 회피·방어 반영 (회피 시 0)
           if (applied > 0) {
@@ -980,7 +986,7 @@ function DungeonScene({
         }
         if (bd < 1.6 && bAi.hitCd <= 0) {
           bAi.hitCd = 1.0;
-          if (hurtPlayer(16 + Math.round(floorNo * 0.7)) > 0) {
+          if (hurtPlayer(16 + Math.round(threatFloor * 0.7)) > 0) {
             shake.current = Math.min(0.7, shake.current + 0.4);
             burst(p.position.x, 0.8, p.position.z, '#ff4d5e', 8, 1.8);
           }
@@ -1002,7 +1008,7 @@ function DungeonScene({
         }
         if (Math.hypot(es.x - p.position.x, es.z - p.position.z) < 0.55) {
           es.alive = false;
-          if (hurtPlayer(7 + Math.round(floorNo * 0.4)) > 0) {
+          if (hurtPlayer(7 + Math.round(threatFloor * 0.4)) > 0) {
             shake.current = Math.min(0.6, shake.current + 0.25);
             burst(p.position.x, 0.8, p.position.z, '#ff4d5e', 5, 1.4);
           }
