@@ -126,6 +126,7 @@ function DungeonScene({
   seedOffset = 0,
   hidden,
   statsRef,
+  damageMulRef,
   pausedRef,
   quizResultRef,
   portalRetryRef,
@@ -152,6 +153,8 @@ function DungeonScene({
   seedOffset?: number; // 일일 던전 — 날짜 시드를 층 시드에 섞는다 (0 = 보통 던전)
   hidden: boolean; // 두 문 달리기 미니게임 동안 던전을 숨기고 카메라를 양보
   statsRef: React.MutableRefObject<Stats>;
+  /** 기억 능력 '두근거림' 등 상황형 공격 배율 (1 = 없음) */
+  damageMulRef: React.MutableRefObject<number>;
   pausedRef: React.MutableRefObject<boolean>;
   quizResultRef: React.MutableRefObject<QuizResult | null>;
   portalRetryRef: React.MutableRefObject<number>; // "아직 안 내려갈래" 선택 시 증가 → 포털 재무장
@@ -788,7 +791,7 @@ function DungeonScene({
         const bh = boss.current;
         if (bh && bh.alive && Math.hypot(bh.x - sh.x, bh.z - sh.z) < 1.4) {
           const crit = stats.crit > 0 && Math.random() < stats.crit;
-          const dmg = stats.damage * (crit ? 2 : 1);
+          const dmg = stats.damage * (crit ? 2 : 1) * damageMulRef.current;
           bh.hp -= dmg;
           bh.flash = 1;
           sh.alive = false;
@@ -805,7 +808,7 @@ function DungeonScene({
           if (ei === sh.last) continue; // 관통탄이 같은 적을 연속 프레임에 다시 때리지 않게
           if (Math.hypot(e.x - sh.x, e.z - sh.z) < 0.62) {
             const crit = stats.crit > 0 && Math.random() < stats.crit;
-            const dmg = stats.damage * (crit ? 2 : 1);
+            const dmg = stats.damage * (crit ? 2 : 1) * damageMulRef.current;
             e.hp -= dmg;
             e.flash = 1;
             if (sh.pierce > 0) {

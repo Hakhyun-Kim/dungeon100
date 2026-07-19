@@ -19,8 +19,15 @@ import { sfx, isMuted, setMuted } from './lib/sound';
 import { music } from './lib/music';
 import { shareCard } from './lib/shareCard';
 import {
-  STORY_NODES,
   MEMORIES,
+  migrateCount,
+  newlyCompletedSet,
+  nextMemory,
+  powersOf,
+  type MemorySetId,
+} from './lib/memories';
+import {
+  STORY_NODES,
   girlScript,
   getDeathLore,
   chiefTalk,
@@ -41,7 +48,13 @@ import VillageOverlay, { type VillageTalk } from './ui/VillageOverlay';
 import ShopScreen from './ui/ShopScreen';
 import { PortalScreen, HomeDoorScreen, AltarScreen, SecretDoorScreen } from './ui/FloorPrompts';
 import { QuizResultScreen, ArenaOverScreen, type QuizView } from './ui/ChestScreens';
-import { LoreScreen, TraceScreen, MemoryScreen, MemFullScreen } from './ui/LoreScreens';
+import {
+  LoreScreen,
+  TraceScreen,
+  MemoryScreen,
+  MemorySetScreen,
+  MemFullScreen,
+} from './ui/LoreScreens';
 import DraftScreen from './ui/DraftScreen';
 import OverScreen from './ui/OverScreen';
 import EndingScreen, { type EndingVariant } from './ui/EndingScreen';
@@ -64,6 +77,7 @@ type Phase =
   | 'arenaover'
   | 'quiz'
   | 'memory'
+  | 'memset' // 기억 갈래 완성 — 특별한 능력 각성
   | 'memfull'
   | 'portal'
   | 'draft'
@@ -90,7 +104,15 @@ export default function App() {
   const [runId, setRunId] = useState(0);
   const [best, setBest] = useLocalStorage<number>('d100-best', 0);
   const [storySeen, setStorySeen] = useLocalStorage<boolean>('d100-story', false);
-  const [memCount, setMemCount] = useLocalStorage<number>('d100-mem', 0);
+  // 되찾은 기억 — 예전엔 개수만(d100-mem) 저장했는데, 갈래별 능력이 생기면서
+  // '어떤 기억을 모았는지'가 필요해졌다. 옛 세이브는 개수만큼 앞에서부터 채워 이어받는다.
+  const [oldMemCount] = useLocalStorage<number>('d100-mem', 0);
+  const [memIds, setMemIds] = useLocalStorage<string[]>('d100-mems', migrateCount(oldMemCount));
+  const memCount = memIds.length;
+  const powers = useMemo(() => powersOf(memIds), [memIds]);
+  const [setUnlocked, setSetUnlocked] = useState<MemorySetId | null>(null);
+  const reviveUsedRef = useRef(false); // '돌아갈 곳' — 판당 1회
+  const [reviveNotice, setReviveNotice] = useState(0);
   const [coins, setCoins] = useLocalStorage<number>('d100-coins', 0);
   const [meta, setMeta] = useLocalStorage<Meta>('d100-meta', { dmg: 0, hp: 0, spd: 0 });
   const [deaths, setDeaths] = useLocalStorage<number>('d100-deaths', 0);
@@ -170,6 +192,10 @@ export default function App() {
   const villagePausedRef = useRef(false);
   villagePausedRef.current = villageTalk !== null || debugOpen;
   const quizResultRef = useRef<QuizResult | null>(null);
+  // 💓 '두근거림' — 체력 30% 미만이면 공격력 배율이 오른다 (씬이 매 프레임 참조)
+  const damageMulRef = useRef(1);
+  damageMulRef.current =
+    powers.desperateMul > 1 && hp > 0 && hp < stats.maxHp * 0.3 ? powers.desperateMul : 1;
   const portalRetryRef = useRef(0);
   const homeRetryRef = useRef(0);
   const homeUsedRef = useRef(0);
@@ -194,6 +220,15 @@ export default function App() {
   // 사망 판정은 hp 변화에 반응 (이벤트 콜백을 안정적으로 유지하기 위함)
   useEffect(() => {
     if (phase === 'run' && hp <= 0) {
+      // 🏠 '돌아갈 곳' — 집의 기억을 다 모았으면 판당 1회 다시 일어난다
+      if (powers.revive && !reviveUsedRef.current) {
+        reviveUsedRef.current = true;
+        setHp(Math.max(1, Math.round(stats.maxHp * 0.4)));
+        setGoldFlash((f) => f + 1);
+        setReviveNotice((n) => n + 1);
+        sfx.legend();
+        return;
+      }
       setPhase('over');
       if (floorNo > best) setBest(floorNo);
       recordDaily(floorNo);
@@ -342,7 +377,8 @@ export default function App() {
     if (!next) sfx.tap();
   };
 
-  const memory = MEMORIES[memCount % MEMORIES.length];
+  // 다음에 돌아올 기억 (순서대로 — 다 모았으면 마지막 것을 다시 보여 준다)
+  const memory = nextMemory(memIds) ?? MEMORIES[MEMORIES.length - 1];
 
   // type 미지정: 모드를 골랐으면 보통 런, 무인자(게임오버 재도전)는 현재 런 유형 유지
   const enterDungeon = (m?: DungeonMode, type?: 'normal' | 'daily') => {
@@ -354,11 +390,12 @@ export default function App() {
     setStorySeen(true);
     setFloorNo(1);
     setCheckpointFloor(1); // 새 도전 — 체크포인트 초기화
-    // 대장간 영구 강화 반영
+    reviveUsedRef.current = false; // '돌아갈 곳'은 판마다 다시 채워진다
+    // 대장간 영구 강화 + 기억 완성 보너스 반영
     const startStats: Stats = {
       ...BASE_STATS,
       damage: BASE_STATS.damage + meta.dmg * 2,
-      maxHp: BASE_STATS.maxHp + meta.hp * 15,
+      maxHp: BASE_STATS.maxHp + meta.hp * 15 + powers.bonusMaxHp,
       speed: metaSpeed(meta.spd),
     };
     setStats(startStats);
@@ -670,12 +707,23 @@ export default function App() {
     sfx.pick();
     gainUpgrade(u);
     setFloorNo((n) => n + 1);
+    // ☕ '사소한 것들의 힘' — 새 층에 도착할 때마다 조금씩 회복된다
+    if (powers.floorHeal > 0) {
+      setHp((h) => Math.min(statsRef.current.maxHp, h + powers.floorHeal));
+    }
     setPhase('lore'); // 새 층에 도착하면 벽의 글귀부터
   };
 
   // 두 문 달리기 결과 — 오답이면 그동안의 문도 전부 물거품 (빈손)
+  // 단 🎓 '벼락치기'를 얻었다면 틀려도 아이템 1개는 건진다.
   const onDoorRunDone = (ok: boolean) => {
     if (!ok) {
+      if (powers.consolation) {
+        grantRewards(1);
+        setQuizView('ok');
+        setPhase('quiz');
+        return;
+      }
       setRewards([]);
       setQuizView('no');
     } else if (doorRound >= MAX_DOOR_ROUND) {
@@ -737,15 +785,54 @@ export default function App() {
     quizResultRef.current = { seq: quizSeq + 1, ok: gotReward };
     setQuizSeq((s) => s + 1);
     setDoorRound(1);
-    setPhase(gotReward ? 'memory' : 'run'); // 보물 = 기억 하나가 돌아온다
+    // 보물 = 기억 하나가 돌아온다. 이미 전부 되찾았다면 회상 화면은 건너뛴다.
+    const allFound = memIds.length >= MEMORIES.length;
+    setPhase(gotReward && !allFound ? 'memory' : 'run');
   };
 
   const closeMemory = () => {
     sfx.tap();
-    const newCount = memCount + 1;
-    setMemCount(newCount);
-    if (newCount === MEMORIES.length) {
-      // 열두 개의 기억을 모두 되찾음 — 완성 보상
+    if (!memory) {
+      setPhase('run');
+      return;
+    }
+    const before = memIds;
+    const after = before.includes(memory.id) ? before : [...before, memory.id];
+    setMemIds(after);
+    // 갈래 하나를 다 모았다면 — 특별한 능력이 깨어난다
+    const unlocked = newlyCompletedSet(before, after);
+    if (unlocked) {
+      setSetUnlocked(unlocked);
+      setGoldFlash((f) => f + 1);
+      sfx.legend();
+      setPhase('memset');
+      return;
+    }
+    // 완성 보상은 '마지막 조각을 채운 그 순간'에만 (이미 다 모은 뒤 반복 지급 방지)
+    if (before.length < MEMORIES.length && after.length === MEMORIES.length) {
+      const picks = pickUpgrades(mulberry32(runId * 53 + 12), 2, build);
+      const next = picks.reduce((s, u) => u.apply(s), stats);
+      setStats(next);
+      setHp(next.maxHp);
+      setBuild((b) => {
+        const nb = { ...b };
+        picks.forEach((u) => (nb[u.id] = (nb[u.id] ?? 0) + 1));
+        return nb;
+      });
+      setMemRewards(picks);
+      setGoldFlash((f) => f + 1);
+      sfx.legend();
+      setPhase('memfull');
+    } else {
+      setPhase('run');
+    }
+  };
+
+  // 갈래 완성 화면을 닫으면 — 전부 모았을 때만 완성 보상으로, 아니면 던전 복귀
+  const closeMemSet = () => {
+    sfx.tap();
+    setSetUnlocked(null);
+    if (memIds.length >= MEMORIES.length) {
       const picks = pickUpgrades(mulberry32(runId * 53 + 12), 2, build);
       const next = picks.reduce((s, u) => u.apply(s), stats);
       setStats(next);
@@ -914,6 +1001,7 @@ export default function App() {
               phase === 'village'
             }
             statsRef={statsRef}
+            damageMulRef={damageMulRef}
             pausedRef={pausedRef}
             quizResultRef={quizResultRef}
             portalRetryRef={portalRetryRef}
@@ -1007,6 +1095,13 @@ export default function App() {
         </>
       )}
 
+      {/* 🏠 '돌아갈 곳' 발동 알림 — 흐름을 끊지 않게 배너로만 */}
+      {reviveNotice > 0 && phase === 'run' && (
+        <div key={`rv${reviveNotice}`} className="revive-banner">
+          🚪 돌아갈 곳 — 기다리는 사람이 있다. 다시 일어섰다!
+        </div>
+      )}
+
       {/* 전체 화면 플래시·펄스는 디버그 모드에서 끔 — 반복 테스트 시 눈 피로 (소리 신호는 유지) */}
       {!debugAllowed && flash > 0 && <div key={`f${flash}`} className="hit-flash" />}
       {!debugAllowed && goldFlash > 0 && <div key={`g${goldFlash}`} className="hit-flash gold" />}
@@ -1029,6 +1124,7 @@ export default function App() {
         <TitleScreen
           best={best}
           memCount={memCount}
+          memIds={memIds}
           storySeen={storySeen}
           muted={muted}
           dailyRecord={dailyBest?.date === todayKey() ? dailyBest : null}
@@ -1112,13 +1208,17 @@ export default function App() {
       {phase === 'memory' && (
         <MemoryScreen
           memory={memory}
-          count={Math.min(memCount + 1, MEMORIES.length)}
+          collected={memIds.includes(memory.id) ? memIds : [...memIds, memory.id]}
           max={MEMORIES.length}
           onClose={closeMemory}
         />
       )}
+      {phase === 'memset' && setUnlocked && (
+        <MemorySetScreen setId={setUnlocked} collected={memIds} onContinue={closeMemSet} />
+      )}
       {phase === 'memfull' && (
         <MemFullScreen
+          total={MEMORIES.length}
           rewards={memRewards}
           onContinue={() => {
             sfx.tap();

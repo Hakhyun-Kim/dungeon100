@@ -1,12 +1,14 @@
 import type { DailyRecord } from '../lib/daily';
-import { MEMORIES } from '../lib/story';
+import { MEMORIES } from '../lib/memories';
 import { ChoiceList } from './Menu';
+import { SetProgressRow } from './LoreScreens';
 
 // 타이틀 화면 — 모험 시작 · 오늘의 던전 · 자동 시연 세로 메뉴.
 // 시연은 언제든 볼 수 있게 상시 노출 (제출 영상 대신 최신 콘텐츠를 계속 보여 주는 쇼케이스).
 export default function TitleScreen({
   best,
   memCount,
+  memIds,
   storySeen,
   muted,
   dailyRecord,
@@ -18,6 +20,7 @@ export default function TitleScreen({
 }: {
   best: number;
   memCount: number;
+  memIds: string[]; // 되찾은 기억 id — 갈래 진행도 표시용
   storySeen: boolean;
   muted: boolean;
   dailyRecord: DailyRecord | null; // 오늘 날짜의 기록 (없으면 null)
@@ -42,9 +45,10 @@ export default function TitleScreen({
       </div>
       {best > 0 && (
         <p className="best">
-          최고 기록: {best}층 · 되찾은 기억 {Math.min(memCount, MEMORIES.length)}개
+          최고 기록: {best}층 · 되찾은 기억 {Math.min(memCount, MEMORIES.length)} / {MEMORIES.length}
         </p>
       )}
+      {memCount > 0 && <SetProgressRow collected={memIds} />}
       {dailyRecord && (
         <p className="best">
           📅 오늘의 던전 기록: {dailyRecord.cleared ? '100층 완주!' : `${dailyRecord.floor}층`}

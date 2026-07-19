@@ -4,8 +4,8 @@ import {
   ENDING_GIRL_EXTRA,
   ENDING_NAME_PRINCESS,
   ENDING_EPILOGUE,
-  MEMORIES,
 } from '../lib/story';
+import { MEMORIES } from '../lib/memories';
 import { ChoiceList, PrimaryButton } from './Menu';
 
 export type EndingVariant = 'alone' | 'together' | null;
