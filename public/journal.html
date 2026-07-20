@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>쓰이는 동안 — 백층 던전 8일 개발 일지</title>
+<meta name="description" content="git 히스토리와 실제 대화를 근거로, 8일간 지시하는 방식이 어떻게 성장했는지 데이터로 짚은 백층 던전 개발 일지." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E" />
+<style>
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #E8E2D6;
+  }
+  @media (prefers-color-scheme: dark) {
+    body:not([data-theme="light"]) { background: #15111f; }
+  }
+  html[data-theme="dark"] body { background: #15111f; }
+  html[data-theme="light"] body { background: #E8E2D6; }
+
+  /* ── top nav ── */
+  .djnav {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 24px; backdrop-filter: blur(8px);
+    background: rgba(232, 226, 214, 0.82);
+    border-bottom: 1px solid rgba(36, 27, 52, 0.14);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    body:not([data-theme="light"]) .djnav {
+      background: rgba(21, 17, 31, 0.82);
+      border-bottom-color: rgba(241, 236, 223, 0.14);
+    }
+  }
+  html[data-theme="dark"] .djnav {
+    background: rgba(21, 17, 31, 0.82);
+    border-bottom-color: rgba(241, 236, 223, 0.14);
+  }
+  html[data-theme="light"] .djnav {
+    background: rgba(232, 226, 214, 0.82);
+    border-bottom-color: rgba(36, 27, 52, 0.14);
+  }
+  .djnav a {
+    color: #5b5270; text-decoration: none; font-size: 13.5px; font-weight: 600;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .djnav a:hover { color: #241b34; }
+  @media (prefers-color-scheme: dark) {
+    body:not([data-theme="light"]) .djnav a { color: #b8aecf; }
+    body:not([data-theme="light"]) .djnav a:hover { color: #f1ecdf; }
+  }
+  html[data-theme="dark"] .djnav a { color: #b8aecf; }
+  html[data-theme="dark"] .djnav a:hover { color: #f1ecdf; }
+  #djThemeBtn {
+    font: inherit; font-size: 15px; background: none; border: 1px solid rgba(36, 27, 52, 0.22);
+    color: inherit; border-radius: 999px; width: 30px; height: 30px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  @media (prefers-color-scheme: dark) {
+    body:not([data-theme="light"]) #djThemeBtn { border-color: rgba(241, 236, 223, 0.22); }
+  }
+  html[data-theme="dark"] #djThemeBtn { border-color: rgba(241, 236, 223, 0.22); }
+</style>
+</head>
+<body>
+
+<nav class="djnav">
+  <a href="./">← 백층 던전으로</a>
+  <button id="djThemeBtn" type="button" aria-label="테마 전환" title="라이트/다크 전환">🌗</button>
+</nav>
+
+<style>
+  .dj {
+    --bg: #E8E2D6;
+    --surface: #F4EFE5;
+    --surface-2: #FBF8F2;
+    --ink: #241b34;
+    --ink-muted: #5b5270;
+    --ink-faint: #8b83a0;
+    --accent: #8a5610;
+    --accent-mark: #8a5610;
+    --accent-2: #7a2f66;
+    --rule: rgba(36, 27, 52, 0.14);
+    --rule-strong: rgba(36, 27, 52, 0.30);
+    --shadow: 0 1px 2px rgba(36, 27, 52, 0.06);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    .dj:where(:not([data-theme="light"] .dj)) {
+      --bg: #15111f;
+      --surface: #1e1830;
+      --surface-2: #1a1530;
+      --ink: #f1ecdf;
+      --ink-muted: #b8aecf;
+      --ink-faint: #7c7196;
+      --accent: #e0a94f;
+      --accent-mark: #c28320;
+      --accent-2: #c964a8;
+      --rule: rgba(241, 236, 223, 0.14);
+      --rule-strong: rgba(241, 236, 223, 0.30);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+      color-scheme: dark;
+    }
+  }
+  [data-theme="dark"] .dj {
+    --bg: #15111f;
+    --surface: #1e1830;
+    --surface-2: #1a1530;
+    --ink: #f1ecdf;
+    --ink-muted: #b8aecf;
+    --ink-faint: #7c7196;
+    --accent: #e0a94f;
+    --accent-mark: #c28320;
+    --accent-2: #c964a8;
+    --rule: rgba(241, 236, 223, 0.14);
+    --rule-strong: rgba(241, 236, 223, 0.30);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    color-scheme: dark;
+  }
+  [data-theme="light"] .dj {
+    --bg: #E8E2D6;
+    --surface: #F4EFE5;
+    --surface-2: #FBF8F2;
+    --ink: #241b34;
+    --ink-muted: #5b5270;
+    --ink-faint: #8b83a0;
+    --accent: #8a5610;
+    --accent-mark: #8a5610;
+    --accent-2: #7a2f66;
+    --rule: rgba(36, 27, 52, 0.14);
+    --rule-strong: rgba(36, 27, 52, 0.30);
+    --shadow: 0 1px 2px rgba(36, 27, 52, 0.06);
+    color-scheme: light;
+  }
+
+  .dj {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    padding: 40px 24px 96px;
+  }
+  .dj * { box-sizing: border-box; }
+  .dj .serif { font-family: Georgia, "Noto Serif KR", serif; }
+  .dj .mono { font-family: "Cascadia Code", "D2Coding", Consolas, ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  .dj .wrap { max-width: 820px; margin: 0 auto; }
+
+  /* ── header ── */
+  .dj .eyebrow {
+    font-size: 12.5px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 600; margin: 0 0 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .dj .eyebrow::before { content: ""; width: 22px; height: 1px; background: var(--rule-strong); display: inline-block; }
+  .dj h1.title {
+    font-size: clamp(30px, 4.6vw, 42px); font-weight: 700; margin: 0 0 12px;
+    text-wrap: balance; letter-spacing: -0.01em; line-height: 1.18;
+  }
+  .dj .thesis {
+    font-size: 18px; color: var(--ink-muted); max-width: 60ch; margin: 0 0 36px;
+    text-wrap: balance;
+  }
+  .dj .thesis strong { color: var(--ink); font-weight: 600; }
+
+  .dj .stats-row {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+    background: var(--rule); border: 1px solid var(--rule); margin-bottom: 56px;
+  }
+  .dj .stat-tile {
+    background: var(--surface); padding: 18px 16px;
+  }
+  .dj .stat-num {
+    font-family: Georgia, "Noto Serif KR", serif; font-size: 30px; font-weight: 700;
+    line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .dj .stat-num small { font-size: 15px; font-weight: 600; opacity: 0.7; }
+  .dj .stat-label { font-size: 12.5px; color: var(--ink-faint); margin-top: 6px; }
+
+  @media (max-width: 620px) {
+    .dj .stats-row { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ── sections ── */
+  .dj section { margin-bottom: 64px; }
+  .dj .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+  .dj .sec-no { font-family: Georgia, "Noto Serif KR", serif; font-size: 15px; color: var(--ink-faint); font-style: normal; }
+  .dj h2 {
+    font-family: Georgia, "Noto Serif KR", serif; font-size: 25px; font-weight: 700; margin: 0;
+    text-wrap: balance; letter-spacing: -0.005em;
+  }
+  .dj .sec-dek { color: var(--ink-muted); font-size: 15.5px; margin: 10px 0 28px; max-width: 62ch; }
+  .dj p { max-width: 68ch; }
+  .dj hr.rule { border: none; border-top: 1px solid var(--rule); margin: 64px 0 0; }
+
+  /* ── panel (chart / table container) ── */
+  .dj .panel {
+    background: var(--surface); border: 1px solid var(--rule); padding: 24px 26px 20px;
+  }
+  .dj .panel + .panel { margin-top: 16px; }
+  .dj .panel-title { font-size: 13px; font-weight: 700; color: var(--ink-muted); margin: 0 0 4px; }
+  .dj .panel-note { font-size: 12.5px; color: var(--ink-faint); margin: 0 0 16px; }
+
+  /* ── day-1 callout ── */
+  .dj .callout {
+    display: flex; gap: 18px; align-items: center;
+    border-left: 3px solid var(--accent); background: var(--surface);
+    padding: 16px 20px; margin-bottom: 16px;
+  }
+  .dj .callout .cnum { font-family: Georgia, "Noto Serif KR", serif; font-size: 26px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .dj .callout .ctext { font-size: 14.5px; color: var(--ink-muted); }
+  .dj .callout .ctext b { color: var(--ink); }
+
+  /* ── charts ── */
+  .dj svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .dj .bar-up { fill: var(--accent-mark); }
+  .dj .bar-down { fill: var(--accent-2); }
+  .dj .axis-line { stroke: var(--rule-strong); stroke-width: 1; }
+  .dj .grid-line { stroke: var(--rule); stroke-width: 1; }
+  .dj .tick-label { fill: var(--ink-faint); font-size: 11.5px; font-family: "Cascadia Code", "D2Coding", Consolas, monospace; }
+  .dj .val-label { fill: var(--ink-muted); font-size: 11px; font-family: "Cascadia Code", "D2Coding", Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .dj .day-label { fill: var(--ink); font-size: 12.5px; font-weight: 600; font-family: "Cascadia Code", "D2Coding", Consolas, monospace; }
+  .dj .legend-row { display: flex; gap: 22px; margin-bottom: 18px; font-size: 12.5px; color: var(--ink-muted); }
+  .dj .legend-item { display: flex; align-items: center; gap: 7px; }
+  .dj .legend-swatch { width: 11px; height: 11px; flex: none; }
+  .dj .legend-swatch.up { background: var(--accent-mark); }
+  .dj .legend-swatch.down { background: var(--accent-2); }
+
+  .dj .bar-hit { fill: transparent; cursor: default; }
+  .dj .chart-tooltip {
+    position: absolute; pointer-events: none; background: var(--ink); color: var(--bg);
+    font-size: 12px; padding: 6px 9px; border-radius: 3px; white-space: nowrap;
+    opacity: 0; transform: translate(-50%, -100%); transition: opacity 0.12s ease;
+    z-index: 5; font-family: "Cascadia Code", "D2Coding", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .dj .chart-tooltip.show { opacity: 1; }
+  .dj .chart-wrap { position: relative; }
+
+  .dj .line-path { fill: none; stroke: var(--accent-mark); stroke-width: 2; }
+  .dj .area-path { fill: url(#djAreaFill); }
+  .dj .milestone-dot { fill: var(--surface); stroke: var(--accent-mark); stroke-width: 2; cursor: default; }
+  .dj .milestone-dot.dip { stroke: var(--accent-2); }
+  .dj .milestone-label { fill: var(--ink); font-size: 11.5px; font-weight: 600; }
+  .dj .milestone-sub { fill: var(--ink-faint); font-size: 10.5px; font-family: "Cascadia Code", "D2Coding", Consolas, monospace; }
+
+  /* ── ledger table ── */
+  .dj .table-scroll { overflow-x: auto; }
+  .dj table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 480px; }
+  .dj th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 600; padding: 0 10px 8px 0; border-bottom: 1px solid var(--rule-strong); }
+  .dj td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--rule); color: var(--ink-muted); }
+  .dj td.num, .dj th.num { text-align: right; font-family: "Cascadia Code", "D2Coding", Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .dj td.emph { color: var(--ink); font-weight: 600; }
+  .dj tr.day1 td { color: var(--ink-faint); font-style: normal; }
+  .dj .plusnum { color: var(--accent-mark); }
+  .dj .minusnum { color: var(--accent-2); }
+
+  /* ── category bars ── */
+  .dj .cat-list { display: flex; flex-direction: column; gap: 3px; }
+  .dj .cat-row {
+    display: grid; grid-template-columns: 148px 1fr 34px; align-items: center; gap: 12px;
+    padding: 9px 4px; border-bottom: 1px solid var(--rule);
+  }
+  .dj .cat-row:last-child { border-bottom: none; }
+  .dj .cat-name { font-size: 13.5px; color: var(--ink); font-weight: 600; }
+  .dj .cat-bar-track { height: 16px; background: var(--surface-2); position: relative; }
+  .dj .cat-bar-fill { height: 100%; background: var(--accent-mark); transition: filter 0.15s ease; }
+  .dj .cat-row:hover .cat-bar-fill { filter: brightness(1.08); }
+  .dj .cat-n { font-size: 13.5px; text-align: right; font-family: "Cascadia Code", "D2Coding", Consolas, monospace; font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+  .dj .cat-example { font-size: 11.5px; color: var(--ink-faint); grid-column: 1 / -1; margin-top: -3px; padding-left: 4px; display: none; }
+  .dj .cat-row:hover .cat-example { display: block; }
+  @media (max-width: 560px) {
+    .dj .cat-row { grid-template-columns: 100px 1fr 28px; }
+  }
+
+  /* ── prompt evolution ── */
+  .dj .eq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--rule); }
+  .dj .eq-col { padding: 18px 22px; }
+  .dj .eq-col.early { border-right: 1px solid var(--rule); background: var(--surface); }
+  .dj .eq-col.late { background: var(--surface-2); }
+  .dj .eq-col-head {
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700;
+    color: var(--ink-faint); margin-bottom: 16px; display: flex; justify-content: space-between;
+  }
+  .dj .eq-pair { margin-bottom: 22px; }
+  .dj .eq-pair:last-child { margin-bottom: 0; }
+  .dj .eq-quote {
+    font-size: 14.5px; color: var(--ink); border-left: 2px solid var(--rule-strong);
+    padding-left: 12px; margin: 0 0 7px;
+  }
+  .dj .eq-quote.late-q { border-left-color: var(--accent); }
+  .dj .eq-tag { font-size: 11.5px; color: var(--ink-muted); padding-left: 14px; }
+  .dj .eq-tag::before { content: "→ "; color: var(--ink-faint); }
+  @media (max-width: 680px) {
+    .dj .eq-grid { grid-template-columns: 1fr; }
+    .dj .eq-col.early { border-right: none; border-bottom: 1px solid var(--rule); }
+  }
+
+  /* ── inset case study ── */
+  .dj .inset {
+    display: flex; gap: 20px; align-items: flex-start; margin-top: 28px;
+    background: var(--surface); border: 1px solid var(--rule); padding: 20px 22px;
+  }
+  .dj .inset-body { flex: 1; min-width: 0; }
+  .dj .inset-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); font-weight: 700; margin: 0 0 8px; }
+  .dj .inset p { margin: 0 0 10px; font-size: 14.5px; color: var(--ink-muted); }
+  .dj .inset .eq-quote { font-size: 14px; }
+  .dj .spark-wrap { flex: none; width: 210px; }
+  .dj .spark-title { font-size: 11px; color: var(--ink-faint); margin-bottom: 6px; }
+  @media (max-width: 620px) {
+    .dj .inset { flex-direction: column; }
+    .dj .spark-wrap { width: 100%; }
+  }
+
+  /* ── outcome table ── */
+  .dj .outcome-grid {
+    display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 0;
+    border: 1px solid var(--rule);
+  }
+  .dj .outcome-grid > div { padding: 13px 16px; border-bottom: 1px solid var(--rule); font-size: 13.5px; }
+  .dj .outcome-grid > div:nth-child(3n+1) { color: var(--ink-muted); }
+  .dj .outcome-grid > div:nth-child(3n+2) { color: var(--ink-faint); text-align: right; font-family: "Cascadia Code", "D2Coding", Consolas, monospace; }
+  .dj .outcome-grid > div:nth-child(3n) { color: var(--ink); text-align: right; font-weight: 600; font-family: "Cascadia Code", "D2Coding", Consolas, monospace; }
+  .dj .outcome-grid > div.hd { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); font-weight: 700; background: var(--surface); font-family: inherit; }
+  .dj .outcome-grid > div:last-child, .dj .outcome-grid > div:nth-last-child(2), .dj .outcome-grid > div:nth-last-child(3) { border-bottom: none; }
+  .dj .arrow { color: var(--ink-faint); margin: 0 3px; }
+  @media (max-width: 560px) {
+    .dj .outcome-grid { grid-template-columns: 1.2fr 0.9fr 0.9fr; }
+    .dj .outcome-grid > div { padding: 10px 8px; font-size: 12.5px; }
+  }
+
+  /* ── closing ── */
+  .dj .closing {
+    margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--rule);
+  }
+  .dj .closing blockquote {
+    font-family: Georgia, "Noto Serif KR", serif; font-size: 19px; line-height: 1.6;
+    color: var(--ink); margin: 0 0 20px; max-width: 56ch; text-wrap: balance;
+  }
+  .dj .closing .attrib { font-size: 12.5px; color: var(--ink-faint); }
+  .dj .footer-meta {
+    margin-top: 40px; font-size: 12px; color: var(--ink-faint); display: flex;
+    justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  .dj .cta-row {
+    margin-top: 28px; display: flex; gap: 12px; flex-wrap: wrap;
+  }
+  .dj .cta-btn {
+    font-family: inherit; font-size: 13.5px; font-weight: 600; text-decoration: none;
+    color: var(--ink); border: 1px solid var(--rule-strong); padding: 9px 16px;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .dj .cta-btn:hover { background: var(--surface); }
+  .dj .cta-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .dj .cta-btn.primary:hover { filter: brightness(1.06); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dj * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="dj">
+  <div class="wrap">
+
+    <p class="eyebrow">DEV JOURNAL &middot; 2026-07-11 → 07-18 &middot; 백층 던전 (Dungeon 100)</p>
+    <h1 class="title serif">쓰이는 동안 — 8일간의 개발 기록</h1>
+    <p class="thesis">이 문서는 39번의 커밋과 그 사이 오간 지시들을 되짚어, <strong>가장 많이 자란 것은 게임이 아니라 지시하는 방식이었다</strong>는 것을 데이터로 보여준다.</p>
+
+    <div class="stats-row">
+      <div class="stat-tile">
+        <div class="stat-num mono">39</div>
+        <div class="stat-label">커밋</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-num mono">8<small>일</small></div>
+        <div class="stat-label">2026-07-11 → 07-18</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-num mono">+10,868</div>
+        <div class="stat-label">순증가 줄 수 (현재 저장소와 일치)</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-num mono">1</div>
+        <div class="stat-label">개발자 1인 + Claude Code 페어 개발</div>
+      </div>
+    </div>
+
+    <!-- ============ 1. 하루의 리듬 ============ -->
+    <section id="s1">
+      <div class="sec-head"><span class="sec-no serif">Ⅰ</span><h2>무슨 일이 있었나</h2></div>
+      <p class="sec-dek">8일이 똑같이 흐르지 않았다. 하루는 게임 하나를 통째로 만든 날이었고, 어떤 날은 숫자 하나를 고치는 데 썼다. 그 리듬 자체가 첫 번째 데이터다.</p>
+
+      <div class="callout">
+        <div class="cnum mono">+3,307</div>
+        <div class="ctext">0일차(07-11) 첫 커밋 하나로 절차 생성 던전·전투·드래프트까지 <b>코어 루프 전체</b>가 한 번에 세워졌다. 아래 표는 이 하루를 뺀 나머지 7일의 리듬이다 — 이후로는 큰 뼈대보다 <b>다듬는 날</b>이 늘어난다.</div>
+      </div>
+
+      <div class="panel">
+        <p class="panel-title">일별 코드 증감 — 추가(+) vs 정리(−)</p>
+        <p class="panel-note">막대에 마우스를 올리면 정확한 수치가 뜬다. 0일차(07-11)는 규모가 압도적으로 커 아래 표에만 기록.</p>
+        <div class="legend-row">
+          <span class="legend-item"><span class="legend-swatch up"></span>추가된 줄</span>
+          <span class="legend-item"><span class="legend-swatch down"></span>정리·삭제된 줄</span>
+        </div>
+        <div class="chart-wrap">
+          <svg id="djDiverging" viewBox="0 0 760 300" role="img" aria-label="일별 코드 추가·삭제량 다이버징 바 차트"></svg>
+          <div class="chart-tooltip" id="djTipDiv"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <p class="panel-title">원장 — 날짜별 커밋·증감 전체</p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>날짜</th><th class="num">커밋</th><th class="num">추가(+)</th><th class="num">삭제(−)</th><th class="num">순증감</th></tr>
+            </thead>
+            <tbody id="djLedgerBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule" />
+
+    <!-- ============ 2. 코드가 자란 모양 ============ -->
+    <section id="s2">
+      <div class="sec-head"><span class="sec-no serif">Ⅱ</span><h2>코드가 자란 모양</h2></div>
+      <p class="sec-dek">39번의 커밋을 순서대로 이으면 하나의 곡선이 된다. 가파른 구간은 새 세계가 열린 순간이고, 유일하게 <em>내려간</em> 지점은 무언가를 지운 순간이다 — 그것도 성장이었다.</p>
+
+      <div class="panel">
+        <p class="panel-title">누적 코드량 — 커밋 순서(1 → 39)</p>
+        <p class="panel-note">점에 마우스를 올리면 해당 커밋을 보여준다.</p>
+        <div class="chart-wrap">
+          <svg id="djGrowth" viewBox="0 0 780 320" role="img" aria-label="커밋 순서에 따른 누적 코드량 성장 곡선"></svg>
+          <div class="chart-tooltip" id="djTipDiv2"></div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule" />
+
+    <!-- ============ 3. 무엇을 만들었나 ============ -->
+    <section id="s3">
+      <div class="sec-head"><span class="sec-no serif">Ⅲ</span><h2>무엇을 만들었나</h2></div>
+      <p class="sec-dek">39개 커밋을 성격별로 나누면, 후반으로 갈수록 <b>새 기능</b>보다 <b>있는 것을 맞추는 일</b>(밸런스·자동화·문서)이 늘어난 것이 드러난다. 행에 마우스를 올리면 대표 커밋이 보인다.</p>
+
+      <div class="panel">
+        <div class="cat-list" id="djCatList"></div>
+      </div>
+    </section>
+
+    <hr class="rule" />
+
+    <!-- ============ 4. 지시가 달라졌다 ============ -->
+    <section id="s4">
+      <div class="sec-head"><span class="sec-no serif">Ⅳ</span><h2>지시가 달라졌다</h2></div>
+      <p class="sec-dek">코드보다 먼저 바뀐 건 말이었다. 실제로 주고받은 문장을 그대로 옮겼다 — 요약이나 각색 없이.</p>
+
+      <div class="eq-grid">
+        <div class="eq-col early">
+          <div class="eq-col-head"><span>1~2일차</span><span>탐색</span></div>
+
+          <div class="eq-pair">
+            <p class="eq-quote">"게임 스케일이 좀 작아 보이는데, AI로 잘 만들 수 있는 게임은 어떤 게 있을까?"</p>
+            <p class="eq-tag">장르 자체를 AI에게 묻는다</p>
+          </div>
+
+          <div class="eq-pair">
+            <p class="eq-quote">"미니게임을 좀 더 길게 해주고, 길수록 아이템이 좋아지면 좋겠어."</p>
+            <p class="eq-tag">원하는 '느낌'만 설명 — 구조는 AI 몫</p>
+          </div>
+
+          <div class="eq-pair">
+            <p class="eq-quote">"사운드 추가. 게임의 꽃은 사운드. 사운드 직접 생성."</p>
+            <p class="eq-tag">기능 하나를 요청</p>
+          </div>
+        </div>
+
+        <div class="eq-col late">
+          <div class="eq-col-head"><span>8일차</span><span>진단·설계</span></div>
+
+          <div class="eq-pair">
+            <p class="eq-quote late-q">"게임이 스토리까지 어느 정도 완성된 거 같은데, 다음에 할만한 작업은 뭐가 있을까? 리스팅해줘. 그전에 문서나 필요 내용들 한번 정리해줘"</p>
+            <p class="eq-tag">프로젝트 상태를 스스로 점검하고 우선순위를 요청</p>
+          </div>
+
+          <div class="eq-pair">
+            <p class="eq-quote late-q">"속도가 문제가 있어, 속도증가를 1/10 정도만 해도 될 거 같아. 아니면 뒤로갈수록 속도가 늘어나는 양이 줄어든다가 필요."</p>
+            <p class="eq-tag">증상 진단 + 해결 대안 두 가지를 직접 제시</p>
+          </div>
+
+          <div class="eq-pair">
+            <p class="eq-quote late-q">"대사도 좀 더 엮어주고, 던전도 내려가면서 비슷한 변화를 주면 좋겠고, 안개도 더 짙게(미로 난이도 조정)"</p>
+            <p class="eq-tag">대사·던전·안개 — 서로 다른 시스템에 걸친 통일 규칙을 요구</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="inset">
+        <div class="inset-body">
+          <p class="inset-label">사례 — 증상 하나가 감쇠 곡선이 되기까지</p>
+          <p class="eq-quote">"속도가 높을 떄 던전이동이 불편함."</p>
+          <p>대응은 두 갈래로 갈릴 수 있었다 — 증가폭을 그냥 1/10로 줄이거나, 뒤로 갈수록 증가폭이 스스로 줄어드는 감쇠 곡선을 만들거나. 채택된 건 후자다: 캡(12)까지 남은 거리의 15%씩만 오르는 소프트 캡. 첫 픽은 기존과 비슷하게 체감되면서, 뒤로 갈수록 자연히 완만해진다.</p>
+        </div>
+        <div class="spark-wrap">
+          <p class="spark-title mono">이동속도 — 12픽 연속 장착</p>
+          <svg id="djSpark" viewBox="0 0 210 90" role="img" aria-label="이동 속도 소프트 캡 감쇠 곡선"></svg>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule" />
+
+    <!-- ============ 5. 결과 ============ -->
+    <section id="s5">
+      <div class="sec-head"><span class="sec-no serif">Ⅴ</span><h2>그래서, 무엇이 좋아졌나</h2></div>
+      <p class="sec-dek">말이 정밀해진 결과는 프로젝트 자체에도 남았다. 0일차와 8일차를 나란히 놓으면 이렇다.</p>
+
+      <div class="outcome-grid">
+        <div class="hd">항목</div><div class="hd">0일차</div><div class="hd">8일차</div>
+
+        <div>프로젝트 지침(CLAUDE.md)</div><div>30줄</div><div>77줄</div>
+        <div>자동 검증 훅</div><div>0종</div><div>5종 <span class="arrow">(던전·미니게임·마을·앱·시뮬레이터)</span></div>
+        <div>디버그 단축키</div><div>없음</div><div>3종 <span class="arrow">(층 이동·보물·코인)</span></div>
+        <div>스스로 플레이해 검증</div><div>사람이 클릭</div><div>봇이 자동 N판 → 사망 층 분포</div>
+        <div>시연 방법</div><div>영상 촬영</div><div>클릭 1번, 게임이 스스로 100초 투어</div>
+        <div>제출 문서 수치 정합성</div><div>—</div><div>효과음 16→20종 등 8개 항목 정정</div>
+      </div>
+    </section>
+
+    <div class="closing">
+      <blockquote class="serif">"네가 한 층씩 내려갈 때마다 던전 벽에 문장이 하나씩 늘어난단다. 네 모험이 마지막 장을 대신 쓰고 있는 거야."</blockquote>
+      <p class="attrib">— 게임 속 촌장의 대사. 정작 그 8일 동안 문장이 늘어난 쪽은 게임 밖, 지시를 내리는 사람이었다.</p>
+
+      <div class="cta-row">
+        <a class="cta-btn primary" href="./">🎮 백층 던전 플레이하기</a>
+        <a class="cta-btn" href="./?demo">🎬 자동 시연 보기 (100초)</a>
+        <a class="cta-btn" href="https://github.com/Hakhyun-Kim/dungeon100" target="_blank" rel="noopener">📦 소스 코드</a>
+      </div>
+    </div>
+
+    <div class="footer-meta mono">
+      <span>39 commits · d50b493 → 4f355df</span>
+      <span>git log 기반 자동 집계 · 2026-07-20 작성</span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  var root = document.querySelector('.dj');
+
+  // ── data (git log 기반, 정확값) ──
+  var days = [
+    { date: '07-12', commits: 11, ins: 5053, del: 466 },
+    { date: '07-13', commits: 8,  ins: 1211, del: 96  },
+    { date: '07-14', commits: 2,  ins: 86,   del: 10  },
+    { date: '07-15', commits: 3,  ins: 722,  del: 30  },
+    { date: '07-16', commits: 1,  ins: 19,   del: 4   },
+    { date: '07-17', commits: 3,  ins: 36,   del: 22  },
+    { date: '07-18', commits: 10, ins: 1642, del: 580 }
+  ];
+  var ledgerAll = [
+    { date: '07-11', commits: 1,  ins: 3307, del: 0,   day1: true },
+  ].concat(days);
+
+  var cum = [3307,3891,4298,4808,5420,5770,6021,6864,7148,7252,7538,7894,7897,7897,7969,8045,8911,9006,9006,9009,9024,9085,9771,9774,9777,9792,9803,9803,9806,9933,10292,10366,10050,10304,10340,10350,10357,10362,10868];
+  // side/anchor/dy는 실제 좌표를 확인해 겹치지 않도록 점마다 수동 배치
+  var milestones = [
+    { idx: 1,  label: '코어 루프',       sub: '+3,307',  dip: false, side: 'below', anchor: 'start',  dy: 26 },
+    { idx: 5,  label: '세계관 대확장',   sub: '5,420',   dip: false, side: 'above', anchor: 'start',  dy: 30 },
+    { idx: 17, label: '몬스터 아레나',   sub: '8,911',   dip: false, side: 'above', anchor: 'middle', dy: 16 },
+    { idx: 23, label: '걸어다니는 마을', sub: '9,771',   dip: false, side: 'below', anchor: 'middle', dy: 26 },
+    { idx: 33, label: '죽은 코드 정리',  sub: '−316',    dip: true,  side: 'below', anchor: 'end',    dy: 26 },
+    { idx: 39, label: '밸런스 시뮬레이터', sub: '10,868', dip: false, side: 'above', anchor: 'end',   dy: 16 }
+  ];
+  var categories = [
+    { cat: '전투·밸런스',     n: 7, ex: '적 4타입·속도 소프트 캡·난이도 스릴 램프' },
+    { cat: '문서·제출 준비',  n: 7, ex: 'NHN 제출 문서·PDF 초안·수치 정합성 정정' },
+    { cat: '게임플레이·코어', n: 6, ex: '절차 생성 던전·두 문 달리기·부활 체크포인트' },
+    { cat: '스토리·월드빌딩', n: 5, ex: '회상·벽의 글귀·56층 소녀·인터랙티브 인트로' },
+    { cat: '디버그 도구',     n: 4, ex: 'Shift+D/P/M·화면 플래시 끄기' },
+    { cat: '자동화·검증',     n: 4, ex: '자동 시연 모드·밸런스 시뮬레이터' },
+    { cat: '마을·연출',       n: 3, ex: '걸어다니는 3D 마을·5개 시절' },
+    { cat: '버그 수정',       n: 3, ex: '보스 자동조준·키 자동반복' }
+  ];
+  var speedCurve = [7,7.75,8.39,8.93,9.39,9.78,10.11,10.4,10.64,10.84,11.02,11.16,11.29];
+
+  function fmt(n) { return n.toLocaleString('en-US'); }
+  function el(tag, attrs, ns) {
+    var e = ns ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  // ── 1) 원장 테이블 ──
+  var tbody = root.querySelector('#djLedgerBody');
+  ledgerAll.forEach(function (d) {
+    var tr = document.createElement('tr');
+    if (d.day1) tr.className = 'day1';
+    tr.innerHTML =
+      '<td class="' + (d.day1 ? '' : 'emph') + '">' + d.date + (d.day1 ? ' (뼈대)' : '') + '</td>' +
+      '<td class="num">' + d.commits + '</td>' +
+      '<td class="num plusnum">+' + fmt(d.ins) + '</td>' +
+      '<td class="num minusnum">' + (d.del ? '−' + fmt(d.del) : '—') + '</td>' +
+      '<td class="num emph">+' + fmt(d.ins - d.del) + '</td>';
+    tbody.appendChild(tr);
+  });
+
+  // ── 2) diverging bar chart ──
+  (function () {
+    var svg = root.querySelector('#djDiverging');
+    var tip = root.querySelector('#djTipDiv');
+    var W = 760, H = 300, ML = 8, MR = 8, MT = 26, MB = 46;
+    var plotW = W - ML - MR;
+    var baseY = 208;
+    var topBudget = baseY - MT;
+    var bottomBudget = H - baseY - MB;
+    var maxIns = Math.max.apply(null, days.map(function (d) { return d.ins; }));
+    var maxDel = Math.max.apply(null, days.map(function (d) { return d.del; }));
+    var scale = Math.min(topBudget / maxIns, bottomBudget / Math.max(maxDel, 1));
+
+    svg.appendChild(el('line', { x1: ML, y1: baseY, x2: W - MR, y2: baseY, class: 'axis-line' }, true));
+
+    var n = days.length, groupW = plotW / n;
+    var barW = Math.min(30, groupW * 0.34);
+
+    days.forEach(function (d, i) {
+      var cx = ML + groupW * i + groupW / 2;
+      var upX = cx - barW - 3;
+      var downX = cx + 3;
+      var upH = d.ins * scale;
+      var downH = d.del * scale;
+
+      var rUp = el('rect', { x: upX, y: baseY - upH, width: barW, height: Math.max(upH, 1), class: 'bar-up' }, true);
+      var rDown = el('rect', { x: downX, y: baseY, width: barW, height: Math.max(downH, 1), class: 'bar-down' }, true);
+      svg.appendChild(rUp); svg.appendChild(rDown);
+
+      var lblUp = el('text', { x: cx, y: baseY - upH - 8, class: 'val-label', 'text-anchor': 'middle' }, true);
+      lblUp.textContent = '+' + fmt(d.ins);
+      svg.appendChild(lblUp);
+
+      if (d.del > 0) {
+        var lblDown = el('text', { x: cx, y: baseY + downH + 15, class: 'val-label', 'text-anchor': 'middle' }, true);
+        lblDown.textContent = '−' + fmt(d.del);
+        svg.appendChild(lblDown);
+      }
+
+      var dayLbl = el('text', { x: cx, y: H - 12, class: 'day-label', 'text-anchor': 'middle' }, true);
+      dayLbl.textContent = d.date;
+      svg.appendChild(dayLbl);
+
+      var cLbl = el('text', { x: cx, y: H - 26, class: 'val-label', 'text-anchor': 'middle' }, true);
+      cLbl.textContent = d.commits + '건';
+      svg.appendChild(cLbl);
+
+      var hit = el('rect', { x: ML + groupW * i, y: MT - 8, width: groupW, height: H - MT + 8, class: 'bar-hit' }, true);
+      hit.addEventListener('mousemove', function (ev) {
+        var r = svg.getBoundingClientRect();
+        tip.style.left = (ev.clientX - r.left) + 'px';
+        tip.style.top = (ev.clientY - r.top - 10) + 'px';
+        tip.textContent = d.date + '  ' + d.commits + '건  +' + fmt(d.ins) + ' / −' + fmt(d.del);
+        tip.classList.add('show');
+      });
+      hit.addEventListener('mouseleave', function () { tip.classList.remove('show'); });
+      svg.appendChild(hit);
+    });
+  })();
+
+  // ── 3) cumulative growth line chart ──
+  (function () {
+    var svg = root.querySelector('#djGrowth');
+    var tip = root.querySelector('#djTipDiv2');
+    var W = 780, H = 320, ML = 10, MR = 10, MT = 20, MB = 34;
+    var plotW = W - ML - MR, plotH = H - MT - MB;
+    var maxV = 11600, minV = 0;
+    var n = cum.length;
+
+    function X(i) { return ML + (plotW * i) / (n - 1); }
+    function Y(v) { return MT + plotH - (plotH * (v - minV)) / (maxV - minV); }
+
+    var defs = el('defs', {}, true);
+    var grad = el('linearGradient', { id: 'djAreaFill', x1: '0', y1: '0', x2: '0', y2: '1' }, true);
+    var s1 = el('stop', { offset: '0%', 'stop-color': 'var(--accent-mark)', 'stop-opacity': '0.22' }, true);
+    var s2 = el('stop', { offset: '100%', 'stop-color': 'var(--accent-mark)', 'stop-opacity': '0' }, true);
+    grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad); svg.appendChild(defs);
+
+    [0, 4000, 8000, 11600].forEach(function (gv) {
+      var gy = Y(gv);
+      svg.appendChild(el('line', { x1: ML, y1: gy, x2: W - MR, y2: gy, class: 'grid-line' }, true));
+      var t = el('text', { x: ML, y: gy - 5, class: 'val-label' }, true);
+      t.textContent = fmt(gv);
+      svg.appendChild(t);
+    });
+
+    var pathD = 'M ' + X(0) + ' ' + Y(cum[0]);
+    for (var i = 1; i < n; i++) pathD += ' L ' + X(i) + ' ' + Y(cum[i]);
+    var areaD = pathD + ' L ' + X(n - 1) + ' ' + (MT + plotH) + ' L ' + X(0) + ' ' + (MT + plotH) + ' Z';
+
+    svg.appendChild(el('path', { d: areaD, class: 'area-path' }, true));
+    svg.appendChild(el('path', { d: pathD, class: 'line-path' }, true));
+
+    function attachGrowthHit(hit, jj) {
+      hit.addEventListener('mousemove', function (ev) {
+        var r = svg.getBoundingClientRect();
+        tip.style.left = (ev.clientX - r.left) + 'px';
+        tip.style.top = (ev.clientY - r.top - 10) + 'px';
+        tip.textContent = '#' + (jj + 1) + '번째 커밋 · ' + fmt(cum[jj]) + '줄';
+        tip.classList.add('show');
+      });
+      hit.addEventListener('mouseleave', function () { tip.classList.remove('show'); });
+    }
+    for (var j = 0; j < n; j++) {
+      var hit = el('circle', { cx: X(j), cy: Y(cum[j]), r: 8, class: 'bar-hit' }, true);
+      attachGrowthHit(hit, j);
+      svg.appendChild(hit);
+    }
+
+    milestones.forEach(function (m) {
+      var px = X(m.idx - 1), py = Y(cum[m.idx - 1]);
+      svg.appendChild(el('circle', { cx: px, cy: py, r: 4.5, class: 'milestone-dot' + (m.dip ? ' dip' : '') }, true));
+      var above = m.side === 'above';
+      var ly = above ? py - m.dy : py + m.dy;
+      var lbl = el('text', { x: px, y: ly, class: 'milestone-label', 'text-anchor': m.anchor }, true);
+      lbl.textContent = m.label;
+      svg.appendChild(lbl);
+      var sub = el('text', { x: px, y: ly + (above ? 13 : -13), class: 'milestone-sub', 'text-anchor': m.anchor }, true);
+      sub.textContent = m.sub;
+      svg.appendChild(sub);
+    });
+  })();
+
+  // ── 4) category ranked bars ──
+  (function () {
+    var wrap = root.querySelector('#djCatList');
+    var maxN = Math.max.apply(null, categories.map(function (c) { return c.n; }));
+    categories.forEach(function (c) {
+      var row = document.createElement('div');
+      row.className = 'cat-row';
+      row.innerHTML =
+        '<div class="cat-name">' + c.cat + '</div>' +
+        '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + (c.n / maxN * 100) + '%"></div></div>' +
+        '<div class="cat-n">' + c.n + '</div>' +
+        '<div class="cat-example">' + c.ex + '</div>';
+      wrap.appendChild(row);
+    });
+  })();
+
+  // ── 5) sparkline (speed cap curve) ──
+  (function () {
+    var svg = root.querySelector('#djSpark');
+    var W = 210, H = 90, M = 12;
+    var maxV = 12, minV = 6.5;
+    var n = speedCurve.length;
+    function X(i) { return M + ((W - 2 * M) * i) / (n - 1); }
+    function Y(v) { return H - 20 - ((H - 32) * (v - minV)) / (maxV - minV); }
+
+    svg.appendChild(el('line', { x1: M, y1: Y(12), x2: W - M, y2: Y(12), class: 'grid-line' }, true));
+    var capLbl = el('text', { x: W - M, y: Y(12) - 4, class: 'val-label', 'text-anchor': 'end' }, true);
+    capLbl.textContent = '캡 12';
+    svg.appendChild(capLbl);
+
+    var d = 'M ' + X(0) + ' ' + Y(speedCurve[0]);
+    for (var i = 1; i < n; i++) d += ' L ' + X(i) + ' ' + Y(speedCurve[i]);
+    svg.appendChild(el('path', { d: d, class: 'line-path' }, true));
+    speedCurve.forEach(function (v, i) {
+      svg.appendChild(el('circle', { cx: X(i), cy: Y(v), r: i === 0 || i === n - 1 ? 2.6 : 1.6, class: 'milestone-dot' }, true));
+    });
+    var startLbl = el('text', { x: X(0), y: Y(speedCurve[0]) + 16, class: 'val-label', 'text-anchor': 'start' }, true);
+    startLbl.textContent = '7.0';
+    svg.appendChild(startLbl);
+    var endLbl = el('text', { x: X(n - 1), y: Y(speedCurve[n - 1]) - 8, class: 'val-label', 'text-anchor': 'end' }, true);
+    endLbl.textContent = '11.29';
+    svg.appendChild(endLbl);
+  })();
+
+  // ── theme toggle (localStorage 유지) ──
+  (function () {
+    var KEY = 'd100-journal-theme';
+    var htmlEl = document.documentElement;
+    var btn = document.getElementById('djThemeBtn');
+    function apply(v) {
+      if (v === 'dark' || v === 'light') htmlEl.setAttribute('data-theme', v);
+      else htmlEl.removeAttribute('data-theme');
+    }
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    apply(saved);
+    btn.addEventListener('click', function () {
+      var cur = htmlEl.getAttribute('data-theme');
+      var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var curEffective = cur || (prefersDark ? 'dark' : 'light');
+      var next = curEffective === 'dark' ? 'light' : 'dark';
+      apply(next);
+      try { localStorage.setItem(KEY, next); } catch (e) {}
+    });
+  })();
+})();
+</script>
+
+</body>
+</html>
