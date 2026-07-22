@@ -4,6 +4,20 @@
   box-sizing: border-box;
 }
 
+/* ── 디자인 토큰 — 세계관 팔레트(잉크·금·장미)와 '책' 질감 ── */
+:root {
+  --ink-950: #0d0918;
+  --ink-900: #140e22;
+  --gold: #ffd166;
+  --gold-soft: #ffe9b3;
+  --violet: #8f6bff;
+  --violet-deep: #4a2f8f;
+  --text: #f3eeff;
+  --text-dim: #b9aede;
+  /* 종이 결 — feTurbulence 노이즈 (생성 에셋, 외부 파일 없음) */
+  --paper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.045 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
 html,
 body,
 #root {
@@ -50,6 +64,9 @@ body {
   padding: 6px 14px;
   font-size: 17px;
   white-space: nowrap;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .mute-btn {
@@ -75,9 +92,21 @@ body {
   overflow: hidden;
 }
 
+/* 피해 잔상 — 깎인 체력이 흰 띠로 잠시 남았다가 따라온다 (격투게임식) */
+.hp-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 224, 138, 0.55);
+  transition: width 0.55s ease 0.28s;
+}
+
 .hp-bar {
+  position: relative;
   height: 100%;
   background: linear-gradient(90deg, #ff5d7e, #ff8a5c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
   transition: width 0.15s ease-out;
 }
 
@@ -151,6 +180,55 @@ body {
   padding: 24px;
   text-align: center;
   z-index: 30;
+  animation: screenIn 0.22s ease-out;
+}
+
+@keyframes screenIn {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── 잉크 전환 — 층 이동·사망·마을 진입 때 잉크가 번졌다 걷힌다 (책 세계관) ── */
+.ink-wipe {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.ink-wipe::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 160vmax;
+  height: 160vmax;
+  margin: -80vmax 0 0 -80vmax;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--ink-950) 52%, rgba(13, 9, 24, 0.9) 64%, transparent 74%);
+  animation: inkBlot 0.62s ease-in-out forwards;
+}
+
+@keyframes inkBlot {
+  0% {
+    transform: scale(0.01);
+    opacity: 1;
+  }
+  42% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
 }
 
 /* 디버그 창은 항상 최상위 */
@@ -215,7 +293,9 @@ body {
 .draft-screen,
 .over-screen,
 .quiz-screen {
-  background: rgba(10, 6, 20, 0.78);
+  background: var(--paper), rgba(10, 6, 20, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 /* ── 보물상자 결과 화면 ── */
@@ -296,13 +376,20 @@ body {
 
 .dialog-box {
   width: min(94vw, 620px);
-  background: rgba(13, 9, 26, 0.92);
-  border: 2px solid #6a4fd0;
+  background: var(--paper), linear-gradient(180deg, rgba(26, 18, 48, 0.94), rgba(13, 9, 26, 0.94));
+  border: 1px solid rgba(143, 107, 255, 0.55);
   border-radius: 18px;
   padding: 18px 20px 14px;
   text-align: left;
   cursor: pointer;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  /* 책 페이지풍 이중 테두리 — 바깥 얇은 링 + 안쪽 하이라이트 */
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 14px 40px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .dialog-speaker {
@@ -354,6 +441,14 @@ body {
   border-radius: 14px;
   padding: 12px 16px;
   cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+
+@media (hover: hover) {
+  .choice-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
 }
 
 .choice-btn:active {
@@ -873,6 +968,37 @@ h1 {
   text-shadow: 0 4px 0 #4a2f8f, 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
+/* 타이틀 로고 — 잉크빛 그라데이션 + 은은한 부유 (첫인상) */
+.title-screen h1 {
+  background: linear-gradient(180deg, #f2ecff 0%, #c9b4ff 46%, #9a78ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 4px 0 #4a2f8f) drop-shadow(0 12px 30px rgba(143, 107, 255, 0.55));
+  animation: titleFloat 4.2s ease-in-out infinite;
+}
+
+@keyframes titleFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+/* 타이틀 배경 파티클 캔버스 (떠오르는 잉크 먼지·글자 조각)
+   — 캔버스는 대체 요소라 inset만으로는 안 늘어남: width/height 명시 */
+.title-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 h2 {
   font-size: clamp(24px, 6vw, 36px);
 }
@@ -907,7 +1033,14 @@ h2 {
   border-radius: 16px;
   padding: 14px 44px;
   cursor: pointer;
-  box-shadow: 0 6px 0 #4a2f8f;
+  box-shadow: 0 6px 0 #4a2f8f, inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: filter 0.15s ease;
+}
+
+@media (hover: hover) {
+  .big-btn:hover {
+    filter: brightness(1.08);
+  }
 }
 
 .big-btn:active {
@@ -933,10 +1066,37 @@ h2 {
   min-width: 108px;
   padding: 18px 10px;
   color: #f3eeff;
-  background: linear-gradient(180deg, #322558, #241a40);
+  background: var(--paper), linear-gradient(180deg, #322558, #241a40);
   border: 2px solid #6a4fd0;
   border-radius: 16px;
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 6px 18px rgba(0, 0, 0, 0.35);
+  animation: cardIn 0.32s cubic-bezier(0.2, 1.4, 0.4, 1) backwards;
+}
+
+/* 카드가 한 장씩 순서대로 등장 */
+.card:nth-child(2) {
+  animation-delay: 0.07s;
+}
+
+.card:nth-child(3) {
+  animation-delay: 0.14s;
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.93);
+  }
+}
+
+@media (hover: hover) {
+  .card:hover {
+    transform: translateY(-3px);
+  }
 }
 
 .card:active {
@@ -965,6 +1125,26 @@ h2 {
 .card.rarity-legendary {
   border-color: #ffd166;
   box-shadow: 0 0 16px rgba(255, 209, 102, 0.35);
+}
+
+/* 전설 카드 — 금빛 광택이 주기적으로 스치고 지나간다 */
+.card.rarity-legendary::after {
+  content: '';
+  position: absolute;
+  inset: -30%;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 233, 179, 0.28) 50%, transparent 60%);
+  animation: cardShimmer 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes cardShimmer {
+  0% {
+    transform: translateX(-70%);
+  }
+  45%,
+  100% {
+    transform: translateX(70%);
+  }
 }
 
 .card-tag {

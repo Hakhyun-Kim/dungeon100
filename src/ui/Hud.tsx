@@ -41,6 +41,8 @@ export function GameHud({
         {daily ? '📅' : mode === 'kids' ? '🎒' : mode === 'adult' ? '🧠' : '👹'} {floorNo}층
       </div>
       <div className="hp-wrap">
+        {/* 잔상 바가 뒤에서 천천히 따라와 '깎인 만큼'이 잠시 보인다 */}
+        <div className="hp-ghost" style={{ width: `${ratio * 100}%` }} />
         <div className="hp-bar" style={{ width: `${ratio * 100}%` }} />
         <span className="hp-text">
           {Math.ceil(hp)} / {Math.round(maxHp)}
@@ -71,6 +73,7 @@ export function ArenaHud({
     <div className="hud">
       <div className="hud-chip">👹 아레나</div>
       <div className="hp-wrap">
+        <div className="hp-ghost" style={{ width: `${Math.max(0, (hp / max) * 100)}%` }} />
         <div className="hp-bar" style={{ width: `${Math.max(0, (hp / max) * 100)}%` }} />
         <span className="hp-text">
           {Math.ceil(hp)} / {max}

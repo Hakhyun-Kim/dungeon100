@@ -1,7 +1,87 @@
+import { useEffect, useRef } from 'react';
 import type { DailyRecord } from '../lib/daily';
 import { MEMORIES } from '../lib/memories';
 import { ChoiceList } from './Menu';
 import { SetProgressRow } from './LoreScreens';
+
+// 타이틀 배경 — 떠오르는 잉크 먼지와 글자 조각 (캔버스 2D, 외부 에셋 없음)
+const GLYPHS = ['백', '층', '던', '전', '책', '장', '글', '꿈'];
+
+function TitleFx() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    let raf = 0;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const fit = () => {
+      canvas.width = canvas.clientWidth * dpr;
+      canvas.height = canvas.clientHeight * dpr;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    interface Mote {
+      x: number; y: number; r: number; vy: number; vx: number; a: number;
+      glyph: string | null; rot: number; vrot: number;
+    }
+    const motes: Mote[] = Array.from({ length: 42 }, () => ({
+      x: Math.random(),
+      y: Math.random(),
+      r: 1.2 + Math.random() * 2.6,
+      vy: 0.01 + Math.random() * 0.025, // 화면 높이/초 — 위로 떠오름
+      vx: (Math.random() - 0.5) * 0.008,
+      a: 0.05 + Math.random() * 0.16,
+      glyph: Math.random() < 0.18 ? GLYPHS[Math.floor(Math.random() * GLYPHS.length)] : null,
+      rot: Math.random() * Math.PI * 2,
+      vrot: (Math.random() - 0.5) * 0.5,
+    }));
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      for (const m of motes) {
+        m.y -= m.vy * dt;
+        m.x += m.vx * dt;
+        m.rot += m.vrot * dt;
+        if (m.y < -0.05) {
+          m.y = 1.05;
+          m.x = Math.random();
+        }
+        if (m.glyph) {
+          ctx.save();
+          ctx.translate(m.x * w, m.y * h);
+          ctx.rotate(m.rot);
+          ctx.globalAlpha = m.a * 0.8;
+          ctx.fillStyle = '#c9b4ff';
+          ctx.font = `${Math.round(m.r * 7 * dpr)}px 'Jua', sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(m.glyph, 0, 0);
+          ctx.restore();
+        } else {
+          ctx.globalAlpha = m.a;
+          ctx.fillStyle = Math.random() < 0.02 ? '#ffd166' : '#8f6bff';
+          ctx.beginPath();
+          ctx.arc(m.x * w, m.y * h, m.r * dpr, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', fit);
+    };
+  }, []);
+  return <canvas ref={ref} className="title-fx" />;
+}
 
 // 타이틀 화면 — 모험 시작 · 오늘의 던전 · 자동 시연 세로 메뉴.
 // 시연은 언제든 볼 수 있게 상시 노출 (제출 영상 대신 최신 콘텐츠를 계속 보여 주는 쇼케이스).
@@ -32,6 +112,7 @@ export default function TitleScreen({
 }) {
   return (
     <div className="screen title-screen">
+      <TitleFx />
       <button className="hud-chip mute-btn title-mute" onClick={onToggleMute}>
         {muted ? '🔇' : '🔊'}
       </button>

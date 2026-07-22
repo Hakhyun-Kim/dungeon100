@@ -97,6 +97,19 @@ const DEMO_AUTO_KEY = 'd100-demo-auto';
 export default function App() {
   const [phase, setPhase] = useState<Phase>('title');
   const [floorNo, setFloorNo] = useState(1);
+  // 잉크 전환 — 층 이동·사망·마을 진입 때 잉크가 번졌다 걷히는 연출 (seq가 바뀌면 재생)
+  const [inkSeq, setInkSeq] = useState(0);
+  const inkSkipFirst = useRef(true);
+  useEffect(() => {
+    if (inkSkipFirst.current) {
+      inkSkipFirst.current = false;
+      return;
+    }
+    setInkSeq((s) => s + 1);
+  }, [floorNo]);
+  useEffect(() => {
+    if (phase === 'village' || phase === 'over') setInkSeq((s) => s + 1);
+  }, [phase]);
   // 부활 체크포인트 — 마지막으로 다녀온 5층 단위 마을 층 (죽으면 여기서 다시 시작)
   const [checkpointFloor, setCheckpointFloor] = useState(1);
   const [stats, setStats] = useState<Stats>(BASE_STATS);
@@ -987,6 +1000,8 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* 잉크 전환 — key가 바뀔 때마다 애니메이션 재생 (pointer-events 없음, 조작 안 막음) */}
+      {inkSeq > 0 && <div className="ink-wipe" key={inkSeq} />}
       {inGame && (
         <Canvas className="canvas" camera={{ fov: 50, position: [0, 15.5, 9.5] }} dpr={[1, 2]}>
           <color attach="background" args={[canvasBg]} />
