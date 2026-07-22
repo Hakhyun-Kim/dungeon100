@@ -1658,13 +1658,31 @@ function DungeonScene({
             <boxGeometry args={[0.42, 0.4, 0.4]} />
             <meshStandardMaterial color="#ffe0c2" />
           </mesh>
-          <mesh position={[-0.28, 0.98, 0]}>
-            <boxGeometry args={[0.12, 0.3, 0.12]} />
-            <meshStandardMaterial color="#6b4a2f" />
+          {/* 팔 */}
+          <mesh position={[-0.32, 0.55, 0]}>
+            <boxGeometry args={[0.12, 0.36, 0.14]} />
+            <meshStandardMaterial color="#ff9ec4" />
           </mesh>
-          <mesh position={[0.28, 0.98, 0]}>
-            <boxGeometry args={[0.12, 0.3, 0.12]} />
-            <meshStandardMaterial color="#6b4a2f" />
+          <mesh position={[0.32, 0.55, 0]}>
+            <boxGeometry args={[0.12, 0.36, 0.14]} />
+            <meshStandardMaterial color="#ff9ec4" />
+          </mesh>
+          {/* 긴 머리 — 색이 덜 칠해진 듯한 옅은 빛깔 ('쓰다 만' 등장인물) */}
+          <mesh position={[0, 1.17, -0.02]}>
+            <boxGeometry args={[0.46, 0.12, 0.44]} />
+            <meshStandardMaterial color="#ded4c2" />
+          </mesh>
+          <mesh position={[0, 0.82, -0.24]}>
+            <boxGeometry args={[0.44, 0.82, 0.1]} />
+            <meshStandardMaterial color="#ded4c2" />
+          </mesh>
+          <mesh position={[-0.24, 1.0, 0]}>
+            <boxGeometry args={[0.05, 0.34, 0.42]} />
+            <meshStandardMaterial color="#ded4c2" />
+          </mesh>
+          <mesh position={[0.24, 1.0, 0]}>
+            <boxGeometry args={[0.05, 0.34, 0.42]} />
+            <meshStandardMaterial color="#ded4c2" />
           </mesh>
           <mesh position={[-0.09, 0.98, 0.21]}>
             <boxGeometry args={[0.06, 0.08, 0.02]} />

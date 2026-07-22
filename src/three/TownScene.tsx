@@ -21,11 +21,12 @@ interface Npc {
   z: number;
   body: string;
   head: string;
+  hair: string; // 캐릭터 디테일 패스(2026-07-22) — 머리카락 색
 }
 const NPCS: Npc[] = [
-  { id: 'chief', name: '촌장', x: -3.2, z: 4, body: '#b9a3e0', head: '#e8d9b0' },
-  { id: 'nina', name: '니나', x: 6, z: 2.6, body: '#ff9ec4', head: '#ffe0c2' },
-  { id: 'muk', name: '무크', x: -6.6, z: -2.4, body: '#c98a4a', head: '#e8c9a0' },
+  { id: 'chief', name: '촌장', x: -3.2, z: 4, body: '#b9a3e0', head: '#e8d9b0', hair: '#d8cfc0' },
+  { id: 'nina', name: '니나', x: 6, z: 2.6, body: '#ff9ec4', head: '#ffe0c2', hair: '#8a5636' },
+  { id: 'muk', name: '무크', x: -6.6, z: -2.4, body: '#c98a4a', head: '#e8c9a0', hair: '#3a2a20' },
 ];
 
 interface Building {
@@ -651,7 +652,7 @@ export default function TownScene({
         </sprite>
       </group>
 
-      {/* NPC (블록 캐릭터 + 이름표) */}
+      {/* NPC (블록 캐릭터 + 이름표) — 머리카락·팔 디테일 (2026-07-22) */}
       {NPCS.map((n, i) => (
         <group key={n.id} ref={(g) => (npcRefs.current[i] = g)} position={[n.x, 0, n.z]}>
           <BlobShadow size={1.4} />
@@ -659,9 +660,27 @@ export default function TownScene({
             <boxGeometry args={[0.6, 0.7, 0.4]} />
             <meshStandardMaterial color={n.body} />
           </mesh>
+          {/* 팔 */}
+          <mesh position={[-0.38, 0.62, 0]}>
+            <boxGeometry args={[0.15, 0.44, 0.2]} />
+            <meshStandardMaterial color={n.body} />
+          </mesh>
+          <mesh position={[0.38, 0.62, 0]}>
+            <boxGeometry args={[0.15, 0.44, 0.2]} />
+            <meshStandardMaterial color={n.body} />
+          </mesh>
           <mesh position={[0, 1.18, 0]}>
             <boxGeometry args={[0.48, 0.44, 0.44]} />
             <meshStandardMaterial color={n.head} />
+          </mesh>
+          {/* 머리카락 — 윗머리 + 뒷머리 */}
+          <mesh position={[0, 1.42, -0.02]}>
+            <boxGeometry args={[0.52, 0.14, 0.48]} />
+            <meshStandardMaterial color={n.hair} />
+          </mesh>
+          <mesh position={[0, 1.26, -0.2]}>
+            <boxGeometry args={[0.52, 0.3, 0.1]} />
+            <meshStandardMaterial color={n.hair} />
           </mesh>
           <mesh position={[-0.1, 1.2, 0.23]}>
             <boxGeometry args={[0.07, 0.09, 0.02]} />
