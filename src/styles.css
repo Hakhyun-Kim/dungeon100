@@ -82,6 +82,13 @@ body {
   right: 12px;
 }
 
+/* 타이틀 그래픽 품질 토글 (음소거 왼쪽) */
+.title-gfx {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: 64px;
+}
+
 .hp-wrap {
   position: relative;
   flex: 1;

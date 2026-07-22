@@ -102,6 +102,12 @@ const buzz = (ms: number) => {
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(ms);
 };
 
+// 그래픽 품질 기본값 — 모바일은 ⚡가벼움(포스트프로세싱이 비싸다), 데스크톱은 ✨고품질
+const defaultGfx = (): 'high' | 'lite' =>
+  typeof navigator !== 'undefined' && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)
+    ? 'lite'
+    : 'high';
+
 export default function App() {
   const [phase, setPhase] = useState<Phase>('title');
   const [floorNo, setFloorNo] = useState(1);
@@ -153,6 +159,13 @@ export default function App() {
   const [girlMet, setGirlMet] = useLocalStorage<boolean>('d100-girl', false);
   // 떠돌이 상인 🎩 — 첫 만남(원본 독백 + 덤) 여부. 마을 방문 중에만 광장에 와 있다
   const [peddlerMet, setPeddlerMet] = useLocalStorage<boolean>('d100-peddler', false);
+  // 그래픽 품질 — ⚡가벼움(기존 렌더 경로: 포스트프로세싱 없음·DPR 캡·플랫 재질) / ✨고품질
+  const [gfx, setGfx] = useLocalStorage<'high' | 'lite'>('d100-gfx', defaultGfx());
+  const toggleGfx = () => {
+    sfx.tap();
+    setGfx((g) => (g === 'high' ? 'lite' : 'high'));
+  };
+  const lite = gfx === 'lite';
   // 본 흔적(14·28·42·49층)의 층 번호 — 42층 초대장을 봤으면 56층 소녀의 첫인사·선물이 달라진다
   const [tracesSeen, setTracesSeen] = useLocalStorage<number[]>('d100-traces', []);
   const tracesSeenRef = useRef(tracesSeen);
@@ -1115,7 +1128,12 @@ export default function App() {
       {/* 잉크 전환 — key가 바뀔 때마다 애니메이션 재생 (pointer-events 없음, 조작 안 막음) */}
       {inkSeq > 0 && <div className="ink-wipe" key={inkSeq} />}
       {inGame && (
-        <Canvas className="canvas" camera={{ fov: 50, position: [0, 15.5, 9.5] }} dpr={[1, 2]}>
+        <Canvas
+          className="canvas"
+          camera={{ fov: 50, position: [0, 15.5, 9.5] }}
+          dpr={lite ? [1, 1.5] : [1, 2]}
+          gl={{ powerPreference: 'high-performance' }}
+        >
           <color attach="background" args={[canvasBg]} />
           <fog attach="fog" args={[canvasBg, fogNear, fogFar]} />
           <DungeonScene
@@ -1123,6 +1141,7 @@ export default function App() {
             floorNo={floorNo}
             heroVariant={mode}
             minimapRef={minimapRef}
+            lite={lite}
             seedOffset={runType === 'daily' ? dailyNum : 0}
             hidden={
               phase === 'doorrun' ||
@@ -1164,6 +1183,7 @@ export default function App() {
             <GemArenaScene
               key={arenaTry}
               floorNo={floorNo}
+              lite={lite}
               statsRef={statsRef}
               onArenaHp={onArenaHp}
               onGem={onArenaGem}
@@ -1180,11 +1200,13 @@ export default function App() {
             />
           )}
           {/* 포스트프로세싱 — emissive(포털·탄막·보물·보스)가 실제로 '빛나게'.
-              mipmapBlur 블룸은 모바일에서도 저렴, multisampling 4로 MSAA 유지 */}
-          <EffectComposer multisampling={4}>
-            <Bloom mipmapBlur intensity={0.9} luminanceThreshold={0.58} luminanceSmoothing={0.3} radius={0.75} />
-            <Vignette eskil={false} offset={0.24} darkness={0.52} />
-          </EffectComposer>
+              ✨고품질에서만 — ⚡가벼움 모드는 컴포저 없이 직접 렌더(기존 경로). MSAA 2로 비용 절충 */}
+          {!lite && (
+            <EffectComposer multisampling={2}>
+              <Bloom mipmapBlur intensity={0.9} luminanceThreshold={0.58} luminanceSmoothing={0.3} radius={0.75} />
+              <Vignette eskil={false} offset={0.24} darkness={0.52} />
+            </EffectComposer>
+          )}
         </Canvas>
       )}
 
@@ -1209,7 +1231,9 @@ export default function App() {
           kills={kills}
           coins={coins}
           muted={muted}
+          gfx={gfx}
           onToggleMute={toggleMute}
+          onToggleGfx={toggleGfx}
         />
       )}
       {phase === 'arena' && (
@@ -1277,8 +1301,10 @@ export default function App() {
           memIds={memIds}
           storySeen={storySeen}
           muted={muted}
+          gfx={gfx}
           dailyRecord={dailyBest?.date === todayKey() ? dailyBest : null}
           onToggleMute={toggleMute}
+          onToggleGfx={toggleGfx}
           onStart={startAdventure}
           onDaily={() => enterDungeon(undefined, 'daily')}
           onReplay={replayStory}

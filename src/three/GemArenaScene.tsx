@@ -86,12 +86,14 @@ interface AParticle {
 export default function GemArenaScene({
   floorNo,
   statsRef,
+  lite = false,
   onArenaHp,
   onGem,
   onDone,
 }: {
   floorNo: number;
   statsRef: React.MutableRefObject<Stats>;
+  lite?: boolean; // ⚡가벼움 모드 — 바닥 텍스처 생략
   onArenaHp: (hp: number, max: number) => void;
   onGem: (count: number) => void;
   onDone: (cleared: boolean, gems: number) => void;
@@ -692,10 +694,15 @@ export default function GemArenaScene({
           return (
             <mesh key={`${gx}:${gy}`} position={[wx, -0.15, wz]}>
               <boxGeometry args={[ARENA_R / 4.5, 0.3, ARENA_R / 4.5]} />
-              <meshStandardMaterial
-                color={(gx + gy) % 2 === 0 ? '#3a2f55' : '#453a63'}
-                map={getFloorTexture()}
-              />
+              {lite ? (
+                <meshStandardMaterial key="lite" color={(gx + gy) % 2 === 0 ? '#3a2f55' : '#453a63'} />
+              ) : (
+                <meshStandardMaterial
+                  key="high"
+                  color={(gx + gy) % 2 === 0 ? '#3a2f55' : '#453a63'}
+                  map={getFloorTexture()}
+                />
+              )}
             </mesh>
           );
         }),

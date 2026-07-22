@@ -91,8 +91,10 @@ export default function TitleScreen({
   memIds,
   storySeen,
   muted,
+  gfx,
   dailyRecord,
   onToggleMute,
+  onToggleGfx,
   onStart,
   onDaily,
   onReplay,
@@ -103,8 +105,10 @@ export default function TitleScreen({
   memIds: string[]; // 되찾은 기억 id — 갈래 진행도 표시용
   storySeen: boolean;
   muted: boolean;
+  gfx: 'high' | 'lite'; // 그래픽 품질 (⚡가벼움 = 기존 렌더 경로)
   dailyRecord: DailyRecord | null; // 오늘 날짜의 기록 (없으면 null)
   onToggleMute: () => void;
+  onToggleGfx: () => void;
   onStart: () => void;
   onDaily: () => void;
   onReplay: () => void;
@@ -115,6 +119,10 @@ export default function TitleScreen({
       <TitleFx />
       <button className="hud-chip mute-btn title-mute" onClick={onToggleMute}>
         {muted ? '🔇' : '🔊'}
+      </button>
+      {/* 그래픽 품질 토글 — ⚡가벼움(성능 우선·기존 그래픽) / ✨고품질(블룸·텍스처) */}
+      <button className="hud-chip mute-btn title-gfx" onClick={onToggleGfx}>
+        {gfx === 'lite' ? '⚡ 가벼움' : '✨ 고품질'}
       </button>
       <h1>백층 던전</h1>
       <p className="tagline">책 속으로 떨어진 대학생의 귀환 대작전 — 100층까지 내려가라!</p>

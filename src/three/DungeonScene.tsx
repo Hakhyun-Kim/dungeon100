@@ -135,6 +135,7 @@ function DungeonScene({
   hidden,
   heroVariant,
   minimapRef,
+  lite = false,
   statsRef,
   damageMulRef,
   pausedRef,
@@ -167,6 +168,7 @@ function DungeonScene({
   hidden: boolean; // 두 문 달리기 미니게임 동안 던전을 숨기고 카메라를 양보
   heroVariant?: HeroVariant; // 던전 종류에 따른 주인공 모습 (초등학생/대학생/모험가)
   minimapRef?: React.MutableRefObject<MiniMapChannel>; // 미니맵 채널 — 프레임마다 좌표·탐사 마스크를 써 넣는다
+  lite?: boolean; // ⚡가벼움 모드 — 텍스처·범프 없이 플랫 재질 (기존 렌더 경로)
   statsRef: React.MutableRefObject<Stats>;
   /** 기억 능력 '두근거림' 등 상황형 공격 배율 (1 = 없음) */
   damageMulRef: React.MutableRefObject<number>;
@@ -1580,16 +1582,31 @@ function DungeonScene({
       <ambientLight intensity={0.7} />
       <directionalLight position={[6, 14, 4]} intensity={1.15} />
 
-      {/* 바닥 (교대 색 × 절차 돌결 텍스처 — 회색조 결에 인스턴스 색이 곱해진다) */}
+      {/* 바닥 (교대 색 × 절차 돌결 텍스처 — 회색조 결에 인스턴스 색이 곱해진다)
+          ⚡가벼움 모드는 텍스처·범프 없는 플랫 재질 — key로 재질을 통째로 갈아 끼운다 */}
       <instancedMesh ref={floorMeshRef} args={[undefined, undefined, floorCells.length]} frustumCulled={false}>
         <boxGeometry args={[CELL, 0.3, CELL]} />
-        <meshStandardMaterial map={getFloorTexture()} bumpMap={getFloorTexture()} bumpScale={0.5} />
+        {lite ? (
+          <meshStandardMaterial key="lite" />
+        ) : (
+          <meshStandardMaterial key="high" map={getFloorTexture()} bumpMap={getFloorTexture()} bumpScale={0.5} />
+        )}
       </instancedMesh>
 
       {/* 벽 — 10층 단위 테마 색 × 절차 층리 텍스처 */}
       <instancedMesh ref={wallMeshRef} args={[undefined, undefined, wallCells.length]} frustumCulled={false}>
         <boxGeometry args={[CELL, 2.6, CELL]} />
-        <meshStandardMaterial color={theme.wall} map={getWallTexture()} bumpMap={getWallTexture()} bumpScale={0.4} />
+        {lite ? (
+          <meshStandardMaterial key="lite" color={theme.wall} />
+        ) : (
+          <meshStandardMaterial
+            key="high"
+            color={theme.wall}
+            map={getWallTexture()}
+            bumpMap={getWallTexture()}
+            bumpScale={0.4}
+          />
+        )}
       </instancedMesh>
 
       {/* 적 — 5층 단위 티어마다 모양·색이 달라진다 (피격 시 흰색 번쩍) */}

@@ -22,7 +22,9 @@ export function GameHud({
   kills,
   coins,
   muted,
+  gfx,
   onToggleMute,
+  onToggleGfx,
 }: {
   mode: DungeonMode;
   daily?: boolean;
@@ -32,7 +34,9 @@ export function GameHud({
   kills: number;
   coins: number;
   muted: boolean;
+  gfx: 'high' | 'lite';
   onToggleMute: () => void;
+  onToggleGfx: () => void; // 그래픽 품질 토글 — 게임 중에도 즉시 전환
 }) {
   const ratio = Math.max(0, Math.min(1, hp / maxHp));
   return (
@@ -50,6 +54,9 @@ export function GameHud({
       </div>
       <div className="hud-chip">💀 {kills}</div>
       <div className="hud-chip">🪙 {coins}</div>
+      <button className="hud-chip mute-btn" onClick={onToggleGfx} title="그래픽 품질 전환">
+        {gfx === 'lite' ? '⚡' : '✨'}
+      </button>
       <MuteButton muted={muted} onToggle={onToggleMute} />
     </div>
   );
