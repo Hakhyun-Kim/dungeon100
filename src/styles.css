@@ -134,6 +134,52 @@ body {
   animation-duration: 0.6s;
 }
 
+/* ── 미니맵 — 절차 생성 던전을 눈으로 (탐사한 곳만 밝혀짐) ── */
+.mini-map {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 78px); /* 보스 체력바(+42px) 아래 */
+  right: 12px;
+  z-index: 20; /* 오버레이(30)·HUD(50) 아래, 캔버스 위 */
+  background: rgba(20, 12, 40, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+/* ── 처치 콤보 칩 — 3초 안에 이어서 처치하면 코인 배율 ── */
+.combo-chip {
+  position: absolute;
+  bottom: max(56px, calc(env(safe-area-inset-bottom) + 48px)); /* 빌드 칩 위 — 보스바·미니맵과 안 겹침 */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  pointer-events: none;
+  background: rgba(40, 16, 10, 0.82);
+  border: 1px solid rgba(255, 154, 61, 0.75);
+  border-radius: 999px;
+  padding: 5px 16px;
+  font-size: 16px;
+  color: #ffcf8a;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 16px rgba(255, 122, 40, 0.35);
+  animation: comboPop 0.28s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+@keyframes comboPop {
+  from {
+    transform: translateX(-50%) scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
+}
+
 /* ── 현재 빌드 표시 ── */
 .build-row {
   position: absolute;

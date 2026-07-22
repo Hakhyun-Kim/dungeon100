@@ -6,6 +6,7 @@ import type { Stats } from '../lib/upgrades';
 import { sfx } from '../lib/sound';
 import Hero, { type HeroVariant } from './Hero';
 import { BlobShadow, getBlobShadowTexture, getFloorTexture, getWallTexture } from './fx';
+import type { MiniMapChannel } from '../ui/MiniMap';
 
 // 셀 좌표 → 결정적 0..1 해시 (타일 색 변주·가짜 AO용 — 시드 고정이라 같은 층은 항상 같은 무늬)
 const cellHash = (x: number, y: number, s: number) => {
@@ -133,6 +134,7 @@ function DungeonScene({
   seedOffset = 0,
   hidden,
   heroVariant,
+  minimapRef,
   statsRef,
   damageMulRef,
   pausedRef,
@@ -161,6 +163,7 @@ function DungeonScene({
   seedOffset?: number; // 일일 던전 — 날짜 시드를 층 시드에 섞는다 (0 = 보통 던전)
   hidden: boolean; // 두 문 달리기 미니게임 동안 던전을 숨기고 카메라를 양보
   heroVariant?: HeroVariant; // 던전 종류에 따른 주인공 모습 (초등학생/대학생/모험가)
+  minimapRef?: React.MutableRefObject<MiniMapChannel>; // 미니맵 채널 — 프레임마다 좌표·탐사 마스크를 써 넣는다
   statsRef: React.MutableRefObject<Stats>;
   /** 기억 능력 '두근거림' 등 상황형 공격 배율 (1 = 없음) */
   damageMulRef: React.MutableRefObject<number>;
@@ -606,6 +609,25 @@ function DungeonScene({
 
   const hiddenRef = useRef(hidden);
   hiddenRef.current = hidden;
+
+  // ── 미니맵 채널 초기화 (층 마운트 시 1회) — 탐사 마스크는 층마다 새로
+  const minimapTick = useRef(0);
+  useEffect(() => {
+    const ch = minimapRef?.current;
+    if (!ch) return;
+    ch.cells = floor.cells;
+    ch.seen = new Uint8Array(GRID * GRID);
+    ch.exitX = floor.exit.x;
+    ch.exitY = floor.exit.y;
+    ch.chestX = floor.chest ? floor.chest.x : -1;
+    ch.chestY = floor.chest ? floor.chest.y : -1;
+    ch.homeX = floor.homeDoor ? floor.homeDoor.x : -1;
+    ch.homeY = floor.homeDoor ? floor.homeDoor.y : -1;
+    ch.bossAlive = isBossFloor;
+    ch.floorColor = theme.f1;
+    ch.version++;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floor]);
 
   useFrame((state, delta) => {
     const devWin = window as unknown as Record<string, unknown>;
@@ -1453,6 +1475,33 @@ function DungeonScene({
       cam.position.x += (Math.random() - 0.5) * s2 * 1.6;
       cam.position.z += (Math.random() - 0.5) * s2 * 1.6;
       cam.lookAt(p.position.x, 0, p.position.z);
+    }
+
+    // ── 미니맵 갱신 (0.12s 간격) — 플레이어 위치·탐사 반경·마커 상태
+    const mch = minimapRef?.current;
+    if (mch && mch.seen) {
+      minimapTick.current -= dt;
+      if (minimapTick.current <= 0) {
+        minimapTick.current = 0.12;
+        const cx = (p.position.x - CELL / 2) / CELL + GRID / 2;
+        const cy = (p.position.z - CELL / 2) / CELL + GRID / 2;
+        mch.px = cx;
+        mch.py = cy;
+        const R = 5; // 탐사 반경 (셀) — 걸어가며 지도가 밝혀진다
+        const icx = Math.round(cx);
+        const icy = Math.round(cy);
+        for (let oy = -R; oy <= R; oy++) {
+          for (let ox = -R; ox <= R; ox++) {
+            if (ox * ox + oy * oy > R * R + 2) continue;
+            const nx = icx + ox;
+            const ny = icy + oy;
+            if (nx >= 0 && ny >= 0 && nx < GRID && ny < GRID) mch.seen[ny * GRID + nx] = 1;
+          }
+        }
+        mch.chestX = chestState.current === 'idle' && floor.chest ? floor.chest.x : -1;
+        mch.homeX = homeState.current !== 'used' && floor.homeDoor ? floor.homeDoor.x : -1;
+        mch.bossAlive = !bossDead.current;
+      }
     }
   });
 

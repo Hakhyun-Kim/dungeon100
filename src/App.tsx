@@ -42,6 +42,7 @@ import {
 } from './lib/story';
 import { useDemoDriver } from './demo/useDemoDriver';
 import { GameHud, ArenaHud, VillageHud, BuildRow, BossBar } from './ui/Hud';
+import MiniMap, { makeMiniMapChannel } from './ui/MiniMap';
 import TitleScreen from './ui/TitleScreen';
 import StoryScreen from './ui/StoryScreen';
 import TownDialogScreen from './ui/TownDialogScreen';
@@ -94,6 +95,11 @@ type Phase =
 // 시연 '다시 보기'는 리로드 후 자동 재생 — 리로드 너머로 의도를 실어 나르는 세션 키
 const DEMO_AUTO_KEY = 'd100-demo-auto';
 
+// 모바일 진동 — 지원 기기에서만 (피격·처치·보물 짧은 햅틱)
+const buzz = (ms: number) => {
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(ms);
+};
+
 export default function App() {
   const [phase, setPhase] = useState<Phase>('title');
   const [floorNo, setFloorNo] = useState(1);
@@ -110,6 +116,18 @@ export default function App() {
   useEffect(() => {
     if (phase === 'village' || phase === 'over') setInkSeq((s) => s + 1);
   }, [phase]);
+  // 처치 콤보 — 3초 창 안의 연속 처치를 세고, 끊기면 칩을 숨긴다
+  const comboRef = useRef({ n: 0, until: 0 });
+  const [combo, setCombo] = useState({ n: 0, mult: 1, seq: 0 });
+  useEffect(() => {
+    if (combo.n < 2) return;
+    const id = setTimeout(() => {
+      if (performance.now() >= comboRef.current.until) setCombo({ n: 0, mult: 1, seq: 0 });
+    }, 3100);
+    return () => clearTimeout(id);
+  }, [combo.seq, combo.n]);
+  // 미니맵 채널 — DungeonScene이 채우고 MiniMap(DOM 캔버스)이 읽는다
+  const minimapRef = useRef(makeMiniMapChannel());
   // 부활 체크포인트 — 마지막으로 다녀온 5층 단위 마을 층 (죽으면 여기서 다시 시작)
   const [checkpointFloor, setCheckpointFloor] = useState(1);
   const [stats, setStats] = useState<Stats>(BASE_STATS);
@@ -621,8 +639,14 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, townMode, townNode]);
 
+  // 보물 획득 햅틱 — 황금 잔광(goldFlash)이 오르는 모든 지급 경로 공통
+  useEffect(() => {
+    if (goldFlash > 0) buzz(40);
+  }, [goldFlash]);
+
   const onDamage = useCallback((dmg: number) => {
     sfx.hurt();
+    buzz(30); // 모바일 진동 — 피격
     setFlash((f) => f + 1);
     setHp((h) => Math.max(0, h - dmg));
   }, []);
@@ -633,9 +657,17 @@ export default function App() {
   const onKill = useCallback(
     (bounty: number) => {
       sfx.kill();
+      buzz(12); // 모바일 진동 — 처치
       setKills((k) => k + 1);
-      // 탐욕의 책갈피 — 코인 배율
-      setCoins((c) => c + Math.max(1, Math.round(bounty * statsRef.current.greed)));
+      // 처치 콤보 — 3초 안에 이어서 처치하면 코인 배율 (4연속 ×2, 8연속 ×3)
+      const now = performance.now();
+      const cb = comboRef.current;
+      cb.n = now < cb.until ? cb.n + 1 : 1;
+      cb.until = now + 3000;
+      const mult = cb.n >= 8 ? 3 : cb.n >= 4 ? 2 : 1;
+      if (cb.n >= 2) setCombo((v) => ({ n: cb.n, mult, seq: v.seq + 1 }));
+      // 탐욕의 책갈피 — 코인 배율 (콤보 배율과 곱연산 = 시너지)
+      setCoins((c) => c + Math.max(1, Math.round(bounty * statsRef.current.greed * mult)));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -1011,6 +1043,7 @@ export default function App() {
             key={`${runId}:${floorNo}`}
             floorNo={floorNo}
             heroVariant={mode}
+            minimapRef={minimapRef}
             seedOffset={runType === 'daily' ? dailyNum : 0}
             hidden={
               phase === 'doorrun' ||
@@ -1071,6 +1104,16 @@ export default function App() {
             <Vignette eskil={false} offset={0.24} darkness={0.52} />
           </EffectComposer>
         </Canvas>
+      )}
+
+      {/* 미니맵 — 절차 생성 던전을 눈으로 (탐사한 곳만 밝혀짐) */}
+      {inDungeonUi && phase !== 'doorrun' && <MiniMap chRef={minimapRef} />}
+
+      {/* 처치 콤보 칩 — 3초 안에 이어서 처치하면 코인 배율 */}
+      {inDungeonUi && combo.n >= 2 && (
+        <div className="combo-chip" key={combo.seq}>
+          🔥 {combo.n} 콤보{combo.mult > 1 ? ` · 코인 ×${combo.mult}` : ''}
+        </div>
       )}
 
       {/* ── HUD (z-index 50 — 오버레이 위) ── */}
