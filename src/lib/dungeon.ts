@@ -28,6 +28,7 @@ export interface FloorMap {
   house: Room | null; // 몬스터 하우스 — 적이 빽빽한 방 (5층+, 22% 층, 흔적·소녀 층 제외)
   houseOrbs: { x: number; y: number }[]; // 몬스터 하우스 바닥의 코인 무더기 (3개)
   secret: { x: number; y: number } | null; // 찢어진 페이지 — 층 건너뛰는 비밀 문 (6~96층, 22% 층)
+  rifts: [{ x: number; y: number }, { x: number; y: number }] | null; // 두 갈래 틈 — 층 안 순간이동 지름길 한 쌍 (4층+, 25% 층)
 }
 
 // 소녀의 흔적이 놓이는 층
@@ -204,6 +205,37 @@ export function generateFloor(floorNo: number, seedOffset = 0): FloorMap {
     }
   }
 
+  // 두 갈래 틈 — 가장 멀리 떨어진 두 방을 잇는 순간이동 지름길 한 쌍 (4층+, 25%).
+  // 발견의 재미 + 미로 단축. 소녀 층은 제외. (rand 호출은 여전히 기존 배치 뒤 — 층 구조 보존)
+  let rifts: [{ x: number; y: number }, { x: number; y: number }] | null = null;
+  if (floorNo >= 4 && !girl && rooms.length >= 4 && rand() < 0.25) {
+    let bi = 0;
+    let bj = 1;
+    let bd = -1;
+    for (let i = 0; i < rooms.length; i++)
+      for (let j = i + 1; j < rooms.length; j++) {
+        const d = Math.abs(rooms[i].cx - rooms[j].cx) + Math.abs(rooms[i].cy - rooms[j].cy);
+        if (d > bd) {
+          bd = d;
+          bi = i;
+          bj = j;
+        }
+      }
+    const placeIn = (r: Room): { x: number; y: number } | null => {
+      for (let tries = 0; tries < 12; tries++) {
+        const px = r.x + 1 + Math.floor(rand() * (r.w - 2));
+        const py = r.y + 1 + Math.floor(rand() * (r.h - 2));
+        if (avoid.some((a) => Math.abs(px - a.x) + Math.abs(py - a.y) < 3)) continue;
+        avoid.push({ x: px, y: py });
+        return { x: px, y: py };
+      }
+      return null;
+    };
+    const a = placeIn(rooms[bi]);
+    const b = placeIn(rooms[bj]);
+    if (a && b) rifts = [a, b];
+  }
+
   return {
     cells,
     rooms,
@@ -218,6 +250,7 @@ export function generateFloor(floorNo: number, seedOffset = 0): FloorMap {
     house,
     houseOrbs,
     secret,
+    rifts,
   };
 }
 

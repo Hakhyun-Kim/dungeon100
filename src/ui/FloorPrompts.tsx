@@ -102,6 +102,26 @@ export function AltarScreen({
   );
 }
 
+// 두 갈래 틈 — 층 안에서 멀리 떨어진 곳으로 이어지는 순간이동 지름길 (한 쌍, 왕복 가능)
+export function RiftScreen({ onEnter, onDecline }: { onEnter: () => void; onDecline: () => void }) {
+  return (
+    <div className="screen quiz-screen">
+      <h2>🌫️ 두 갈래 틈</h2>
+      <p className="quiz-sub">
+        공중에 종이가 겹쳐 접힌 듯한 틈이 일렁인다.
+        <br />
+        틈 저편에서 바람이 분다 — 이 층의 다른 어딘가와 이어져 있는 모양이다.
+      </p>
+      <ChoiceList
+        items={[
+          { key: 'enter', label: '🌀 틈으로 들어간다', onPick: onEnter },
+          { key: 'skip', label: '🕯️ 지금은 그만둔다', onPick: onDecline },
+        ]}
+      />
+    </div>
+  );
+}
+
 // 찢어진 페이지 — 방·층을 건너뛰는 비밀 문. 성장 기회를 버리는 대신 깊이를 번다.
 export function SecretDoorScreen({
   floorNo,

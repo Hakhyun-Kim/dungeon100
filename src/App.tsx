@@ -49,7 +49,7 @@ import StoryScreen from './ui/StoryScreen';
 import TownDialogScreen from './ui/TownDialogScreen';
 import VillageOverlay, { type VillageTalk } from './ui/VillageOverlay';
 import ShopScreen from './ui/ShopScreen';
-import { PortalScreen, HomeDoorScreen, AltarScreen, SecretDoorScreen } from './ui/FloorPrompts';
+import { PortalScreen, HomeDoorScreen, AltarScreen, SecretDoorScreen, RiftScreen } from './ui/FloorPrompts';
 import { QuizResultScreen, ArenaOverScreen, type QuizView } from './ui/ChestScreens';
 import {
   LoreScreen,
@@ -88,6 +88,7 @@ type Phase =
   | 'homedoor'
   | 'altar'
   | 'secretdoor'
+  | 'rift' // 두 갈래 틈 — 층 안 순간이동 지름길
   | 'shop'
   | 'trace'
   | 'ending'
@@ -238,6 +239,9 @@ export default function App() {
   const altarRetryRef = useRef(0);
   const altarUsedRef = useRef(0);
   const secretRetryRef = useRef(0);
+  // 두 갈래 틈 — 거절 시 재무장 / 수락 시 반대편으로 순간이동 (씬이 처리)
+  const riftRetryRef = useRef(0);
+  const riftGoRef = useRef(0);
   const [altarReward, setAltarReward] = useState<Upgrade | null>(null);
   const visitGiftGiven = useRef<Set<number>>(new Set()); // 방문당 노드별 선물 1회
 
@@ -299,6 +303,7 @@ export default function App() {
     else if (phase === 'homedoor') sfx.bell();
     else if (phase === 'altar') sfx.lore();
     else if (phase === 'secretdoor') sfx.portal();
+    else if (phase === 'rift') sfx.lore();
     else if (phase === 'over') sfx.over();
     else if (phase === 'ending') sfx.unlock();
   }, [phase]);
@@ -787,6 +792,7 @@ export default function App() {
     setPhase('altar');
   }, []);
   const onSecret = useCallback(() => setPhase('secretdoor'), []);
+  const onRift = useCallback(() => setPhase('rift'), []);
   // 몬스터 하우스 코인 무더기 (탐욕 배율 적용)
   const onCoins = useCallback(
     (n: number) => {
@@ -1023,6 +1029,16 @@ export default function App() {
     secretRetryRef.current += 1;
     setPhase('run');
   };
+  // 두 갈래 틈 — 들어가면 씬이 반대편으로 순간이동시킨다 (연출·자비 포함)
+  const enterRift = () => {
+    riftGoRef.current += 1;
+    setPhase('run');
+  };
+  const declineRift = () => {
+    sfx.tap();
+    riftRetryRef.current += 1;
+    setPhase('run');
+  };
 
   // 죽으면 1층이 아니라 마지막으로 다녀온 마을(체크포인트)에서 부활 — 장비 유지·완전 회복.
   // 주민들이 맞아 주고, 거기서 다시 던전으로 내려간다. ('죽음=다시 쓰임' 세계관과 연결)
@@ -1124,6 +1140,8 @@ export default function App() {
             altarRetryRef={altarRetryRef}
             altarUsedRef={altarUsedRef}
             secretRetryRef={secretRetryRef}
+            riftRetryRef={riftRetryRef}
+            riftGoRef={riftGoRef}
             onDamage={onDamage}
             onHeal={onHeal}
             onKill={onKill}
@@ -1136,6 +1154,7 @@ export default function App() {
             onGirl={onGirl}
             onAltar={onAltar}
             onSecret={onSecret}
+            onRift={onRift}
             onCoins={onCoins}
           />
           {phase === 'doorrun' && (
@@ -1318,6 +1337,7 @@ export default function App() {
           }}
         />
       )}
+      {phase === 'rift' && <RiftScreen onEnter={enterRift} onDecline={declineRift} />}
       {phase === 'secretdoor' && (
         <SecretDoorScreen floorNo={floorNo} onJump={jumpSecret} onDecline={declineSecret} />
       )}

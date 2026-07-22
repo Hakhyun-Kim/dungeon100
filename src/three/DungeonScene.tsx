@@ -145,6 +145,8 @@ function DungeonScene({
   altarRetryRef,
   altarUsedRef,
   secretRetryRef,
+  riftRetryRef,
+  riftGoRef,
   onDamage,
   onHeal,
   onKill,
@@ -157,6 +159,7 @@ function DungeonScene({
   onGirl,
   onAltar,
   onSecret,
+  onRift,
   onCoins,
 }: {
   floorNo: number;
@@ -175,6 +178,8 @@ function DungeonScene({
   altarRetryRef: React.MutableRefObject<number>; // 제단 "그만둔다" → 재무장
   altarUsedRef: React.MutableRefObject<number>; // 제단에 바침 → 제단 소멸
   secretRetryRef: React.MutableRefObject<number>; // 찢어진 페이지 "그만둔다" → 재무장
+  riftRetryRef: React.MutableRefObject<number>; // 두 갈래 틈 "그만둔다" → 벗어나면 재무장
+  riftGoRef: React.MutableRefObject<number>; // 두 갈래 틈 "들어간다" → 반대편으로 순간이동
   onDamage: (dmg: number) => void;
   onHeal: (amount: number) => void; // 흡혈의 잉크 — 처치 시 회복
   onKill: (bounty: number) => void; // bounty = 코인 (탱커 3, 그 외 1)
@@ -187,6 +192,7 @@ function DungeonScene({
   onGirl: () => void; // 56층 소녀와 만남
   onAltar: () => void; // 제단 접촉 → 바칠지 선택
   onSecret: () => void; // 찢어진 페이지 접촉 → 건너뛸지 선택
+  onRift: () => void; // 두 갈래 틈 접촉 → 들어갈지 선택
   onCoins: (n: number) => void; // 몬스터 하우스 코인 무더기 줍기
 }) {
   const floor = useMemo(() => generateFloor(floorNo, seedOffset), [floorNo, seedOffset]);
@@ -396,6 +402,18 @@ function DungeonScene({
   const orbTaken = useRef<boolean[]>(floor.houseOrbs.map(() => false));
   const orbRefs = useRef<(THREE.Group | null)[]>([]);
 
+  // ── 두 갈래 틈 (층 안 순간이동 지름길 한 쌍 — 왕복 무제한)
+  const riftPos = useMemo(
+    () => (floor.rifts ? floor.rifts.map((r) => cellToWorld(r.x, r.y)) : null),
+    [floor],
+  );
+  const riftState = useRef<'idle' | 'pending'>('idle');
+  const riftFromIdx = useRef(0); // 어느 쪽 틈에 닿았나 (0/1)
+  const riftRetrySeen = useRef(riftRetryRef.current);
+  const riftGoSeen = useRef(riftGoRef.current);
+  const riftWaitLeave = useRef(false);
+  const riftRefs = useRef<(THREE.Group | null)[]>([null, null]);
+
   // 나침반 화살표 (플레이어 주위를 돌며 목표 방향 표시)
   const portalArrowRef = useRef<THREE.Group>(null);
   const chestArrowRef = useRef<THREE.Group>(null);
@@ -573,6 +591,8 @@ function DungeonScene({
         altarState: altarState.current,
         secretWorld: secretPos,
         secretState: secretState.current,
+        riftWorlds: riftPos,
+        riftState: riftState.current,
         orbsLeft: orbTaken.current.filter((v) => !v).length,
         orbWorlds: orbPos.filter((_, i) => !orbTaken.current[i]),
         enemyTier,
@@ -758,6 +778,35 @@ function DungeonScene({
         secretWaitLeave.current = false;
         secretState.current = 'idle';
       }
+    }
+
+    // ── 두 갈래 틈: "그만둔다" → 두 틈에서 벗어나면 재무장 / "들어간다" → 반대편으로 순간이동
+    if (riftRetryRef.current !== riftRetrySeen.current) {
+      riftRetrySeen.current = riftRetryRef.current;
+      riftState.current = 'idle';
+      riftWaitLeave.current = true;
+    }
+    if (riftGoRef.current !== riftGoSeen.current) {
+      riftGoSeen.current = riftGoRef.current;
+      if (riftPos && riftState.current === 'pending') {
+        const from = riftPos[riftFromIdx.current];
+        const to = riftPos[1 - riftFromIdx.current];
+        burst(from[0], 0.9, from[1], '#b9a3ff', 14, 1.8);
+        p.position.x = to[0];
+        p.position.z = to[1];
+        burst(to[0], 0.9, to[1], '#b9a3ff', 18, 2.0);
+        shake.current = Math.min(0.6, shake.current + 0.25);
+        sfx.portal();
+        for (const e of enemies.current) e.hitCd = Math.max(e.hitCd, 0.9); // 도착 자비
+        riftState.current = 'idle';
+        riftWaitLeave.current = true; // 도착한 틈 위에서 곧장 다시 묻지 않게
+      }
+    }
+    if (riftWaitLeave.current && riftPos) {
+      const clear = riftPos.every(
+        (rp) => Math.hypot(p.position.x - rp[0], p.position.z - rp[1]) > 2.4,
+      );
+      if (clear) riftWaitLeave.current = false;
     }
 
     if (!pausedRef.current) {
@@ -1116,6 +1165,18 @@ function DungeonScene({
         }
       }
 
+      // ── 두 갈래 틈 접촉 → 들어갈지 선택
+      if (riftPos && riftState.current === 'idle' && !riftWaitLeave.current) {
+        for (let ri = 0; ri < riftPos.length; ri++) {
+          if (Math.hypot(p.position.x - riftPos[ri][0], p.position.z - riftPos[ri][1]) < 1.0) {
+            riftState.current = 'pending';
+            riftFromIdx.current = ri;
+            onRift();
+            break;
+          }
+        }
+      }
+
       // ── 몬스터 하우스 코인 무더기 — 몸으로 줍기 (오버레이 없이 흐름 유지)
       orbPos.forEach((op, i) => {
         if (orbTaken.current[i]) return;
@@ -1424,6 +1485,14 @@ function DungeonScene({
       secretRef.current.rotation.y = Math.sin(t * 0.9) * 0.3;
       secretRef.current.position.y = 1.05 + Math.sin(t * 1.7) * 0.12;
     }
+    // 두 갈래 틈 — 숨쉬듯 일렁임
+    riftRefs.current.forEach((g, i) => {
+      if (!g) return;
+      g.rotation.y = t * 0.7 + i * 1.6;
+      g.position.y = 1.0 + Math.sin(t * 1.5 + i * 2.1) * 0.1;
+      const sc = 1 + Math.sin(t * 3.1 + i) * 0.07;
+      g.scale.set(sc, 1 / sc, 1);
+    });
     orbRefs.current.forEach((g, i) => {
       if (!g) return;
       if (orbTaken.current[i]) {
@@ -1648,6 +1717,30 @@ function DungeonScene({
           <pointLight color="#cfd8ff" intensity={1.1} distance={5} position={[0, 0.4, 0.4]} />
         </group>
       )}
+
+      {/* 두 갈래 틈 — 층 안 순간이동 지름길 (한 쌍, 왕복 무제한) */}
+      {riftPos &&
+        riftPos.map((rp, i) => (
+          <group key={i} ref={(g) => (riftRefs.current[i] = g)} position={[rp[0], 1.0, rp[1]]}>
+            {/* 새까만 균열 + 옅은 잉크빛 테두리 */}
+            <mesh>
+              <planeGeometry args={[0.32, 1.7]} />
+              <meshBasicMaterial color="#0d0918" side={THREE.DoubleSide} />
+            </mesh>
+            <mesh position={[0, 0, -0.012]}>
+              <planeGeometry args={[0.5, 1.88]} />
+              <meshStandardMaterial
+                color="#b9a3ff"
+                emissive="#8d86a8"
+                emissiveIntensity={0.55}
+                transparent
+                opacity={0.35}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+            <pointLight color="#b9a3ff" intensity={0.8} distance={4} />
+          </group>
+        ))}
 
       {/* 몬스터 하우스 코인 무더기 (몸으로 줍기) */}
       {orbPos.map((op, i) => (
