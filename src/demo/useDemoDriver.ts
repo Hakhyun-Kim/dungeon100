@@ -12,7 +12,7 @@ const findFloor = (pred: (m: ReturnType<typeof generateFloor>) => boolean): numb
 // ── 자동 시연 드라이버 (?demo) — 실제 게임을 그대로 플레이하며 자막과 함께 보여준다.
 //    이동은 합성 키보드 이벤트(useMoveInput/useSteer가 window 키 이벤트 기반이라 그대로 먹힘),
 //    장면 전환은 App이 넘겨준 게임 조작 프리미티브(DemoActions)로 직접 진행.
-//    DEV 훅을 안 쓰므로 프로덕션 빌드에서도 동작 — 심사자가 링크 클릭 한 번으로 관람.
+//    DEV 훅을 안 쓰므로 프로덕션 빌드에서도 동작 — 링크 클릭 한 번으로 관람.
 export interface DemoActions {
   /** 자막 갱신 (빈 문자열 = 숨김) */
   caption: (text: string) => void;
@@ -38,7 +38,7 @@ export interface DemoActions {
   secretDoor: () => void;
   /** 층 번호만 변경 (장면 연출용) */
   setFloor: (n: number) => void;
-  /** 56층 소녀 찻자리 직접 진입 (girlMet 저장 안 함 — 심사자 세이브 비오염) */
+  /** 56층 소녀 찻자리 직접 진입 (girlMet 저장 안 함 — 관람자 세이브 비오염) */
   girlTea: () => void;
   /** 시연 종료 — 타이틀 복귀 + 끝 화면 */
   finish: () => void;

@@ -84,7 +84,7 @@ function TitleFx() {
 }
 
 // 타이틀 화면 — 모험 시작 · 오늘의 던전 · 자동 시연 세로 메뉴.
-// 시연은 언제든 볼 수 있게 상시 노출 (제출 영상 대신 최신 콘텐츠를 계속 보여 주는 쇼케이스).
+// 시연은 언제든 볼 수 있게 상시 노출 (최신 콘텐츠를 계속 보여 주는 쇼케이스).
 export default function TitleScreen({
   best,
   memCount,

@@ -198,7 +198,7 @@ export default function App() {
   const [endingVariant, setEndingVariant] = useState<EndingVariant>(null);
   const [endingIdx, setEndingIdx] = useState(0);
 
-  // 디버그 (Shift+D): 개발 모드 또는 ?debug 쿼리에서만 (제출 심사자 오작동 방지)
+  // 디버그 (Shift+D): 개발 모드 또는 ?debug 쿼리에서만 (일반 방문자 오작동 방지)
   const debugAllowed = useMemo(
     () => import.meta.env.DEV || new URLSearchParams(location.search).has('debug'),
     [],
@@ -206,7 +206,7 @@ export default function App() {
   const [debugOpen, setDebugOpen] = useState(false);
 
   // 자동 시연 — 타이틀에서 언제든 볼 수 있는 상시 쇼케이스 (2026-07-19 ?demo 게이트 해제).
-  // 제출 영상은 확정본이라 더 갱신하지 않는 대신, 이 시연이 최신 콘텐츠를 계속 보여 준다.
+  // 이 시연이 최신 콘텐츠를 계속 보여 주는 상시 쇼케이스다.
   // **세이브 격리**: 시연은 실제 게임을 그대로 플레이하므로 시작 시 저장을 끄고(suspendPersistence),
   // 나가는 모든 경로(종료 버튼·다시 보기·직접 플레이)를 리로드로 통일한다 —
   // 시연이 만든 진행(코인·기억·최고 층·일일 기록)이 세이브에도, 화면에도 남지 않는다.
