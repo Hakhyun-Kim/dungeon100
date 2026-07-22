@@ -11,7 +11,20 @@
 > 별도 설치나 쿼리 없이 **항상 볼 수 있고, 새 기능이 추가되면 시연도 함께 최신**입니다.
 > 시연은 **세이브와 완전히 분리**되어 있어(진행 저장 안 함) 다 보고 나면 언제나 처음부터 플레이할 수 있습니다.
 > ### 📖 개발 일지: https://hakhyun-kim.github.io/dungeon100/journal.html
-> 39개 커밋과 실제 대화를 근거로, 개발 첫 8일(07-11~07-18)간 지시하는 방식이 어떻게 달라졌는지 데이터(차트·표)로 정리한 기록.
+> 58개 커밋과 실제 대화를 근거로, 개발 기간(07-11~07-22) 지시하는 방식이 어떻게 달라졌는지 데이터(차트·표)로 정리한 기록.
+
+## 스크린샷
+
+| 던전 전투 (41~50층 서리 테마) | 보스 "페이지의 수호자" (30층) |
+| --- | --- |
+| ![던전 전투](docs/screenshots/combat.jpg) | ![보스전](docs/screenshots/boss.jpg) |
+
+| 걸어다니는 마을 | 56층의 소녀 '여백' |
+| --- | --- |
+| ![마을](docs/screenshots/village.jpg) | ![56층의 소녀](docs/screenshots/girl.jpg) |
+
+> 화면 속 모든 것 — 던전·캐릭터·그림자·빛·소리 — 은 **외부 에셋 없이 코드로 생성**됩니다.
+> 블룸·비네트 포스트프로세싱, 발밑 그림자, 절차 생성 돌결 텍스처, 잉크빛 UI까지 전부.
 
 ## 게임 방법
 
@@ -44,7 +57,7 @@ npm run dev   # http://localhost:5175
 
 ## 기술 스택
 
-React 18 · TypeScript · Vite · three.js · @react-three/fiber
-백엔드 없음(localStorage) · 외부 에셋 없음 — 절차 생성 지오메트리, 시드 고정 난수(mulberry32) 기반 던전 생성, Web Audio 합성 효과음 20종 + 절차 생성 BGM 5트랙(오디오 파일 0개) (폰트: [Jua](https://fonts.google.com/specimen/Jua), SIL OFL 1.1).
+React 18 · TypeScript · Vite · three.js · @react-three/fiber · @react-three/postprocessing
+백엔드 없음(localStorage) · 외부 에셋 없음 — 절차 생성 지오메트리, 시드 고정 난수(mulberry32) 기반 던전 생성, Web Audio 합성 효과음 20종 + 절차 생성 BGM 5트랙(오디오 파일 0개), **그래픽도 전부 생성** — 블룸·비네트 포스트프로세싱, 캔버스로 그린 돌결 텍스처·발밑 그림자·종이 결 UI(SVG 노이즈), 박스 지오메트리 캐릭터(걷기 애니메이션 포함) (폰트: [Jua](https://fonts.google.com/specimen/Jua), SIL OFL 1.1).
 
 설계 문서: [docs/DESIGN.md](docs/DESIGN.md)

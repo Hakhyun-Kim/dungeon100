@@ -67,9 +67,17 @@ npm run dev   # http://localhost:5175
 | 항목 | 내용 |
 |------|------|
 | 렌더링 | three.js + @react-three/fiber — 지형·적·투사체·파티클 전부 InstancedMesh |
+| 그래픽 연출 | 블룸·비네트 포스트프로세싱(@react-three/postprocessing) + 블롭 섀도우 + 가짜 AO(인스턴스 색) + 캔버스 절차 생성 돌결 텍스처 — 이미지 파일 0개 |
+| 캐릭터 | 박스 지오메트리 절차 생성 (후드티·책가방 대학생 주인공, 팔다리 스윙 걷기 애니메이션) |
 | 절차 생성 | 시드 고정(mulberry32) 던전·문제·보상 — 같은 층 번호는 같은 구조 (재현성) |
 | 프레임워크 | React 18 + TypeScript + Vite |
 | 텍스트 렌더링 | 한글 → 캔버스 → 텍스처 (폰트 파일 없음) |
 | 사운드 | Web Audio API 실시간 합성 효과음 20종 + 절차 생성 BGM 5트랙 (오디오 파일 없음) |
 | 데이터 | 백엔드 없음 — localStorage (최고 기록, 되찾은 기억, 설정) |
 | 배포 | GitHub Actions → GitHub Pages 자동 배포 |
+
+## 7. 스크린샷
+
+| 던전 전투 | 보스전 | 걸어다니는 마을 | 56층의 소녀 |
+|---|---|---|---|
+| ![전투](../screenshots/combat.jpg) | ![보스](../screenshots/boss.jpg) | ![마을](../screenshots/village.jpg) | ![소녀](../screenshots/girl.jpg) |

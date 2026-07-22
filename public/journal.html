@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>쓰이는 동안 — 백층 던전 8일 개발 일지</title>
-<meta name="description" content="git 히스토리와 실제 대화를 근거로, 8일간 지시하는 방식이 어떻게 성장했는지 데이터로 짚은 백층 던전 개발 일지." />
+<title>쓰이는 동안 — 백층 던전 개발 일지</title>
+<meta name="description" content="git 히스토리와 실제 대화를 근거로, 지시하는 방식이 어떻게 성장했는지 데이터로 짚은 백층 던전 개발 일지 (07-11 → 07-22)." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E" />
 <style>
   html, body { margin: 0; padding: 0; }
@@ -363,21 +363,21 @@
 <div class="dj">
   <div class="wrap">
 
-    <p class="eyebrow">DEV JOURNAL &middot; 2026-07-11 → 07-18 &middot; 백층 던전 (Dungeon 100)</p>
-    <h1 class="title serif">쓰이는 동안 — 8일간의 개발 기록</h1>
-    <p class="thesis">이 문서는 39번의 커밋과 그 사이 오간 지시들을 되짚어, <strong>가장 많이 자란 것은 게임이 아니라 지시하는 방식이었다</strong>는 것을 데이터로 보여준다.</p>
+    <p class="eyebrow">DEV JOURNAL &middot; 2026-07-11 → 07-22 &middot; 백층 던전 (Dungeon 100)</p>
+    <h1 class="title serif">쓰이는 동안 — 개발 기록</h1>
+    <p class="thesis">이 문서는 58번의 커밋과 그 사이 오간 지시들을 되짚어, <strong>가장 많이 자란 것은 게임이 아니라 지시하는 방식이었다</strong>는 것을 데이터로 보여준다.</p>
 
     <div class="stats-row">
       <div class="stat-tile">
-        <div class="stat-num mono">39</div>
+        <div class="stat-num mono">58</div>
         <div class="stat-label">커밋</div>
       </div>
       <div class="stat-tile">
-        <div class="stat-num mono">8<small>일</small></div>
-        <div class="stat-label">2026-07-11 → 07-18</div>
+        <div class="stat-num mono">12<small>일</small></div>
+        <div class="stat-label">2026-07-11 → 07-22</div>
       </div>
       <div class="stat-tile">
-        <div class="stat-num mono">+10,868</div>
+        <div class="stat-num mono">+14,638</div>
         <div class="stat-label">순증가 줄 수 (현재 저장소와 일치)</div>
       </div>
       <div class="stat-tile">
@@ -389,7 +389,7 @@
     <!-- ============ 1. 하루의 리듬 ============ -->
     <section id="s1">
       <div class="sec-head"><span class="sec-no serif">Ⅰ</span><h2>무슨 일이 있었나</h2></div>
-      <p class="sec-dek">8일이 똑같이 흐르지 않았다. 하루는 게임 하나를 통째로 만든 날이었고, 어떤 날은 숫자 하나를 고치는 데 썼다. 그 리듬 자체가 첫 번째 데이터다.</p>
+      <p class="sec-dek">열두 날이 똑같이 흐르지 않았다. 하루는 게임 하나를 통째로 만든 날이었고, 어떤 날은 숫자 하나를 고치는 데 썼다. 그 리듬 자체가 첫 번째 데이터다.</p>
 
       <div class="callout">
         <div class="cnum mono">+3,307</div>
@@ -427,10 +427,10 @@
     <!-- ============ 2. 코드가 자란 모양 ============ -->
     <section id="s2">
       <div class="sec-head"><span class="sec-no serif">Ⅱ</span><h2>코드가 자란 모양</h2></div>
-      <p class="sec-dek">39번의 커밋을 순서대로 이으면 하나의 곡선이 된다. 가파른 구간은 새 세계가 열린 순간이고, 유일하게 <em>내려간</em> 지점은 무언가를 지운 순간이다 — 그것도 성장이었다.</p>
+      <p class="sec-dek">58번의 커밋을 순서대로 이으면 하나의 곡선이 된다. 가파른 구간은 새 세계가 열린 순간이고, 유일하게 <em>내려간</em> 지점은 무언가를 지운 순간이다 — 그것도 성장이었다.</p>
 
       <div class="panel">
-        <p class="panel-title">누적 코드량 — 커밋 순서(1 → 39)</p>
+        <p class="panel-title">누적 코드량 — 커밋 순서(1 → 58)</p>
         <p class="panel-note">점에 마우스를 올리면 해당 커밋을 보여준다.</p>
         <div class="chart-wrap">
           <svg id="djGrowth" viewBox="0 0 780 320" role="img" aria-label="커밋 순서에 따른 누적 코드량 성장 곡선"></svg>
@@ -444,7 +444,7 @@
     <!-- ============ 3. 무엇을 만들었나 ============ -->
     <section id="s3">
       <div class="sec-head"><span class="sec-no serif">Ⅲ</span><h2>무엇을 만들었나</h2></div>
-      <p class="sec-dek">39개 커밋을 성격별로 나누면, 후반으로 갈수록 <b>새 기능</b>보다 <b>있는 것을 맞추는 일</b>(밸런스·자동화·문서)이 늘어난 것이 드러난다. 행에 마우스를 올리면 대표 커밋이 보인다.</p>
+      <p class="sec-dek">58개 커밋을 성격별로 나누면, 후반으로 갈수록 <b>새 기능</b>보다 <b>있는 것을 맞추는 일</b>(밸런스·자동화·문서·그래픽 품질)이 늘어난 것이 드러난다. 행에 마우스를 올리면 대표 커밋이 보인다.</p>
 
       <div class="panel">
         <div class="cat-list" id="djCatList"></div>
@@ -542,8 +542,8 @@
     </div>
 
     <div class="footer-meta mono">
-      <span>39 commits · d50b493 → 4f355df</span>
-      <span>git log 기반 자동 집계 · 2026-07-20 작성</span>
+      <span>58 commits · d50b493 → debe18b</span>
+      <span>git log 기반 자동 집계 · 2026-07-20 작성 · 2026-07-22 갱신</span>
     </div>
 
   </div>
@@ -561,13 +561,16 @@
     { date: '07-15', commits: 3,  ins: 722,  del: 30  },
     { date: '07-16', commits: 1,  ins: 19,   del: 4   },
     { date: '07-17', commits: 3,  ins: 36,   del: 22  },
-    { date: '07-18', commits: 10, ins: 1642, del: 580 }
+    { date: '07-18', commits: 10, ins: 1642, del: 580 },
+    { date: '07-19', commits: 11, ins: 3579, del: 1421 },
+    { date: '07-20', commits: 2,  ins: 810,  del: 1   },
+    { date: '07-22', commits: 6,  ins: 870,  del: 67  }
   ];
   var ledgerAll = [
     { date: '07-11', commits: 1,  ins: 3307, del: 0,   day1: true },
   ].concat(days);
 
-  var cum = [3307,3891,4298,4808,5420,5770,6021,6864,7148,7252,7538,7894,7897,7897,7969,8045,8911,9006,9006,9009,9024,9085,9771,9774,9777,9792,9803,9803,9806,9933,10292,10366,10050,10304,10340,10350,10357,10362,10868];
+  var cum = [3307,3891,4298,4808,5420,5770,6021,6864,7148,7252,7538,7894,7897,7897,7969,8045,8911,9006,9006,9009,9024,9085,9771,9774,9777,9792,9803,9803,9806,9933,10292,10366,10050,10304,10340,10350,10357,10362,10868,11587,11630,11818,11931,12342,12348,12429,12460,12508,12544,13026,13835,13835,13932,14068,14347,14501,14504,14638];
   // side/anchor/dy는 실제 좌표를 확인해 겹치지 않도록 점마다 수동 배치
   var milestones = [
     { idx: 1,  label: '코어 루프',       sub: '+3,307',  dip: false, side: 'below', anchor: 'start',  dy: 26 },
@@ -575,17 +578,20 @@
     { idx: 17, label: '몬스터 아레나',   sub: '8,911',   dip: false, side: 'above', anchor: 'middle', dy: 16 },
     { idx: 23, label: '걸어다니는 마을', sub: '9,771',   dip: false, side: 'below', anchor: 'middle', dy: 26 },
     { idx: 33, label: '죽은 코드 정리',  sub: '−316',    dip: true,  side: 'below', anchor: 'end',    dy: 26 },
-    { idx: 39, label: '밸런스 시뮬레이터', sub: '10,868', dip: false, side: 'above', anchor: 'end',   dy: 16 }
+    { idx: 39, label: '밸런스 시뮬레이터', sub: '10,868', dip: false, side: 'above', anchor: 'middle', dy: 16 },
+    { idx: 50, label: '기억 네 갈래',    sub: '13,026',  dip: false, side: 'below', anchor: 'middle', dy: 26 },
+    { idx: 58, label: '그래픽·캐릭터 품질 패스', sub: '14,638', dip: false, side: 'below', anchor: 'end', dy: 24 }
   ];
   var categories = [
-    { cat: '전투·밸런스',     n: 7, ex: '적 4타입·속도 소프트 캡·난이도 스릴 램프' },
-    { cat: '문서·제출 준비',  n: 7, ex: 'NHN 제출 문서·PDF 초안·수치 정합성 정정' },
-    { cat: '게임플레이·코어', n: 6, ex: '절차 생성 던전·두 문 달리기·부활 체크포인트' },
-    { cat: '스토리·월드빌딩', n: 5, ex: '회상·벽의 글귀·56층 소녀·인터랙티브 인트로' },
-    { cat: '디버그 도구',     n: 4, ex: 'Shift+D/P/M·화면 플래시 끄기' },
-    { cat: '자동화·검증',     n: 4, ex: '자동 시연 모드·밸런스 시뮬레이터' },
-    { cat: '마을·연출',       n: 3, ex: '걸어다니는 3D 마을·5개 시절' },
-    { cat: '버그 수정',       n: 3, ex: '보스 자동조준·키 자동반복' }
+    { cat: '문서·제출 준비',  n: 12, ex: 'NHN 제출 문서·개발 일지 편입·수치 정합성 정정' },
+    { cat: '전투·밸런스',     n: 9,  ex: '적 4타입·난이도 스릴 램프·깊은 층 위협 램프' },
+    { cat: '게임플레이·코어', n: 8,  ex: '절차 생성 던전·방 이벤트 3종·일일 던전' },
+    { cat: '자동화·검증',     n: 7,  ex: '자동 시연·밸런스 시뮬레이터·세이브 격리' },
+    { cat: '스토리·월드빌딩', n: 6,  ex: '벽의 글귀·56층 소녀·기억 네 갈래' },
+    { cat: '그래픽·UI 품질',  n: 6,  ex: '블룸·블롭 섀도우·절차 텍스처·캐릭터 리디자인' },
+    { cat: '디버그 도구',     n: 4,  ex: 'Shift+D/P/M·화면 플래시 끄기' },
+    { cat: '마을·연출',       n: 3,  ex: '걸어다니는 3D 마을·5개 시절' },
+    { cat: '버그 수정',       n: 3,  ex: '보스 자동조준·키 자동반복' }
   ];
   var speedCurve = [7,7.75,8.39,8.93,9.39,9.78,10.11,10.4,10.64,10.84,11.02,11.16,11.29];
 
