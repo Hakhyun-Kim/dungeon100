@@ -159,13 +159,61 @@ export default function App() {
   const [girlMet, setGirlMet] = useLocalStorage<boolean>('d100-girl', false);
   // 떠돌이 상인 🎩 — 첫 만남(원본 독백 + 덤) 여부. 마을 방문 중에만 광장에 와 있다
   const [peddlerMet, setPeddlerMet] = useLocalStorage<boolean>('d100-peddler', false);
-  // 그래픽 품질 — ⚡가벼움(기존 렌더 경로: 포스트프로세싱 없음·DPR 캡·플랫 재질) / ✨고품질
-  const [gfx, setGfx] = useLocalStorage<'high' | 'lite'>('d100-gfx', defaultGfx());
+  // 그래픽 품질 — ⚡가벼움(기존 렌더 경로: 포스트프로세싱 없음·DPR 캡·플랫 재질) / ✨고품질.
+  // 기본은 'auto': 실플레이 FPS를 재서 스스로 결정(아래 측정 effect), 결정은 d100-gfx-auto에 저장.
+  // 토글을 누르면 그때부터 수동 설정(auto 해제).
+  const [gfxPref, setGfxPref] = useLocalStorage<'auto' | 'high' | 'lite'>('d100-gfx', 'auto');
+  const [gfxAuto, setGfxAuto] = useLocalStorage<'high' | 'lite' | null>('d100-gfx-auto', null);
+  const gfx: 'high' | 'lite' = gfxPref === 'auto' ? (gfxAuto ?? defaultGfx()) : gfxPref;
+  const lite = gfx === 'lite';
+  const [gfxNotice, setGfxNotice] = useState(0); // 자동 강등 안내 배너
   const toggleGfx = () => {
     sfx.tap();
-    setGfx((g) => (g === 'high' ? 'lite' : 'high'));
+    setGfxPref(lite ? 'high' : 'lite');
   };
-  const lite = gfx === 'lite';
+
+  // 자동 품질 측정 — 수동 설정이 없고 고품질로 도는 중이면, run 워밍업 2초 후 3초 창의
+  // 평균 FPS로 판정: 45 미만 → ⚡가벼움 강등(배너 안내) / 55 이상 → ✨고품질 확정.
+  // 결정은 저장되어 다음 세션부터 측정 없이 바로 적용된다. (모바일 기본 lite는 측정 없이 유지)
+  useEffect(() => {
+    if (gfxPref !== 'auto' || gfxAuto !== null || phase !== 'run' || lite) return;
+    let raf = 0;
+    let last = performance.now();
+    let winStart = 0;
+    let frames = 0;
+    const tick = (now: number) => {
+      const dt = now - last;
+      last = now;
+      if (dt > 250) {
+        // 숨김 탭·일시정지 — 측정 창 리셋
+        winStart = 0;
+        frames = 0;
+      } else if (winStart === 0) {
+        winStart = now;
+      } else if (now - winStart > 2000) {
+        frames++;
+        const measured = now - winStart - 2000;
+        if (measured > 3000) {
+          const fps = (frames / measured) * 1000;
+          if (fps < 45) {
+            setGfxAuto('lite');
+            setGfxNotice((n) => n + 1);
+            return; // 종료 (강등)
+          }
+          if (fps >= 55) {
+            setGfxAuto('high');
+            return; // 종료 (확정)
+          }
+          winStart = 0; // 애매한 구간 — 다시 측정
+          frames = 0;
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gfxPref, gfxAuto, phase, lite]);
   // 본 흔적(14·28·42·49층)의 층 번호 — 42층 초대장을 봤으면 56층 소녀의 첫인사·선물이 달라진다
   const [tracesSeen, setTracesSeen] = useLocalStorage<number[]>('d100-traces', []);
   const tracesSeenRef = useRef(tracesSeen);
@@ -1127,6 +1175,13 @@ export default function App() {
     <div className="app">
       {/* 잉크 전환 — key가 바뀔 때마다 애니메이션 재생 (pointer-events 없음, 조작 안 막음) */}
       {inkSeq > 0 && <div className="ink-wipe" key={inkSeq} />}
+
+      {/* 자동 품질 강등 안내 (FPS 측정 결과 ⚡가벼움으로 전환됨) */}
+      {gfxNotice > 0 && (
+        <div className="gfx-notice" key={gfxNotice}>
+          ⚡ 성능을 위해 그래픽을 '가벼움'으로 조절했어요 — HUD의 ⚡ 버튼으로 되돌릴 수 있어요
+        </div>
+      )}
       {inGame && (
         <Canvas
           className="canvas"

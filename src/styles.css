@@ -187,6 +187,42 @@ body {
   }
 }
 
+/* ── 자동 품질 강등 안내 배너 ── */
+.gfx-notice {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 46px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  pointer-events: none;
+  background: rgba(20, 12, 40, 0.9);
+  border: 1px solid rgba(255, 209, 102, 0.5);
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: 14px;
+  color: #ffe9b3;
+  white-space: nowrap;
+  max-width: 94vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: gfxNotice 5s ease-in-out forwards;
+}
+
+@keyframes gfxNotice {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  8%,
+  80% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* ── 현재 빌드 표시 ── */
 .build-row {
   position: absolute;
@@ -256,30 +292,28 @@ body {
   overflow: hidden;
 }
 
+/* 거대 원 scale 방식은 저사양에서 잭이 나며 '깜빡'처럼 보였음(2026-07-22) —
+   정적 그라데이션에 opacity만 애니메이션 (컴포지터 비용 최소, 부드러운 스밈) */
 .ink-wipe::before {
   content: '';
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 160vmax;
-  height: 160vmax;
-  margin: -80vmax 0 0 -80vmax;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--ink-950) 52%, rgba(13, 9, 24, 0.9) 64%, transparent 74%);
-  animation: inkBlot 0.62s ease-in-out forwards;
+  inset: 0;
+  background: radial-gradient(circle at 50% 46%, var(--ink-950) 30%, rgba(13, 9, 24, 0.94) 62%, rgba(13, 9, 24, 0.78) 100%);
+  opacity: 0;
+  animation: inkFade 0.5s ease-in-out forwards;
 }
 
-@keyframes inkBlot {
+@keyframes inkFade {
   0% {
-    transform: scale(0.01);
+    opacity: 0;
+  }
+  30% {
     opacity: 1;
   }
-  42% {
-    transform: scale(1);
+  62% {
     opacity: 1;
   }
   100% {
-    transform: scale(1);
     opacity: 0;
   }
 }
