@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import Hero from './Hero';
+import { BlobShadow } from './fx';
 import { useMoveInput } from './DungeonScene';
 import { makeTextTexture } from './textTexture';
 import { mulberry32 } from '../lib/rng';
@@ -653,6 +654,7 @@ export default function TownScene({
       {/* NPC (블록 캐릭터 + 이름표) */}
       {NPCS.map((n, i) => (
         <group key={n.id} ref={(g) => (npcRefs.current[i] = g)} position={[n.x, 0, n.z]}>
+          <BlobShadow size={1.4} />
           <mesh position={[0, 0.6, 0]}>
             <boxGeometry args={[0.6, 0.7, 0.4]} />
             <meshStandardMaterial color={n.body} />
@@ -677,6 +679,7 @@ export default function TownScene({
 
       {/* 주인공 */}
       <group ref={heroRef} position={[HERO_START[0], 0, HERO_START[1]]}>
+        <BlobShadow />
         <Hero />
       </group>
     </group>

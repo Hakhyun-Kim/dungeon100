@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import type { Quiz } from '../lib/quiz';
 import { sfx } from '../lib/sound';
 import Hero from './Hero';
+import { BlobShadow } from './fx';
 import { makeTextTexture } from './textTexture';
 
 // 보물상자 미니게임 — 두 문 러너 본편의 재현.
@@ -313,6 +314,7 @@ export default function DoorRunScene({ quiz, onDone }: { quiz: Quiz; onDone: (ok
 
       {/* 주인공 — 던전과 같은 캐릭터 (등을 보이며 -z로 달림) */}
       <group ref={charRef} position={[0, 0, RUN_START]} rotation={[0, Math.PI, 0]}>
+        <BlobShadow />
         <Hero />
       </group>
     </group>

@@ -5,6 +5,7 @@ import type { Stats } from '../lib/upgrades';
 import { sfx } from '../lib/sound';
 import Hero from './Hero';
 import { useMoveInput } from './DungeonScene';
+import { BlobShadow, getBlobShadowTexture } from './fx';
 
 // 몬스터 아레나 — 보물상자 미니게임의 '몬스터' 모드.
 // 수학 대신, 우르르 몰려오는 무리를 뚫고 바닥의 보석 3개를 몸으로 주우면 능력치업.
@@ -98,6 +99,7 @@ export default function GemArenaScene({
   const input = useMoveInput();
   const charRef = useRef<THREE.Group>(null);
   const enemyMeshRef = useRef<THREE.InstancedMesh>(null);
+  const enemyShadowRef = useRef<THREE.InstancedMesh>(null); // 적 발밑 블롭 섀도우
   const shotMeshRef = useRef<THREE.InstancedMesh>(null);
   const particleMeshRef = useRef<THREE.InstancedMesh>(null);
   const gemRefs = useRef<(THREE.Group | null)[]>([null, null, null]);
@@ -537,6 +539,7 @@ export default function GemArenaScene({
 
     // ── 적 인스턴스 갱신
     const em = enemyMeshRef.current;
+    const esh = enemyShadowRef.current;
     if (em) {
       enemies.current.forEach((e, i) => {
         if (e.alive) {
@@ -574,9 +577,21 @@ export default function GemArenaScene({
         }
         dummy.updateMatrix();
         em.setMatrixAt(i, dummy.matrix);
+        // 발밑 블롭 섀도우 (죽은 적은 위 히든 매트릭스 재사용)
+        if (esh) {
+          if (e.alive) {
+            const ss = e.type === 'tank' ? 1.5 : e.type === 'shooter' ? 0.85 : 1;
+            dummy.position.set(e.x, 0.02, e.z);
+            dummy.rotation.set(-Math.PI / 2, 0, 0);
+            dummy.scale.set(ss, ss, 1);
+            dummy.updateMatrix();
+          }
+          esh.setMatrixAt(i, dummy.matrix);
+        }
       });
       em.instanceMatrix.needsUpdate = true;
       if (em.instanceColor) em.instanceColor.needsUpdate = true;
+      if (esh) esh.instanceMatrix.needsUpdate = true;
     }
 
     // ── 투사체 인스턴스
@@ -748,8 +763,15 @@ export default function GemArenaScene({
         </group>
       ))}
 
+      {/* 적 발밑 블롭 섀도우 */}
+      <instancedMesh ref={enemyShadowRef} args={[undefined, undefined, MAX_ENEMIES]} frustumCulled={false}>
+        <planeGeometry args={[1.35, 1.35]} />
+        <meshBasicMaterial map={getBlobShadowTexture()} transparent depthWrite={false} />
+      </instancedMesh>
+
       {/* 주인공 (아레나 중앙에서 시작) */}
       <group ref={charRef} position={[0, 0, 0]} rotation={[0, Math.PI, 0]}>
+        <BlobShadow />
         <Hero />
       </group>
     </group>

@@ -5,6 +5,13 @@ import { CELL, canStand, cellToWorld, generateFloor, GRID, isFloor } from '../li
 import type { Stats } from '../lib/upgrades';
 import { sfx } from '../lib/sound';
 import Hero from './Hero';
+import { BlobShadow, getBlobShadowTexture } from './fx';
+
+// 셀 좌표 → 결정적 0..1 해시 (타일 색 변주·가짜 AO용 — 시드 고정이라 같은 층은 항상 같은 무늬)
+const cellHash = (x: number, y: number, s: number) => {
+  const v = Math.sin(x * 127.1 + y * 311.7 + s * 74.7) * 43758.5453;
+  return v - Math.floor(v);
+};
 
 // 층 하나의 3D 씬 + 시뮬레이션. 층이 바뀌면 부모가 key로 리마운트한다.
 // 적 타입: chaser(추격) / shooter(원거리 견제) / dasher(조준 후 돌진) / tank(느리고 단단)
@@ -190,6 +197,8 @@ function DungeonScene({
   const floorMeshRef = useRef<THREE.InstancedMesh>(null);
   const wallMeshRef = useRef<THREE.InstancedMesh>(null);
   const enemyMeshRef = useRef<THREE.InstancedMesh>(null);
+  const enemyShadowRef = useRef<THREE.InstancedMesh>(null); // 적 발밑 블롭 섀도우
+  const bossShadowRef = useRef<THREE.Mesh>(null);
   const shotMeshRef = useRef<THREE.InstancedMesh>(null);
   const particleMeshRef = useRef<THREE.InstancedMesh>(null);
 
@@ -468,9 +477,14 @@ function DungeonScene({
     return { floorCells: f, wallCells: w };
   }, [floor]);
 
-  // 정적 지형 인스턴스 배치 (마운트 시 1회) — 색은 10층 단위 테마
+  // 정적 지형 인스턴스 배치 (마운트 시 1회) — 색은 10층 단위 테마.
+  // 가짜 AO: 벽에 인접한 바닥 타일을 어둡게 구워(인스턴스 색) 공간에 명암 깊이를 만든다.
+  // 여기에 셀 해시 미세 변주를 곱해 단색 평면 느낌을 깬다 (렌더 비용 0).
   const theme = dungeonTheme(floorNo);
   useLayoutEffect(() => {
+    const dirs8 = [
+      [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
+    ] as const;
     const fm = floorMeshRef.current;
     if (fm) {
       const c1 = new THREE.Color(theme.f1);
@@ -489,6 +503,11 @@ function DungeonScene({
         if (house && x >= house.x && x < house.x + house.w && y >= house.y && y < house.y + house.h) {
           tmp.lerp(houseTint, 0.24);
         }
+        // 가짜 AO (벽 인접 수 비례) + 결정적 미세 변주
+        let wallN = 0;
+        for (const [dx, dy] of dirs8) if (!isFloor(floor.cells, x + dx, y + dy)) wallN++;
+        const ao = 1 - Math.min(0.32, wallN * 0.085);
+        tmp.multiplyScalar(ao * (0.94 + cellHash(x, y, floorNo) * 0.12));
         fm.setColorAt(i, tmp);
       });
       fm.instanceMatrix.needsUpdate = true;
@@ -496,17 +515,22 @@ function DungeonScene({
     }
     const wm = wallMeshRef.current;
     if (wm) {
+      const wtmp = new THREE.Color();
       wallCells.forEach(([x, y], i) => {
         const [wx, wz] = cellToWorld(x, y);
+        const h = cellHash(x, y, floorNo);
         dummy.position.set(wx, 1.3, wz);
         dummy.rotation.set(0, 0, 0);
-        dummy.scale.set(1, 1, 1);
+        dummy.scale.set(1, 0.96 + h * 0.09, 1); // 벽 높이도 살짝 들쭉날쭉 (유기적 실루엣)
         dummy.updateMatrix();
         wm.setMatrixAt(i, dummy.matrix);
+        wtmp.setScalar(0.9 + h * 0.2); // 재질 색에 곱해지는 밝기 변주
+        wm.setColorAt(i, wtmp);
       });
       wm.instanceMatrix.needsUpdate = true;
+      if (wm.instanceColor) wm.instanceColor.needsUpdate = true;
     }
-  }, [floorCells, wallCells, dummy, theme]);
+  }, [floorCells, wallCells, dummy, theme, floor, floorNo]);
 
   // 개발 검증용 훅 (프로덕션 빌드에서는 제외)
   useEffect(() => {
@@ -1118,6 +1142,7 @@ function DungeonScene({
 
     // ── 동적 인스턴스 갱신
     const em = enemyMeshRef.current;
+    const esh = enemyShadowRef.current;
     if (em) {
       enemies.current.forEach((e, i) => {
         if (e.alive) {
@@ -1166,9 +1191,21 @@ function DungeonScene({
         }
         dummy.updateMatrix();
         em.setMatrixAt(i, dummy.matrix);
+        // 발밑 블롭 섀도우 — 타입 실루엣 크기에 맞춰 접지감 (죽은 적은 위 히든 매트릭스 재사용)
+        if (esh) {
+          if (e.alive) {
+            const ss = e.elite ? 2.2 : e.type === 'tank' ? 1.5 : e.type === 'shooter' ? 0.85 : 1;
+            dummy.position.set(e.x, 0.02, e.z);
+            dummy.rotation.set(-Math.PI / 2, 0, 0);
+            dummy.scale.set(ss, ss, 1);
+            dummy.updateMatrix();
+          }
+          esh.setMatrixAt(i, dummy.matrix);
+        }
       });
       em.instanceMatrix.needsUpdate = true;
       if (em.instanceColor) em.instanceColor.needsUpdate = true;
+      if (esh) esh.instanceMatrix.needsUpdate = true;
     }
 
     // ── 출구 수문장 발치의 붉은 광원 (살아있을 때만, 은은히 맥동)
@@ -1237,8 +1274,14 @@ function DungeonScene({
           palette.tmp.copy(palette.enemyBase).lerp(palette.white, bR.flash);
           bossMatRef.current.color.copy(palette.tmp);
         }
+        if (bossShadowRef.current) {
+          bossShadowRef.current.position.set(bR.x, 0.02, bR.z);
+          // 부유 높이에 따라 그림자가 살짝 줄었다 커진다
+          bossShadowRef.current.scale.setScalar(1 - Math.sin(t * 2.2) * 0.08);
+        }
       } else {
         bm.scale.setScalar(0.0001);
+        if (bossShadowRef.current) bossShadowRef.current.scale.setScalar(0.0001);
       }
     }
 
@@ -1410,8 +1453,9 @@ function DungeonScene({
 
   return (
     <group visible={!hidden}>
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[6, 14, 4]} intensity={1.0} />
+      {/* 비네트·블룸(포스트프로세싱) 도입에 맞춰 기본광을 살짝 보강 (가독성 유지) */}
+      <ambientLight intensity={0.7} />
+      <directionalLight position={[6, 14, 4]} intensity={1.15} />
 
       {/* 바닥 (교대 색) */}
       <instancedMesh ref={floorMeshRef} args={[undefined, undefined, floorCells.length]} frustumCulled={false}>
@@ -1448,8 +1492,15 @@ function DungeonScene({
         <meshBasicMaterial toneMapped={false} />
       </instancedMesh>
 
+      {/* 적 발밑 블롭 섀도우 (접지감 — 프레임에서 위치 갱신) */}
+      <instancedMesh ref={enemyShadowRef} args={[undefined, undefined, enemies.current.length]} frustumCulled={false}>
+        <planeGeometry args={[1.35, 1.35]} />
+        <meshBasicMaterial map={getBlobShadowTexture()} transparent depthWrite={false} />
+      </instancedMesh>
+
       {/* 플레이어 (블록 캐릭터 + 파워업 시각화) */}
       <group ref={playerRef} position={[startX, 0, startZ]}>
+        <BlobShadow />
         <group ref={bodyRef}>
           <Hero />
         </group>
@@ -1467,6 +1518,7 @@ function DungeonScene({
       {/* 보물상자 */}
       {chestPos && (
         <group ref={chestRef} position={[chestPos[0], 0, chestPos[1]]}>
+          <BlobShadow size={1.5} y={0.03} />
           <mesh position={[0, 0.3, 0]}>
             <boxGeometry args={[0.95, 0.55, 0.68]} />
             <meshStandardMaterial color="#8a5a2b" />
@@ -1505,6 +1557,7 @@ function DungeonScene({
       {/* 낡은 제단 — 「피를 잉크로.」 HP를 바치면 보물 */}
       {altarPos && (
         <group ref={altarRef} position={[altarPos[0], 0, altarPos[1]]}>
+          <BlobShadow size={1.8} y={0.03} />
           <mesh position={[0, 0.3, 0]}>
             <cylinderGeometry args={[0.55, 0.7, 0.6, 6]} />
             <meshStandardMaterial color="#3a3344" />
@@ -1554,10 +1607,16 @@ function DungeonScene({
 
       {/* 보스 — 페이지의 수호자 (10층마다, 출구를 지킨다) */}
       {isBossFloor && (
-        <mesh ref={bossMeshRef} position={[exitX, 1.35, exitZ]}>
-          <dodecahedronGeometry args={[1.5]} />
-          <meshStandardMaterial ref={bossMatRef} emissive="#3c1060" emissiveIntensity={0.8} />
-        </mesh>
+        <>
+          <mesh ref={bossMeshRef} position={[exitX, 1.35, exitZ]}>
+            <dodecahedronGeometry args={[1.5]} />
+            <meshStandardMaterial ref={bossMatRef} emissive="#3c1060" emissiveIntensity={0.8} />
+          </mesh>
+          <mesh ref={bossShadowRef} rotation={[-Math.PI / 2, 0, 0]} position={[exitX, 0.02, exitZ]}>
+            <planeGeometry args={[3.6, 3.6]} />
+            <meshBasicMaterial map={getBlobShadowTexture()} transparent depthWrite={false} />
+          </mesh>
+        </>
       )}
 
       {/* 보스 탄막 */}
@@ -1587,6 +1646,7 @@ function DungeonScene({
       {/* 56층의 소녀 '여백' — 찻자리와 촛불 */}
       {girlPos && (
         <group ref={girlRef} position={[girlPos[0], 0, girlPos[1]]}>
+          <BlobShadow size={1.3} y={0.03} />
           <mesh position={[0, 0.45, 0]}>
             <boxGeometry args={[0.5, 0.55, 0.34]} />
             <meshStandardMaterial color="#ff9ec4" />
