@@ -5,7 +5,7 @@ import type { Stats } from '../lib/upgrades';
 import { sfx } from '../lib/sound';
 import Hero from './Hero';
 import { useMoveInput } from './DungeonScene';
-import { BlobShadow, getBlobShadowTexture } from './fx';
+import { BlobShadow, getBlobShadowTexture, getFloorTexture } from './fx';
 
 // 몬스터 아레나 — 보물상자 미니게임의 '몬스터' 모드.
 // 수학 대신, 우르르 몰려오는 무리를 뚫고 바닥의 보석 3개를 몸으로 주우면 능력치업.
@@ -594,37 +594,39 @@ export default function GemArenaScene({
       if (esh) esh.instanceMatrix.needsUpdate = true;
     }
 
-    // ── 투사체 인스턴스
+    // ── 투사체 인스턴스 (진행 방향으로 늘여 궤적감)
     const sm = shotMeshRef.current;
     if (sm) {
       const shotScale = Math.min(1.9, 1 + (stats.damage / 10 - 1) * 0.3);
       shots.current.forEach((sh, i) => {
         if (sh.alive) {
           dummy.position.set(sh.x, 0.75, sh.z);
-          dummy.scale.set(shotScale, shotScale, shotScale);
+          dummy.rotation.set(0, Math.atan2(sh.dx, sh.dz), 0);
+          dummy.scale.set(shotScale, shotScale, shotScale * 2.1);
         } else {
           dummy.position.set(0, -10, 0);
+          dummy.rotation.set(0, 0, 0);
           dummy.scale.set(0.0001, 0.0001, 0.0001);
         }
-        dummy.rotation.set(0, 0, 0);
         dummy.updateMatrix();
         sm.setMatrixAt(i, dummy.matrix);
       });
       sm.instanceMatrix.needsUpdate = true;
     }
 
-    // ── 슈터 탄막 인스턴스
+    // ── 슈터 탄막 인스턴스 (진행 방향으로 살짝 늘임)
     const esm = eshotMeshRef.current;
     if (esm) {
       eshots.current.forEach((es, i) => {
         if (es.alive) {
           dummy.position.set(es.x, 0.8, es.z);
-          dummy.scale.set(1, 1, 1);
+          dummy.rotation.set(0, Math.atan2(es.dx, es.dz), 0);
+          dummy.scale.set(1, 1, 1.55);
         } else {
           dummy.position.set(0, -10, 0);
+          dummy.rotation.set(0, 0, 0);
           dummy.scale.set(0.0001, 0.0001, 0.0001);
         }
-        dummy.rotation.set(0, 0, 0);
         dummy.updateMatrix();
         esm.setMatrixAt(i, dummy.matrix);
       });
@@ -690,7 +692,10 @@ export default function GemArenaScene({
           return (
             <mesh key={`${gx}:${gy}`} position={[wx, -0.15, wz]}>
               <boxGeometry args={[ARENA_R / 4.5, 0.3, ARENA_R / 4.5]} />
-              <meshStandardMaterial color={(gx + gy) % 2 === 0 ? '#3a2f55' : '#453a63'} />
+              <meshStandardMaterial
+                color={(gx + gy) % 2 === 0 ? '#3a2f55' : '#453a63'}
+                map={getFloorTexture()}
+              />
             </mesh>
           );
         }),
@@ -736,14 +741,14 @@ export default function GemArenaScene({
         <meshStandardMaterial color="#ff3d5e" emissive="#a01030" emissiveIntensity={1.4} />
       </instancedMesh>
 
-      {/* 파티클 */}
+      {/* 파티클 — additive로 빛나는 불꽃 */}
       <instancedMesh
         ref={particleMeshRef}
         args={[undefined, undefined, MAX_PARTICLES]}
         frustumCulled={false}
       >
         <boxGeometry args={[1, 1, 1]} />
-        <meshBasicMaterial toneMapped={false} />
+        <meshBasicMaterial toneMapped={false} blending={THREE.AdditiveBlending} transparent depthWrite={false} />
       </instancedMesh>
 
       {/* 보석 3개 — 무리를 뚫고 몸으로 주워야 능력치업 */}

@@ -5,7 +5,7 @@ import { CELL, canStand, cellToWorld, generateFloor, GRID, isFloor } from '../li
 import type { Stats } from '../lib/upgrades';
 import { sfx } from '../lib/sound';
 import Hero from './Hero';
-import { BlobShadow, getBlobShadowTexture } from './fx';
+import { BlobShadow, getBlobShadowTexture, getFloorTexture, getWallTexture } from './fx';
 
 // 셀 좌표 → 결정적 0..1 해시 (타일 색 변주·가짜 AO용 — 시드 고정이라 같은 층은 항상 같은 무늬)
 const cellHash = (x: number, y: number, s: number) => {
@@ -1227,13 +1227,15 @@ function DungeonScene({
       shots.current.forEach((sh, i) => {
         if (sh.alive) {
           dummy.position.set(sh.x, 0.75, sh.z);
-          dummy.scale.set(shotScale, shotScale, shotScale);
+          // 진행 방향으로 길게 늘여 궤적감 (탄환 → 빛줄기)
+          dummy.rotation.set(0, Math.atan2(sh.dx, sh.dz), 0);
+          dummy.scale.set(shotScale, shotScale, shotScale * 2.1);
           sm.setColorAt(i, palette.shotTiers[tier]);
         } else {
           dummy.position.set(0, -10, 0);
+          dummy.rotation.set(0, 0, 0);
           dummy.scale.set(0.0001, 0.0001, 0.0001);
         }
-        dummy.rotation.set(0, 0, 0);
         dummy.updateMatrix();
         sm.setMatrixAt(i, dummy.matrix);
       });
@@ -1285,18 +1287,19 @@ function DungeonScene({
       }
     }
 
-    // ── 보스 탄막 렌더
+    // ── 보스 탄막 렌더 (진행 방향으로 살짝 늘여 위협감)
     const esm = eshotMeshRef.current;
     if (esm) {
       eshots.current.forEach((es, i) => {
         if (es.alive) {
           dummy.position.set(es.x, 0.8, es.z);
-          dummy.scale.set(1, 1, 1);
+          dummy.rotation.set(0, Math.atan2(es.dx, es.dz), 0);
+          dummy.scale.set(1, 1, 1.55);
         } else {
           dummy.position.set(0, -10, 0);
+          dummy.rotation.set(0, 0, 0);
           dummy.scale.set(0.0001, 0.0001, 0.0001);
         }
-        dummy.rotation.set(0, 0, 0);
         dummy.updateMatrix();
         esm.setMatrixAt(i, dummy.matrix);
       });
@@ -1457,16 +1460,16 @@ function DungeonScene({
       <ambientLight intensity={0.7} />
       <directionalLight position={[6, 14, 4]} intensity={1.15} />
 
-      {/* 바닥 (교대 색) */}
+      {/* 바닥 (교대 색 × 절차 돌결 텍스처 — 회색조 결에 인스턴스 색이 곱해진다) */}
       <instancedMesh ref={floorMeshRef} args={[undefined, undefined, floorCells.length]} frustumCulled={false}>
         <boxGeometry args={[CELL, 0.3, CELL]} />
-        <meshStandardMaterial />
+        <meshStandardMaterial map={getFloorTexture()} bumpMap={getFloorTexture()} bumpScale={0.5} />
       </instancedMesh>
 
-      {/* 벽 — 10층 단위 테마 색 */}
+      {/* 벽 — 10층 단위 테마 색 × 절차 층리 텍스처 */}
       <instancedMesh ref={wallMeshRef} args={[undefined, undefined, wallCells.length]} frustumCulled={false}>
         <boxGeometry args={[CELL, 2.6, CELL]} />
-        <meshStandardMaterial color={theme.wall} />
+        <meshStandardMaterial color={theme.wall} map={getWallTexture()} bumpMap={getWallTexture()} bumpScale={0.4} />
       </instancedMesh>
 
       {/* 적 — 5층 단위 티어마다 모양·색이 달라진다 (피격 시 흰색 번쩍) */}
@@ -1486,10 +1489,10 @@ function DungeonScene({
         <meshStandardMaterial emissive="#ffb020" emissiveIntensity={1.6} />
       </instancedMesh>
 
-      {/* 파티클 (타격 스파크·처치 폭발·보물 반짝임) */}
+      {/* 파티클 (타격 스파크·처치 폭발·보물 반짝임) — additive로 빛나는 불꽃 */}
       <instancedMesh ref={particleMeshRef} args={[undefined, undefined, MAX_PARTICLES]} frustumCulled={false}>
         <boxGeometry args={[1, 1, 1]} />
-        <meshBasicMaterial toneMapped={false} />
+        <meshBasicMaterial toneMapped={false} blending={THREE.AdditiveBlending} transparent depthWrite={false} />
       </instancedMesh>
 
       {/* 적 발밑 블롭 섀도우 (접지감 — 프레임에서 위치 갱신) */}
