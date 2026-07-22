@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
+import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import DungeonScene, { dungeonTheme, type QuizResult } from './three/DungeonScene';
 import DoorRunScene from './three/DoorRunScene';
 import GemArenaScene, { ARENA_MAX_HP } from './three/GemArenaScene';
@@ -1045,6 +1046,12 @@ export default function App() {
               onNear={onVillageNear}
             />
           )}
+          {/* 포스트프로세싱 — emissive(포털·탄막·보물·보스)가 실제로 '빛나게'.
+              mipmapBlur 블룸은 모바일에서도 저렴, multisampling 4로 MSAA 유지 */}
+          <EffectComposer multisampling={4}>
+            <Bloom mipmapBlur intensity={0.9} luminanceThreshold={0.58} luminanceSmoothing={0.3} radius={0.75} />
+            <Vignette eskil={false} offset={0.24} darkness={0.52} />
+          </EffectComposer>
         </Canvas>
       )}
 
