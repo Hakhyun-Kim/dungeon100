@@ -774,10 +774,10 @@ export default function GemArenaScene({
         <meshBasicMaterial map={getBlobShadowTexture()} transparent depthWrite={false} />
       </instancedMesh>
 
-      {/* 주인공 (아레나 중앙에서 시작) */}
+      {/* 주인공 (아레나 중앙에서 시작) — 아레나는 몬스터 던전 전용이라 모험가 모습 */}
       <group ref={charRef} position={[0, 0, 0]} rotation={[0, Math.PI, 0]}>
         <BlobShadow />
-        <Hero />
+        <Hero variant="monster" />
       </group>
     </group>
   );

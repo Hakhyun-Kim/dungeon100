@@ -339,6 +339,7 @@ export default function App() {
         setFloorNo(n);
         setPhase('run');
       },
+      mode: (m: DungeonMode) => setMode(m), // 주인공 변신 검증용 (kids/adult/monster)
     };
   }, []);
 
@@ -1009,6 +1010,7 @@ export default function App() {
           <DungeonScene
             key={`${runId}:${floorNo}`}
             floorNo={floorNo}
+            heroVariant={mode}
             seedOffset={runType === 'daily' ? dailyNum : 0}
             hidden={
               phase === 'doorrun' ||
@@ -1041,7 +1043,7 @@ export default function App() {
             onCoins={onCoins}
           />
           {phase === 'doorrun' && (
-            <DoorRunScene key={doorRound} quiz={quiz} onDone={onDoorRunDone} />
+            <DoorRunScene key={doorRound} quiz={quiz} heroVariant={mode} onDone={onDoorRunDone} />
           )}
           {phase === 'arena' && (
             <GemArenaScene
@@ -1057,6 +1059,7 @@ export default function App() {
             <TownScene
               key={`v${villageFloor}`}
               floorNo={villageFloor}
+              heroVariant={mode}
               pausedRef={villagePausedRef}
               onNear={onVillageNear}
             />

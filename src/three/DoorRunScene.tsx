@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Quiz } from '../lib/quiz';
 import { sfx } from '../lib/sound';
-import Hero from './Hero';
+import Hero, { type HeroVariant } from './Hero';
 import { BlobShadow } from './fx';
 import { makeTextTexture } from './textTexture';
 
@@ -33,7 +33,15 @@ interface Confetti {
   color: THREE.Color;
 }
 
-export default function DoorRunScene({ quiz, onDone }: { quiz: Quiz; onDone: (ok: boolean) => void }) {
+export default function DoorRunScene({
+  quiz,
+  heroVariant,
+  onDone,
+}: {
+  quiz: Quiz;
+  heroVariant?: HeroVariant;
+  onDone: (ok: boolean) => void;
+}) {
   const steer = useSteer();
   const charRef = useRef<THREE.Group>(null);
   const leftDoorRef = useRef<THREE.Group>(null);
@@ -315,7 +323,7 @@ export default function DoorRunScene({ quiz, onDone }: { quiz: Quiz; onDone: (ok
       {/* 주인공 — 던전과 같은 캐릭터 (등을 보이며 -z로 달림) */}
       <group ref={charRef} position={[0, 0, RUN_START]} rotation={[0, Math.PI, 0]}>
         <BlobShadow />
-        <Hero />
+        <Hero variant={heroVariant} />
       </group>
     </group>
   );

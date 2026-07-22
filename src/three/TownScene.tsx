@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import Hero from './Hero';
+import Hero, { type HeroVariant } from './Hero';
 import { BlobShadow } from './fx';
 import { useMoveInput } from './DungeonScene';
 import { makeTextTexture } from './textTexture';
@@ -265,10 +265,12 @@ export default function TownScene({
   pausedRef,
   onNear,
   floorNo = 0,
+  heroVariant,
 }: {
   pausedRef: React.MutableRefObject<boolean>;
   onNear: (t: TownTarget) => void;
   floorNo?: number;
+  heroVariant?: HeroVariant; // 마지막으로 고른 던전 종류의 모습 그대로 마을을 걷는다
 }) {
   const input = useMoveInput();
   const heroRef = useRef<THREE.Group>(null);
@@ -699,7 +701,7 @@ export default function TownScene({
       {/* 주인공 */}
       <group ref={heroRef} position={[HERO_START[0], 0, HERO_START[1]]}>
         <BlobShadow />
-        <Hero />
+        <Hero variant={heroVariant} />
       </group>
     </group>
   );

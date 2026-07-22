@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { CELL, canStand, cellToWorld, generateFloor, GRID, isFloor } from '../lib/dungeon';
 import type { Stats } from '../lib/upgrades';
 import { sfx } from '../lib/sound';
-import Hero from './Hero';
+import Hero, { type HeroVariant } from './Hero';
 import { BlobShadow, getBlobShadowTexture, getFloorTexture, getWallTexture } from './fx';
 
 // 셀 좌표 → 결정적 0..1 해시 (타일 색 변주·가짜 AO용 — 시드 고정이라 같은 층은 항상 같은 무늬)
@@ -132,6 +132,7 @@ function DungeonScene({
   floorNo,
   seedOffset = 0,
   hidden,
+  heroVariant,
   statsRef,
   damageMulRef,
   pausedRef,
@@ -159,6 +160,7 @@ function DungeonScene({
   floorNo: number;
   seedOffset?: number; // 일일 던전 — 날짜 시드를 층 시드에 섞는다 (0 = 보통 던전)
   hidden: boolean; // 두 문 달리기 미니게임 동안 던전을 숨기고 카메라를 양보
+  heroVariant?: HeroVariant; // 던전 종류에 따른 주인공 모습 (초등학생/대학생/모험가)
   statsRef: React.MutableRefObject<Stats>;
   /** 기억 능력 '두근거림' 등 상황형 공격 배율 (1 = 없음) */
   damageMulRef: React.MutableRefObject<number>;
@@ -1505,7 +1507,7 @@ function DungeonScene({
       <group ref={playerRef} position={[startX, 0, startZ]}>
         <BlobShadow />
         <group ref={bodyRef}>
-          <Hero />
+          <Hero variant={heroVariant} />
         </group>
         {/* 멀티샷 궤도 구슬 */}
         {[0, 1, 2, 3].map((i) => (
