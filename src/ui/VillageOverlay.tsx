@@ -71,7 +71,9 @@ export default function VillageOverlay({
               ? '💬 촌장과 대화'
               : near === 'nina'
                 ? '💬 니나와 대화'
-                : '💬 무크와 대화'}
+                : near === 'peddler'
+                  ? '🎩 상인과 거래'
+                  : '💬 무크와 대화'}
         </button>
       )}
       {talk && node && (
@@ -92,6 +94,7 @@ export default function VillageOverlay({
                 items={node.options.map((o) => ({
                   key: o.label,
                   label: o.label,
+                  disabled: o.disabled,
                   onPick: () => onChoose(o),
                 }))}
               />

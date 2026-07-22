@@ -64,8 +64,10 @@ export type TownNode =
       options: {
         label: string;
         next?: number;
-        action?: 'enter' | 'return' | 'shop' | 'close';
+        action?: 'enter' | 'return' | 'shop' | 'close' | 'buy';
         mode?: DungeonMode;
+        buySlot?: number; // action 'buy' — 상인 매대 슬롯 번호 (App이 실제 물건·가격을 관리)
+        disabled?: boolean; // 팔렸거나 코인 부족
       }[];
     };
 
@@ -450,6 +452,39 @@ export function mukTalk(floorNo = 0): TownNode[] {
       ],
     },
   ];
+}
+
+// 떠돌이 상인 🎩 — 비주얼노벨 시절(TOWN_VISIT_15, git 히스토리)에 있던 NPC의 부활.
+// '떨어진 사람' 선배 — 던전 진행 중(visit/death)에만 마을에 와 있다 (허브엔 없음 = 떠돌이).
+// 첫 만남은 원본 독백 + 덤(아이템), 이후엔 마을 시절 따라 한마디.
+// 매대(choice 노드)는 App이 붙인다 — 마지막 대사의 next는 배열 길이(= 매대 인덱스).
+export function peddlerTalk(met: boolean, floorNo: number): TownNode[] {
+  const L = (text: string, next: number, gift?: 'item'): TownNode => ({
+    kind: 'line',
+    icon: '🎩',
+    speaker: '떠돌이 상인',
+    text,
+    next,
+    gift,
+  });
+  if (!met) {
+    return [
+      L("이런 데서 손님을 다 보는군. 나? 나도 자네처럼 '떨어진 사람'이었지.", 1),
+      L('돌아가길 포기한 건 아니야. 그저… 어느 날부터 내가 몇 년도에서 왔는지 기억이 안 나. 무서운 건 던전이 아니라 그거였어.', 2),
+      L('자네는 기억을 잘 붙들고 있나? 보물이 기억을 되돌려준다는 얘기, 들어 봤겠지. 이 던전은 잔인한 건지 다정한 건지 모르겠단 말이야.', 3),
+      L('덤이야. 깊이 가는 손님한텐 서비스지. …그리고 물건도 좀 보고 가게.', 4, 'item'),
+    ];
+  }
+  const stg = villageStageOf(floorNo);
+  const opener =
+    stg >= 4
+      ? '마을이 이 지경인데 왜 안 떠나느냐고? …여기 말고는 갈 데를 잊어버렸어, 나는. 자, 물건 보게.'
+      : stg === 3
+        ? '방벽 안쪽까지 들어오느라 혼났네. 그래도 손님 얼굴은 봐야지. 오늘의 물건이야.'
+        : stg === 2
+          ? '흉흉하더군. 이런 때일수록 물건이 팔리지. …농담이야, 반은. 천천히 보게.'
+          : '오늘도 장사는 공쳤지만, 자네를 보니 온 보람이 있군. 물건 구경하겠나?'
+  return [L(opener, 1)];
 }
 
 // 던전 입구 아치 — 상황별 내려가기. 첫 입장/허브에선 난이도(모드)를 고른다.

@@ -9,7 +9,7 @@ import { mulberry32 } from '../lib/rng';
 
 // 걸어다니는 3D 마을 — 옛날 RPG처럼 주인공이 광장을 돌아다니며 NPC에게 다가가 대화하고,
 // 던전 입구 아치로 걸어가면 내려간다. 던전과 동일한 useMoveInput·Hero·카메라 재사용.
-export type TownTarget = 'chief' | 'nina' | 'muk' | 'entrance' | null;
+export type TownTarget = 'chief' | 'nina' | 'muk' | 'peddler' | 'entrance' | null;
 
 const TR = 11; // 광장 반경(정사각형 절반)
 const HERO_START: [number, number] = [0, 8];
@@ -28,6 +28,10 @@ const NPCS: Npc[] = [
   { id: 'nina', name: '니나', x: 6, z: 2.6, body: '#ff9ec4', head: '#ffe0c2', hair: '#8a5636' },
   { id: 'muk', name: '무크', x: -6.6, z: -2.4, body: '#c98a4a', head: '#e8c9a0', hair: '#3a2a20' },
 ];
+
+// 떠돌이 상인 🎩 — 던전 진행 중(villageFloor > 0 = visit/death)에만 광장에 와 있다.
+// 바퀴 없는 마차와 함께 (비주얼노벨 시절 지문: "상인의 마차에는 바퀴가 없었다.")
+const PEDDLER = { x: 7.2, z: -4.6 };
 
 interface Building {
   cx: number;
@@ -188,6 +192,7 @@ function buildDecor(floorNo: number): Decor {
         return false;
     }
     for (const n of NPCS) if (Math.hypot(x - n.x, z - n.z) < 1.4) return false;
+    if (Math.hypot(x - PEDDLER.x, z - PEDDLER.z) < 2.2) return false; // 상인 + 마차 자리
     return true;
   };
   const scatter = (count: number, edgeBias = false) => {
@@ -275,6 +280,7 @@ export default function TownScene({
   const input = useMoveInput();
   const heroRef = useRef<THREE.Group>(null);
   const npcRefs = useRef<(THREE.Group | null)[]>([null, null, null]);
+  const peddlerRef = useRef<THREE.Group>(null); // 떠돌이 상인 (visit/death에만)
   const entranceRef = useRef<THREE.Group>(null);
   const entranceLightRef = useRef<THREE.PointLight>(null);
   // undefined로 시작 → 마운트 후 첫 프레임에 실제 근접값(보통 null)을 반드시 1회 보고.
@@ -290,6 +296,7 @@ export default function TownScene({
       chief: makeTextTexture('👵 촌장', { width: 256, height: 88, color: '#ffe9b3' }),
       nina: makeTextTexture('👧 니나', { width: 256, height: 88, color: '#ffd0e4' }),
       muk: makeTextTexture('🧔 무크', { width: 256, height: 88, color: '#ffd9a8' }),
+      peddler: makeTextTexture('🎩 상인', { width: 256, height: 88, color: '#c9e8b0' }),
       door: makeTextTexture('던전 입구', { width: 256, height: 88, color: '#c9b4ff' }),
     }),
     [],
@@ -377,6 +384,14 @@ export default function TownScene({
         near = n.id;
       }
     }
+    // 떠돌이 상인 (던전 진행 중에만 와 있다)
+    if (floorNo > 0) {
+      const pd = Math.hypot(PEDDLER.x - h.position.x, PEDDLER.z - h.position.z);
+      if (pd < bestD) {
+        bestD = pd;
+        near = 'peddler';
+      }
+    }
     const ed = Math.hypot(ENTRANCE[0] - h.position.x, ENTRANCE[1] - h.position.z);
     if (ed < bestD) {
       bestD = ed;
@@ -397,6 +412,15 @@ export default function TownScene({
       const s = g.scale.x + (target - g.scale.x) * Math.min(1, dt * 8);
       g.scale.setScalar(s);
     });
+
+    // ── 떠돌이 상인 연출 (NPC와 같은 둥실둥실 + 근접 강조)
+    if (peddlerRef.current) {
+      const g = peddlerRef.current;
+      g.position.y = Math.abs(Math.sin(t * 2 + 3.3)) * 0.05;
+      g.rotation.y = Math.sin(t * 0.6 + 3.3) * 0.3;
+      const target = near === 'peddler' ? 1.12 : 1;
+      g.scale.setScalar(g.scale.x + (target - g.scale.x) * Math.min(1, dt * 8));
+    }
 
     // ── 던전 입구 (소용돌이 + 가까이 가면 밝아짐)
     if (entranceRef.current) entranceRef.current.rotation.y = t * 1.2;
@@ -697,6 +721,84 @@ export default function TownScene({
           </sprite>
         </group>
       ))}
+
+      {/* 떠돌이 상인 🎩 — 던전 진행 중에만 와 있다 (바퀴 없는 마차와 함께) */}
+      {floorNo > 0 && (
+        <>
+          <group ref={peddlerRef} position={[PEDDLER.x, 0, PEDDLER.z]}>
+            <BlobShadow size={1.4} />
+            {/* 망토 (짙은 초록) */}
+            <mesh position={[0, 0.6, 0]}>
+              <boxGeometry args={[0.64, 0.72, 0.42]} />
+              <meshStandardMaterial color="#4a6a45" />
+            </mesh>
+            <mesh position={[-0.38, 0.62, 0]}>
+              <boxGeometry args={[0.15, 0.44, 0.2]} />
+              <meshStandardMaterial color="#3c5838" />
+            </mesh>
+            <mesh position={[0.38, 0.62, 0]}>
+              <boxGeometry args={[0.15, 0.44, 0.2]} />
+              <meshStandardMaterial color="#3c5838" />
+            </mesh>
+            <mesh position={[0, 1.18, 0]}>
+              <boxGeometry args={[0.48, 0.44, 0.44]} />
+              <meshStandardMaterial color="#e0c9a8" />
+            </mesh>
+            {/* 중절모 — 챙 넓은 모자 */}
+            <mesh position={[0, 1.44, 0]}>
+              <boxGeometry args={[0.7, 0.06, 0.66]} />
+              <meshStandardMaterial color="#2f2a22" />
+            </mesh>
+            <mesh position={[0, 1.58, 0]}>
+              <boxGeometry args={[0.42, 0.24, 0.4]} />
+              <meshStandardMaterial color="#3c352a" />
+            </mesh>
+            <mesh position={[-0.1, 1.2, 0.23]}>
+              <boxGeometry args={[0.07, 0.09, 0.02]} />
+              <meshStandardMaterial color="#2a2333" />
+            </mesh>
+            <mesh position={[0.1, 1.2, 0.23]}>
+              <boxGeometry args={[0.07, 0.09, 0.02]} />
+              <meshStandardMaterial color="#2a2333" />
+            </mesh>
+            <sprite position={[0, 2.0, 0]} scale={[1.7, 0.58, 1]}>
+              <spriteMaterial map={labels.peddler} transparent depthWrite={false} />
+            </sprite>
+          </group>
+          {/* 바퀴 없는 마차 — "상인의 마차에는 바퀴가 없었다." */}
+          <group position={[PEDDLER.x + 1.6, 0, PEDDLER.z - 0.9]} rotation={[0, -0.4, 0]}>
+            <BlobShadow size={2.6} />
+            <mesh position={[0, 0.55, 0]}>
+              <boxGeometry args={[1.9, 0.5, 1.1]} />
+              <meshStandardMaterial color="#6b4a2f" />
+            </mesh>
+            {/* 포장 지붕 */}
+            <mesh position={[0, 1.15, 0]}>
+              <boxGeometry args={[1.7, 0.55, 1.0]} />
+              <meshStandardMaterial color="#8d86a8" />
+            </mesh>
+            {/* 쌓인 상품들 */}
+            <mesh position={[-0.5, 0.92, 0.28]}>
+              <boxGeometry args={[0.3, 0.24, 0.3]} />
+              <meshStandardMaterial color="#c98f4a" />
+            </mesh>
+            <mesh position={[-0.12, 0.94, 0.3]}>
+              <boxGeometry args={[0.24, 0.28, 0.24]} />
+              <meshStandardMaterial color="#ffd166" emissive="#c98f1e" emissiveIntensity={0.5} />
+            </mesh>
+            {/* 바퀴가 있어야 할 자리엔… 나무 받침 */}
+            <mesh position={[-0.7, 0.15, 0]}>
+              <boxGeometry args={[0.2, 0.3, 1.0]} />
+              <meshStandardMaterial color="#4a3626" />
+            </mesh>
+            <mesh position={[0.7, 0.15, 0]}>
+              <boxGeometry args={[0.2, 0.3, 1.0]} />
+              <meshStandardMaterial color="#4a3626" />
+            </mesh>
+            <pointLight color="#ffd9a8" intensity={0.9} distance={5} position={[0, 1.6, 0.6]} />
+          </group>
+        </>
+      )}
 
       {/* 주인공 */}
       <group ref={heroRef} position={[HERO_START[0], 0, HERO_START[1]]}>

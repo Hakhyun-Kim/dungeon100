@@ -34,6 +34,7 @@ import {
   chiefTalk,
   ninaTalk,
   mukTalk,
+  peddlerTalk,
   entranceOptions,
   type TownContext,
   type TownLine,
@@ -149,6 +150,8 @@ export default function App() {
   const [meta, setMeta] = useLocalStorage<Meta>('d100-meta', { dmg: 0, hp: 0, spd: 0 });
   const [deaths, setDeaths] = useLocalStorage<number>('d100-deaths', 0);
   const [girlMet, setGirlMet] = useLocalStorage<boolean>('d100-girl', false);
+  // 떠돌이 상인 🎩 — 첫 만남(원본 독백 + 덤) 여부. 마을 방문 중에만 광장에 와 있다
+  const [peddlerMet, setPeddlerMet] = useLocalStorage<boolean>('d100-peddler', false);
   // 본 흔적(14·28·42·49층)의 층 번호 — 42층 초대장을 봤으면 56층 소녀의 첫인사·선물이 달라진다
   const [tracesSeen, setTracesSeen] = useLocalStorage<number[]>('d100-traces', []);
   const tracesSeenRef = useRef(tracesSeen);
@@ -484,9 +487,40 @@ export default function App() {
     setVillageFirst(first);
     setVillageNear(null);
     setVillageTalk(null);
+    peddlerBoughtRef.current.clear(); // 상인 매대는 마을 들를 때마다 새로
+    peddlerWaresRef.current = [];
     setPhase('village');
   };
   const onVillageNear = useCallback((t: TownTarget) => setVillageNear(t), []);
+
+  // ── 떠돌이 상인 매대 — 코인으로 이번 판 아이템을 산다 (대장간=영구, 상인=즉석 화력)
+  //    물건은 (runId, 층) 시드로 3개 — 같은 방문 동안 재고 고정, 산 것은 '팔림'.
+  const peddlerBoughtRef = useRef<Set<number>>(new Set());
+  const peddlerWaresRef = useRef<Upgrade[]>([]);
+  const peddlerCost = (u: Upgrade) => (u.rarity === 'legendary' ? 120 : u.rarity === 'rare' ? 70 : 40);
+  const makePeddlerWaresNode = (coinsNow: number): TownNode => {
+    // 방문당 1회만 뽑아 고정 — 구매로 build가 바뀌어도 매대가 흔들리지 않게
+    if (peddlerWaresRef.current.length === 0)
+      peddlerWaresRef.current = pickUpgrades(mulberry32(runId * 97 + floorNo * 31 + 5), 3, build);
+    const wares = peddlerWaresRef.current;
+    return {
+      kind: 'choice',
+      prompt: `상인이 바퀴 없는 마차를 열어 보였다. (가진 코인 🪙${coinsNow})`,
+      options: [
+        ...wares.map((u, i) => {
+          const cost = peddlerCost(u);
+          const sold = peddlerBoughtRef.current.has(i);
+          return {
+            label: sold ? `${u.icon} ${u.name} — 팔림` : `${u.icon} ${u.name} — 🪙${cost}`,
+            action: 'buy' as const,
+            buySlot: i,
+            disabled: sold || coinsNow < cost,
+          };
+        }),
+        { label: '👋 구경만 할게요', action: 'close' as const },
+      ],
+    };
+  };
 
   // 마을에서 NPC/입구에 다가가 상호작용 버튼을 누르면 그에 맞는 대화 스크립트를 연다
   const talkTo = (target: TownTarget) => {
@@ -497,7 +531,11 @@ export default function App() {
     if (target === 'chief') script = chiefTalk(villageCtx, villageFirst, villageFloor);
     else if (target === 'nina') script = ninaTalk(villageCtx, villageFloor);
     else if (target === 'muk') script = mukTalk(villageFloor);
-    else if (target === 'entrance') script = entranceOptions(villageCtx, floorNo);
+    else if (target === 'peddler') {
+      // 대사(첫 만남은 원본 독백 + 덤) 뒤에 매대가 붙는다 — 마지막 대사의 next = 매대 인덱스
+      script = [...peddlerTalk(peddlerMet, villageFloor), makePeddlerWaresNode(coins)];
+      if (!peddlerMet) setPeddlerMet(true);
+    } else if (target === 'entrance') script = entranceOptions(villageCtx, floorNo);
     if (!script.length) return;
     applyVillageGift(script[0]);
     setVillageTalk({ script, idx: 0 });
@@ -546,6 +584,31 @@ export default function App() {
     } else if (o.action === 'shop') {
       closeTalk();
       setPhase('shop');
+    } else if (o.action === 'buy') {
+      // 떠돌이 상인 구매 — 코인 차감 + 즉시 장착, 남은 재고로 매대 갱신
+      const u = peddlerWaresRef.current[o.buySlot ?? -1];
+      if (!u) {
+        closeTalk();
+        return;
+      }
+      const cost = peddlerCost(u);
+      if (coins < cost || peddlerBoughtRef.current.has(o.buySlot!)) {
+        sfx.tap();
+        return;
+      }
+      peddlerBoughtRef.current.add(o.buySlot!);
+      setCoins((c) => c - cost);
+      gainUpgrade(u);
+      setGoldFlash((f) => f + 1);
+      sfx.gift();
+      const thanks: TownNode = {
+        kind: 'line',
+        icon: '🎩',
+        speaker: '떠돌이 상인',
+        text: `좋은 눈이야. (${u.icon} ${u.name} 획득)`,
+        next: 1,
+      };
+      setVillageTalk({ script: [thanks, makePeddlerWaresNode(coins - cost)], idx: 0 });
     } else if (o.action === 'close') {
       closeTalk();
     } else if (o.next != null && villageTalk) {
