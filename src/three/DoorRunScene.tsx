@@ -330,11 +330,25 @@ export default function DoorRunScene({
 }
 
 // 두 문 러너식 조작: 화면 왼쪽/오른쪽 꾹 누르기 또는 ←/→·A/D
+// 터치 기기(coarse pointer)에서는 좌/우 존 인디케이터(◀▶)를 띄우고 누른 쪽을 밝힌다.
 function useSteer() {
   const dir = useRef(0);
   useEffect(() => {
     const keys = new Set<string>();
     let touch = 0;
+
+    // 터치 기기에만 좌/우 존 표시 (버튼이 아니라 인디케이터 — 실제 입력은 화면 반쪽 어디든)
+    let zoneL: HTMLDivElement | null = null;
+    let zoneR: HTMLDivElement | null = null;
+    if (window.matchMedia('(pointer: coarse)').matches) {
+      zoneL = document.createElement('div');
+      zoneL.className = 'steer-zone left';
+      zoneL.textContent = '◀';
+      zoneR = document.createElement('div');
+      zoneR.className = 'steer-zone right';
+      zoneR.textContent = '▶';
+      document.body.append(zoneL, zoneR);
+    }
 
     const update = () => {
       let x = 0;
@@ -342,6 +356,8 @@ function useSteer() {
       if (keys.has('ArrowRight') || keys.has('KeyD')) x += 1;
       if (x === 0) x = touch;
       dir.current = x;
+      zoneL?.classList.toggle('active', x < 0);
+      zoneR?.classList.toggle('active', x > 0);
     };
     const down = (e: KeyboardEvent) => {
       if (e.shiftKey) return; // Shift+D(디버그) 등과 충돌 방지
@@ -389,6 +405,8 @@ function useSteer() {
       window.removeEventListener('pointerup', pup);
       window.removeEventListener('pointercancel', pup);
       window.removeEventListener('blur', blur);
+      zoneL?.remove();
+      zoneR?.remove();
     };
   }, []);
   return dir;

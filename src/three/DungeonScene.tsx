@@ -199,7 +199,7 @@ function DungeonScene({
 }) {
   const floor = useMemo(() => generateFloor(floorNo, seedOffset), [floorNo, seedOffset]);
   const isBossFloor = floorNo % 10 === 0;
-  const input = useMoveInput();
+  const input = useMoveInput(pausedRef);
 
   const playerRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Group>(null);
@@ -1932,14 +1932,43 @@ function DungeonScene({
   );
 }
 
-// 키보드(WASD/방향키) + 터치 드래그(가상 스틱) 입력 → 정규화된 이동 벡터
+// ── 가상 조이스틱 DOM — 모듈 싱글턴 (던전이 숨겨진 채 아레나 훅과 공존해도 1개만) ──
+const STICK_R = 56; // 스틱 최대 반경(px) — 기울기 정규화(len/R)와 일치
+let vstick: { base: HTMLDivElement; knob: HTMLDivElement; refs: number } | null = null;
+function acquireVstick() {
+  if (!vstick) {
+    const base = document.createElement('div');
+    base.className = 'vstick';
+    const knob = document.createElement('div');
+    knob.className = 'vstick-knob';
+    base.appendChild(knob);
+    document.body.appendChild(base);
+    vstick = { base, knob, refs: 0 };
+  }
+  vstick.refs++;
+  return vstick;
+}
+function releaseVstick() {
+  if (!vstick) return;
+  vstick.refs--;
+  if (vstick.refs <= 0) {
+    vstick.base.remove();
+    vstick = null;
+  }
+}
+
+// 키보드(WASD/방향키) + 터치 드래그(가상 조이스틱) 입력 → 정규화된 이동 벡터
 // e.code 기반이라 한/영 입력 상태와 무관. Shift 조합(디버그 키 등)은 무시.
-// 몬스터 아레나(GemArenaScene)에서도 재사용한다.
-export function useMoveInput() {
+// 터치·펜 드래그에는 조이스틱 시각화가 손가락 위치에 뜨고, 반경 밖으로 끌면
+// 베이스가 따라와(플로팅 스틱) 방향 전환이 쉽다. pausedRef가 true면 표시 안 함
+// (미니게임 중 숨겨진 던전 씬이 스틱을 띄우는 것 방지).
+// 몬스터 아레나(GemArenaScene)·마을(TownScene)에서도 재사용한다.
+export function useMoveInput(pausedRef?: React.MutableRefObject<boolean>) {
   const dir = useRef({ x: 0, z: 0 });
   useEffect(() => {
     const keys = new Set<string>();
     const drag = { active: false, ox: 0, oy: 0, x: 0, y: 0 };
+    const stick = acquireVstick();
 
     const update = () => {
       let x = 0;
@@ -1953,7 +1982,7 @@ export function useMoveInput() {
         const dy = drag.y - drag.oy;
         const len = Math.hypot(dx, dy);
         if (len > 10) {
-          const m = Math.min(1, len / 56);
+          const m = Math.min(1, len / STICK_R);
           x = (dx / len) * m;
           z = (dy / len) * m;
         }
@@ -1964,6 +1993,12 @@ export function useMoveInput() {
         z /= mag;
       }
       dir.current = { x, z };
+    };
+
+    const drawStick = () => {
+      stick.base.style.left = `${drag.ox}px`;
+      stick.base.style.top = `${drag.oy}px`;
+      stick.knob.style.transform = `translate(${drag.x - drag.ox}px, ${drag.y - drag.oy}px)`;
     };
 
     const down = (e: KeyboardEvent) => {
@@ -1977,29 +2012,46 @@ export function useMoveInput() {
     };
     const pdown = (e: PointerEvent) => {
       if (!e.isPrimary) return;
-      // 버튼·카드 등 UI 위에서는 스틱을 시작하지 않는다
-      if ((e.target as HTMLElement).closest('button')) return;
+      // 버튼·메뉴 오버레이 위에서는 스틱을 시작하지 않는다 — 게임 화면(캔버스) 위에서만
+      const t = e.target as HTMLElement;
+      if (t.closest('button') || !t.closest('canvas')) return;
       drag.active = true;
       drag.ox = e.clientX;
       drag.oy = e.clientY;
       drag.x = e.clientX;
       drag.y = e.clientY;
+      // 마우스는 키보드 병행 조작이라 시각화 없이 예전처럼 동작
+      if (e.pointerType !== 'mouse' && !pausedRef?.current) {
+        drawStick();
+        stick.base.classList.add('on');
+      }
       update();
     };
     const pmove = (e: PointerEvent) => {
       if (!e.isPrimary || !drag.active) return;
       drag.x = e.clientX;
       drag.y = e.clientY;
+      const dx = drag.x - drag.ox;
+      const dy = drag.y - drag.oy;
+      const len = Math.hypot(dx, dy);
+      if (len > STICK_R) {
+        // 끝까지 기울인 채 계속 끌면 베이스가 손가락을 따라온다 (방향 전환이 쉬움)
+        drag.ox = drag.x - (dx / len) * STICK_R;
+        drag.oy = drag.y - (dy / len) * STICK_R;
+      }
+      drawStick();
       update();
     };
     const pup = (e: PointerEvent) => {
       if (!e.isPrimary) return;
       drag.active = false;
+      stick.base.classList.remove('on');
       update();
     };
     const blur = () => {
       keys.clear();
       drag.active = false;
+      stick.base.classList.remove('on');
       update();
     };
 
@@ -2018,8 +2070,9 @@ export function useMoveInput() {
       window.removeEventListener('pointerup', pup);
       window.removeEventListener('pointercancel', pup);
       window.removeEventListener('blur', blur);
+      releaseVstick();
     };
-  }, []);
+  }, [pausedRef]);
   return dir;
 }
 

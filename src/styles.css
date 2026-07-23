@@ -28,6 +28,15 @@ body,
   -webkit-user-select: none;
 }
 
+/* 모바일 주소창 등장·회전 시 높이 변동 대응 — 동적 뷰포트 단위 (지원 브라우저) */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+}
+
 body {
   background: #140e22;
   color: #f3eeff;
@@ -48,8 +57,8 @@ body {
 .hud {
   position: absolute;
   top: max(10px, env(safe-area-inset-top));
-  left: 12px;
-  right: 12px;
+  left: max(12px, env(safe-area-inset-left)); /* 가로 모드 노치 대응 */
+  right: max(12px, env(safe-area-inset-right));
   display: flex;
   align-items: center;
   gap: 10px;
@@ -79,14 +88,14 @@ body {
 .title-mute {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
-  right: 12px;
+  right: max(12px, env(safe-area-inset-right));
 }
 
 /* 타이틀 그래픽 품질 토글 (음소거 왼쪽) */
 .title-gfx {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
-  right: 64px;
+  right: calc(max(12px, env(safe-area-inset-right)) + 52px);
 }
 
 .hp-wrap {
@@ -145,7 +154,7 @@ body {
 .mini-map {
   position: absolute;
   top: calc(max(10px, env(safe-area-inset-top)) + 78px); /* 보스 체력바(+42px) 아래 */
-  right: 12px;
+  right: max(12px, env(safe-area-inset-right));
   z-index: 20; /* 오버레이(30)·HUD(50) 아래, 캔버스 위 */
   background: rgba(20, 12, 40, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -227,7 +236,7 @@ body {
 .build-row {
   position: absolute;
   bottom: max(10px, env(safe-area-inset-bottom));
-  left: 12px;
+  left: max(12px, env(safe-area-inset-left));
   display: flex;
   gap: 6px;
   pointer-events: none;
@@ -265,11 +274,18 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  /* 내용이 화면보다 길면(폰 가로 모드) 가운데 정렬 대신 위부터 스크롤 — 미지원 브라우저는 center 유지 */
+  justify-content: safe center;
   gap: 14px;
   padding: 24px;
+  padding-left: max(24px, env(safe-area-inset-left));
+  padding-right: max(24px, env(safe-area-inset-right));
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
   text-align: center;
   z-index: 30;
   animation: screenIn 0.22s ease-out;
+  overflow-y: auto;
+  touch-action: pan-y; /* 전역 touch-action: none 예외 — 오버레이는 터치 스크롤 허용 */
 }
 
 @keyframes screenIn {
@@ -347,7 +363,7 @@ body {
 }
 .demo-exit {
   position: absolute;
-  right: 10px;
+  right: max(10px, env(safe-area-inset-right));
   bottom: max(10px, env(safe-area-inset-bottom));
   z-index: 75;
   background: rgba(20, 14, 34, 0.7);
@@ -961,6 +977,9 @@ body {
   font-size: 15px;
   color: #ffe9b3;
   white-space: nowrap;
+  max-width: 94vw; /* 좁은 세로 화면에서 넘치지 않게 */
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
   animation: hintPulse 1.6s ease-in-out infinite;
 }
@@ -1240,4 +1259,139 @@ h2 {
   border: 1px solid rgba(156, 143, 196, 0.45);
   border-radius: 999px;
   padding: 1px 8px;
+}
+
+/* ── 가상 조이스틱 — 터치 드래그 시각화 (useMoveInput이 DOM을 직접 구동) ── */
+.vstick {
+  position: fixed;
+  width: 116px;
+  height: 116px;
+  margin: -58px 0 0 -58px; /* left/top이 스틱 중심이 되게 */
+  border-radius: 50%;
+  border: 2px solid rgba(255, 209, 102, 0.4);
+  background: radial-gradient(circle, rgba(20, 12, 40, 0.18) 40%, rgba(20, 12, 40, 0.48) 100%);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.25);
+  z-index: 25; /* 오버레이(30)·HUD(50) 아래 */
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.vstick.on {
+  opacity: 1;
+}
+
+.vstick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 233, 179, 0.95), rgba(255, 209, 102, 0.7) 55%, rgba(201, 143, 30, 0.75));
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+/* ── 두 문 달리기 좌/우 존 인디케이터 (터치 기기 전용, useSteer가 DOM 구동) ── */
+.steer-zone {
+  position: fixed;
+  bottom: max(96px, 22%);
+  width: 62px;
+  height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid rgba(154, 107, 255, 0.45);
+  background: rgba(20, 12, 40, 0.4);
+  color: #cbbcf2;
+  font-size: 24px;
+  z-index: 25;
+  pointer-events: none; /* 인디케이터일 뿐 — 실제 입력은 화면 반쪽 어디든 */
+  opacity: 0.55;
+  transition: opacity 0.1s ease;
+}
+
+.steer-zone.left {
+  left: max(18px, env(safe-area-inset-left));
+}
+
+.steer-zone.right {
+  right: max(18px, env(safe-area-inset-right));
+}
+
+.steer-zone.active {
+  opacity: 1;
+  border-color: #ffd166;
+  color: #ffe9b3;
+  background: rgba(74, 47, 143, 0.55);
+  box-shadow: 0 0 18px rgba(255, 209, 102, 0.35);
+}
+
+/* ── 폰 가로 모드(낮은 화면) 압축 — 오버레이가 스크롤 없이도 최대한 들어가게 ── */
+@media (max-height: 520px) {
+  .screen {
+    gap: 8px;
+    padding-top: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  h1 {
+    font-size: clamp(28px, 10vh, 44px);
+  }
+
+  h2 {
+    font-size: clamp(18px, 6vh, 26px);
+  }
+
+  .howto {
+    font-size: 13px;
+    padding: 8px 14px;
+    gap: 2px;
+  }
+
+  .menu-col {
+    gap: 8px;
+  }
+
+  .big-btn {
+    font-size: 18px;
+    padding: 10px 34px;
+  }
+
+  .story-icon,
+  .memory-icon {
+    font-size: 40px;
+  }
+
+  .story-text,
+  .lore-text,
+  .memory-text,
+  .over-lore {
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .card {
+    padding: 12px 8px;
+    gap: 5px;
+  }
+
+  .dialog-box {
+    padding: 12px 16px 10px;
+  }
+
+  .dialog-text {
+    font-size: 15px;
+  }
+
+  .dialog-choices {
+    gap: 6px;
+  }
+
+  .choice-btn {
+    font-size: 15px;
+    padding: 9px 14px;
+  }
 }

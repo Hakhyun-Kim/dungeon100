@@ -277,7 +277,7 @@ export default function TownScene({
   floorNo?: number;
   heroVariant?: HeroVariant; // 마지막으로 고른 던전 종류의 모습 그대로 마을을 걷는다
 }) {
-  const input = useMoveInput();
+  const input = useMoveInput(pausedRef);
   const heroRef = useRef<THREE.Group>(null);
   const npcRefs = useRef<(THREE.Group | null)[]>([null, null, null]);
   const peddlerRef = useRef<THREE.Group>(null); // 떠돌이 상인 (visit/death에만)
