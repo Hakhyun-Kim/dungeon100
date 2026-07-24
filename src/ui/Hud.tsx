@@ -24,6 +24,8 @@ export function GameHud({
   muted,
   gfx,
   danger = false,
+  ghostFloor = null,
+  ghostBeaten = false,
   onToggleMute,
   onToggleGfx,
 }: {
@@ -37,6 +39,8 @@ export function GameHud({
   muted: boolean;
   gfx: 'high' | 'lite';
   danger?: boolean; // 갈림길 「모험의 길」 계약 층 표시 (🔥)
+  ghostFloor?: number | null; // 🤖 AI 사서가 먼저 읽고 잠든 층 (넘어서면 ✓)
+  ghostBeaten?: boolean;
   onToggleMute: () => void;
   onToggleGfx: () => void; // 그래픽 품질 토글 — 게임 중에도 즉시 전환
 }) {
@@ -46,6 +50,15 @@ export function GameHud({
       <div className="hud-chip">
         {daily ? '📅' : mode === 'kids' ? '🎒' : mode === 'adult' ? '🧠' : '👹'} {floorNo}층
         {danger && ' 🔥'}
+        {ghostFloor != null && (
+          <span
+            className={`ghost-mark${ghostBeaten ? ' beaten' : ''}`}
+            title="🤖 이 책을 먼저 읽은 AI 사서가 잠든 층 — 넘어서 보자"
+          >
+            {' '}
+            · 🤖{ghostFloor}{ghostBeaten ? '✓' : ''}
+          </span>
+        )}
       </div>
       <div className="hp-wrap">
         {/* 잔상 바가 뒤에서 천천히 따라와 '깎인 만큼'이 잠시 보인다 */}

@@ -14,6 +14,7 @@ import { ALL_UPGRADES, BASE_STATS, draftThree, pickUpgrades, type Stats, type Up
 import { makeQuiz, MAX_DOOR_ROUND, type DungeonMode } from './lib/quiz';
 import { metaSpeed, shopCost, type Meta } from './lib/meta';
 import { todayKey, dailySeed, type DailyRecord } from './lib/daily';
+import { ghostRun, GHOST_CAUSE_TEXT } from './lib/ghost';
 import { EMPTY_DEX, DEX_MILESTONES, dexPct, type DexState } from './lib/dex';
 import DexScreen from './ui/DexScreen';
 import { mulberry32 } from './lib/rng';
@@ -263,6 +264,9 @@ export default function App() {
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gfxPref, gfxAuto, phase, lite]);
+  // 1층 첫 판 조작 코치마크 — 평생 딱 한 번, 9초 (튜토리얼 없이 조작이 이해되게)
+  const [coachSeen, setCoachSeen] = useLocalStorage<boolean>('d100-coach', false);
+  const [coachShow, setCoachShow] = useState(false);
   // 본 흔적(14·28·42·49층)의 층 번호 — 42층 초대장을 봤으면 56층 소녀의 첫인사·선물이 달라진다
   const [tracesSeen, setTracesSeen] = useLocalStorage<number[]>('d100-traces', []);
   const tracesSeenRef = useRef(tracesSeen);
@@ -300,6 +304,12 @@ export default function App() {
   const [runType, setRunType] = useState<'normal' | 'daily'>('normal');
   const [dailyBest, setDailyBest] = useLocalStorage<DailyRecord | null>('d100-daily', null);
   const dailyNum = useMemo(() => dailySeed(todayKey()), []);
+  // 🤖 AI 사서 고스트 — 이번 판을 '먼저 읽은' AI(밸런스 모델)의 기록. 판마다 시드가 다르고,
+  // 일일 던전은 날짜 시드라 모두가 같은 사서와 겨룬다. 넘어서는 순간 1회 연출.
+  const [ghostSeed, setGhostSeed] = useState(0);
+  const ghost = useMemo(() => (ghostSeed > 0 ? ghostRun(ghostSeed) : null), [ghostSeed]);
+  const [ghostBeaten, setGhostBeaten] = useState(false);
+  const [ghostNotice, setGhostNotice] = useState(0);
   const [muted, setMutedState] = useState(isMuted());
   const [bossHp, setBossHp] = useState(0);
   const [bossMax, setBossMax] = useState(0);
@@ -388,6 +398,30 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hp, phase]);
+
+  // 🤖 사서를 넘어서는 순간 — 1회 연출 (배너 4.2초 + 해금음)
+  useEffect(() => {
+    if (!ghost || ghostBeaten || floorNo <= ghost.floor) return;
+    setGhostBeaten(true);
+    setGhostNotice((n) => n + 1);
+    sfx.unlock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floorNo, ghost, ghostBeaten]);
+  useEffect(() => {
+    if (ghostNotice === 0) return;
+    const id = setTimeout(() => setGhostNotice(0), 4200);
+    return () => clearTimeout(id);
+  }, [ghostNotice]);
+
+  // 코치마크 표시 — 1층 run에 처음 들어선 순간 (시연 중엔 자막과 겹치니 표시 안 함)
+  useEffect(() => {
+    if (phase !== 'run' || floorNo !== 1 || runId === 0 || coachSeen || demoRunning) return;
+    setCoachSeen(true);
+    setCoachShow(true);
+    const id = setTimeout(() => setCoachShow(false), 9000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, floorNo, runId, demoRunning]);
 
   // 일일 던전은 재도전해도 같은 드래프트·같은 문제가 나오게 runId 대신 날짜 시드를 쓴다
   const runVar = runType === 'daily' ? dailyNum % 100000 : runId;
@@ -496,6 +530,18 @@ export default function App() {
         if (u) gainUpgrade(u);
         return u ? u.name : 'unknown id';
       },
+      // 사서 고스트 분포 확인 — ghost.ts 상수를 바꾸면 이걸로 재측정 (DEV 전용)
+      ghostDist: (n = 2000) => {
+        const fl: number[] = [];
+        for (let i = 1; i <= n; i++) fl.push(ghostRun((Math.imul(i, 2654435761) >>> 1) || i).floor);
+        fl.sort((a, b) => a - b);
+        return {
+          p10: fl[Math.floor(n * 0.1)],
+          med: fl[n >> 1],
+          p90: fl[Math.floor(n * 0.9)],
+          max: fl[n - 1],
+        };
+      },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -582,6 +628,9 @@ export default function App() {
     portalRetryRef.current = 0;
     homeRetryRef.current = 0;
     homeUsedRef.current = 0;
+    // 이번 판의 AI 사서 — 일일 던전은 날짜 시드(모두 동일), 보통 판은 판마다 새 시드
+    setGhostSeed(rt === 'daily' ? dailyNum : ((Math.random() * 0x7fffffff) | 0) || 1);
+    setGhostBeaten(false);
     setRunId((id) => id + 1);
     setPhase('run');
   };
@@ -1407,6 +1456,18 @@ export default function App() {
         </div>
       )}
 
+      {/* 첫 판 조작 코치마크 — 1층에서 평생 한 번 (d100-coach) */}
+      {coachShow && phase === 'run' && floorNo === 1 && (
+        <div className="coach-chip">🕹️ 드래그(PC: WASD)로 이동 · ⚔️ 공격은 자동 조준 — 적 곁으로!</div>
+      )}
+
+      {/* 🤖 AI 사서 추월 토스트 — 판당 1회 (층이 오르는 순간이라 lore 위에도 뜬다) */}
+      {ghostNotice > 0 && ghost && (
+        <div key={`gh${ghostNotice}`} className="ghost-banner">
+          🤖 AI 사서의 기록({ghost.floor}층)을 넘어섰다 — 이 책을 가장 깊이 읽는 중!
+        </div>
+      )}
+
       {/* ── HUD (z-index 50 — 오버레이 위) ── */}
       {inDungeonUi && (
         <GameHud
@@ -1420,6 +1481,8 @@ export default function App() {
           muted={muted}
           gfx={gfx}
           danger={dangerFloor === floorNo}
+          ghostFloor={ghost?.floor ?? null}
+          ghostBeaten={ghostBeaten}
           onToggleMute={toggleMute}
           onToggleGfx={toggleGfx}
         />
@@ -1499,6 +1562,7 @@ export default function App() {
             setPhase('dex');
           }}
           onStart={startAdventure}
+          onQuickStart={(m) => enterDungeon(m, 'normal')}
           onDaily={() => enterDungeon(undefined, 'daily')}
           onReplay={replayStory}
           onDemo={startDemo}
@@ -1643,6 +1707,7 @@ export default function App() {
               best,
               mode,
               cleared: true,
+              ghost: ghost?.floor,
               daily: runType === 'daily' ? todayKey() : undefined,
             });
           }}
@@ -1666,7 +1731,9 @@ export default function App() {
           }}
         />
       )}
-      {phase === 'draft' && <DraftScreen floorNo={floorNo} draft={draft} onPick={pickUpgrade} />}
+      {phase === 'draft' && (
+        <DraftScreen floorNo={floorNo} draft={draft} build={build} onPick={pickUpgrade} />
+      )}
       {phase === 'over' && (
         <OverScreen
           floorNo={floorNo}
@@ -1676,6 +1743,8 @@ export default function App() {
           lore={overLore}
           checkpointFloor={checkpointFloor}
           daily={runType === 'daily'}
+          ghostFloor={ghost?.floor ?? null}
+          ghostCause={ghost ? GHOST_CAUSE_TEXT[ghost.cause] : undefined}
           onResume={resumeFromCheckpoint}
           onRetry={() => enterDungeon()}
           onVillage={() => goVillage('enter')}
@@ -1688,6 +1757,7 @@ export default function App() {
               memMax: MEMORIES.length,
               best,
               mode,
+              ghost: ghost?.floor,
               daily: runType === 'daily' ? todayKey() : undefined,
             });
           }}

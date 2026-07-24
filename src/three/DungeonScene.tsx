@@ -562,6 +562,53 @@ function DungeonScene({
     return { floorCells: f, wallCells: w };
   }, [floor]);
 
+  // ── 잉크 리빌 — 층 지형이 입구에서부터 '쓰여진다' (세계관: 작가가 이 장을 쓰는 중).
+  // 시각 전용: 충돌(canStand)·적 AI·미니맵·봇 판단은 셀 그리드 기반이라 전혀 안 변한다.
+  // 배치 effect가 위치·거리 배열을 채우며 ε 크기로 시작하고, useFrame이 조작 가능해진
+  // 첫 프레임부터(글귀 오버레이가 닫힌 순간) 입구→먼 곳 순서로 자라나게 다시 쓴다.
+  const revealRef = useRef<{
+    t: number;
+    done: boolean;
+    f: Float32Array; // 바닥: [wx, wz, dist01] × N
+    w: Float32Array; // 벽: [wx, wz, sy, dist01] × N
+  } | null>(null);
+  const REVEAL_STAG = 0.62; // 입구→가장 먼 타일까지의 시차 (초)
+  const REVEAL_RISE = 0.3; // 타일 하나가 자라는 시간 (초)
+  const writeReveal = (elapsed: number): boolean => {
+    const rv = revealRef.current;
+    const fm = floorMeshRef.current;
+    const wm = wallMeshRef.current;
+    if (!rv || !fm || !wm) return true;
+    const ease = (p: number) => (p <= 0 ? 0 : p >= 1 ? 1 : p * p * (3 - 2 * p));
+    let allDone = true;
+    for (let i = 0; i < floorCells.length; i++) {
+      const s = ease((elapsed - rv.f[i * 3 + 2] * REVEAL_STAG) / REVEAL_RISE);
+      if (s < 1) allDone = false;
+      const sc = Math.max(s, 0.001);
+      // 바닥(두께 0.3, 최종 중심 -0.15) — 바닥면(-0.3)에 붙은 채 자란다
+      dummy.position.set(rv.f[i * 3], -0.3 + 0.15 * sc, rv.f[i * 3 + 1]);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(sc, sc, sc);
+      dummy.updateMatrix();
+      fm.setMatrixAt(i, dummy.matrix);
+    }
+    for (let i = 0; i < wallCells.length; i++) {
+      const s = ease((elapsed - rv.w[i * 4 + 3] * REVEAL_STAG) / REVEAL_RISE);
+      if (s < 1) allDone = false;
+      const sc = Math.max(s, 0.001);
+      const sy0 = rv.w[i * 4 + 2];
+      // 벽 밑면을 고정한 채 위로 자라 s=1에서 원래 배치(중심 1.3, 높이 배율 sy0)와 일치
+      dummy.position.set(rv.w[i * 4], 1.3 - 1.3 * sy0 * (1 - sc), rv.w[i * 4 + 1]);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(sc, sy0 * sc, sc);
+      dummy.updateMatrix();
+      wm.setMatrixAt(i, dummy.matrix);
+    }
+    fm.instanceMatrix.needsUpdate = true;
+    wm.instanceMatrix.needsUpdate = true;
+    return allDone;
+  };
+
   // 정적 지형 인스턴스 배치 (마운트 시 1회) — 색은 10층 단위 테마.
   // 가짜 AO: 벽에 인접한 바닥 타일을 어둡게 구워(인스턴스 색) 공간에 명암 깊이를 만든다.
   // 여기에 셀 해시 미세 변주를 곱해 단색 평면 느낌을 깬다 (렌더 비용 0).
@@ -570,6 +617,9 @@ function DungeonScene({
     const dirs8 = [
       [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
     ] as const;
+    const fArr = new Float32Array(floorCells.length * 3);
+    const wArr = new Float32Array(wallCells.length * 4);
+    let maxD = 1;
     const fm = floorMeshRef.current;
     if (fm) {
       const c1 = new THREE.Color(theme.f1);
@@ -579,11 +629,10 @@ function DungeonScene({
       const house = floor.house;
       floorCells.forEach(([x, y], i) => {
         const [wx, wz] = cellToWorld(x, y);
-        dummy.position.set(wx, -0.15, wz);
-        dummy.rotation.set(0, 0, 0);
-        dummy.scale.set(1, 1, 1);
-        dummy.updateMatrix();
-        fm.setMatrixAt(i, dummy.matrix);
+        fArr[i * 3] = wx;
+        fArr[i * 3 + 1] = wz;
+        fArr[i * 3 + 2] = Math.hypot(wx - startX, wz - startZ);
+        maxD = Math.max(maxD, fArr[i * 3 + 2]);
         tmp.copy((x + y) % 2 === 0 ? c1 : c2);
         if (house && x >= house.x && x < house.x + house.w && y >= house.y && y < house.y + house.h) {
           tmp.lerp(houseTint, 0.24);
@@ -595,7 +644,6 @@ function DungeonScene({
         tmp.multiplyScalar(ao * (0.94 + cellHash(x, y, floorNo) * 0.12));
         fm.setColorAt(i, tmp);
       });
-      fm.instanceMatrix.needsUpdate = true;
       if (fm.instanceColor) fm.instanceColor.needsUpdate = true;
     }
     const wm = wallMeshRef.current;
@@ -604,18 +652,23 @@ function DungeonScene({
       wallCells.forEach(([x, y], i) => {
         const [wx, wz] = cellToWorld(x, y);
         const h = cellHash(x, y, floorNo);
-        dummy.position.set(wx, 1.3, wz);
-        dummy.rotation.set(0, 0, 0);
-        dummy.scale.set(1, 0.96 + h * 0.09, 1); // 벽 높이도 살짝 들쭉날쭉 (유기적 실루엣)
-        dummy.updateMatrix();
-        wm.setMatrixAt(i, dummy.matrix);
+        wArr[i * 4] = wx;
+        wArr[i * 4 + 1] = wz;
+        wArr[i * 4 + 2] = 0.96 + h * 0.09; // 벽 높이도 살짝 들쭉날쭉 (유기적 실루엣)
+        wArr[i * 4 + 3] = Math.hypot(wx - startX, wz - startZ);
+        maxD = Math.max(maxD, wArr[i * 4 + 3]);
         wtmp.setScalar(0.9 + h * 0.2); // 재질 색에 곱해지는 밝기 변주
         wm.setColorAt(i, wtmp);
       });
-      wm.instanceMatrix.needsUpdate = true;
       if (wm.instanceColor) wm.instanceColor.needsUpdate = true;
     }
-  }, [floorCells, wallCells, dummy, theme, floor, floorNo]);
+    // 거리 정규화(0~1) 후 ε 크기로 초기 배치 — 리빌은 useFrame이 진행
+    for (let i = 0; i < floorCells.length; i++) fArr[i * 3 + 2] /= maxD;
+    for (let i = 0; i < wallCells.length; i++) wArr[i * 4 + 3] /= maxD;
+    revealRef.current = { t: 0, done: false, f: fArr, w: wArr };
+    writeReveal(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floorCells, wallCells, dummy, theme, floor, floorNo, startX, startZ]);
 
   // 개발 검증용 훅 (프로덕션 빌드에서는 제외)
   useEffect(() => {
@@ -722,6 +775,13 @@ function DungeonScene({
     const stats = statsRef.current;
     const p = playerRef.current;
     if (!p) return;
+
+    // 잉크 리빌 진행 — 조작이 가능해진 순간부터 (글귀 오버레이·마을·미니게임 중엔 대기)
+    const rv = revealRef.current;
+    if (rv && !rv.done && !hiddenRef.current && !pausedRef.current) {
+      rv.t += dt;
+      if (writeReveal(rv.t)) rv.done = true;
+    }
 
     // 플레이어 피격 공통 — 잔상 회피(MISS)·단단한 표지(피해 감소) 반영. 적용된 피해 반환(회피 = 0).
     const hurtPlayer = (dmg: number): number => {

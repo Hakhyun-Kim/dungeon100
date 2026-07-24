@@ -100,38 +100,38 @@ export const UPGRADES: Upgrade[] = [
 export interface Evolution extends Upgrade {
   evo: true;
   recipe: string; // 카드에 보여줄 조합 (달성 조건)
-  need: (build: Record<string, number>) => boolean;
+  req: Record<string, number>; // 조합 재료 — 카드 id별 필요 장수 (달성 판정·힌트 칩 공용)
 }
 
 export const EVOLUTIONS: Evolution[] = [
   {
     id: 'evo_verse', icon: '🌊', name: '쏟아지는 문장', recipe: '🔱 멀티샷×2 + ⚡ 연사×2',
     desc: '네 번째 공격마다 문장이 쏟아진다 — 부채꼴 9연발', rarity: 'legendary', tag: '공격', evo: true,
-    need: (b) => (b.multi ?? 0) >= 2 && (b.rate ?? 0) >= 2,
+    req: { multi: 2, rate: 2 },
     apply: (s) => ({ ...s, fanEvery: 4 }),
   },
   {
     id: 'evo_shuriken', icon: '📄', name: '종이 표창', recipe: '🗡️ 관통 서표 + 🏹 시위 강화×2',
     desc: '투사체가 벽에 한 번 튕겨 계속 난다', rarity: 'legendary', tag: '공격', evo: true,
-    need: (b) => (b.pierce ?? 0) >= 1 && (b.shotspd ?? 0) >= 2,
+    req: { pierce: 1, shotspd: 2 },
     apply: (s) => ({ ...s, bounce: s.bounce + 1 }),
   },
   {
     id: 'evo_period', icon: '⭕', name: '마침표', recipe: '💥 폭발 구슬 + 💢 급소 일격×2',
     desc: '치명타가 대폭발을 새긴다 — 문장의 끝', rarity: 'legendary', tag: '공격', evo: true,
-    need: (b) => (b.boom ?? 0) >= 1 && (b.crit ?? 0) >= 2,
+    req: { boom: 1, crit: 2 },
     apply: (s) => ({ ...s, critBoom: 1 }),
   },
   {
     id: 'evo_binding', icon: '📕', name: '단단한 장정', recipe: '🌵 가시 문장 + 🛡️ 단단한 표지×2',
     desc: '맞는 순간 충격파 — 주변을 밀쳐내고 벤다', rarity: 'legendary', tag: '생존', evo: true,
-    need: (b) => (b.thorns ?? 0) >= 1 && (b.armor ?? 0) >= 2,
+    req: { thorns: 1, armor: 2 },
     apply: (s) => ({ ...s, shockwave: 1 }),
   },
   {
     id: 'evo_royalty', icon: '💰', name: '인세', recipe: '🩸 흡혈의 잉크 + 🪙 탐욕의 책갈피',
     desc: '코인이 들어올 때마다 체력 +2', rarity: 'legendary', tag: '보조', evo: true,
-    need: (b) => (b.steal ?? 0) >= 1 && (b.greed ?? 0) >= 1,
+    req: { steal: 1, greed: 1 },
     apply: (s) => ({ ...s, royalty: 1 }),
   },
 ];
@@ -139,10 +139,33 @@ export const EVOLUTIONS: Evolution[] = [
 // 빌드 칩·도감 등 표시용 전체 풀 (랜덤 뽑기 풀에는 진화가 안 섞인다 — 조건 달성 시 확정 등장)
 export const ALL_UPGRADES: Upgrade[] = [...UPGRADES, ...EVOLUTIONS];
 
+const metReq = (req: Record<string, number>, b: Record<string, number>) =>
+  Object.entries(req).every(([id, n]) => (b[id] ?? 0) >= n);
+
 // 조건을 달성했지만 아직 안 가진 진화
 export function eligibleEvolutions(build?: Record<string, number>): Evolution[] {
   if (!build) return [];
-  return EVOLUTIONS.filter((e) => !build[e.id] && e.need(build));
+  return EVOLUTIONS.filter((e) => !build[e.id] && metReq(e.req, build));
+}
+
+// 드래프트 카드 힌트 — 이 카드를 집으면 어느 합본에 가까워지나.
+// 진화 시스템의 존재를 첫 판 첫 드래프트부터 보여 주는 장치: 카드가 조합 재료면
+// '가장 가까운' 합본과 (이 카드를 집은 뒤) 남은 장수를 돌려준다. 재료가 아니면 null.
+export function evoHintFor(
+  u: Upgrade,
+  build: Record<string, number>,
+): { evo: Evolution; remain: number } | null {
+  if (u.evo) return null;
+  let best: { evo: Evolution; remain: number } | null = null;
+  for (const e of EVOLUTIONS) {
+    if (build[e.id]) continue; // 이미 완성한 합본
+    const needThis = e.req[u.id];
+    if (!needThis || (build[u.id] ?? 0) >= needThis) continue; // 이 카드로는 진전이 없다
+    const remain =
+      Object.entries(e.req).reduce((s, [id, n]) => s + Math.max(0, n - (build[id] ?? 0)), 0) - 1;
+    if (!best || remain < best.remain) best = { evo: e, remain };
+  }
+  return best;
 }
 
 const RARITY_WEIGHT: Record<Rarity, number> = { common: 1, rare: 0.5, legendary: 0.22 };

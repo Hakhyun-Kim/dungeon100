@@ -327,6 +327,28 @@ body {
   }
 }
 
+/* 첫 판 조작 코치마크 — 1층에서 평생 한 번, 9초 (gfx-notice보다 한 줄 아래) */
+.coach-chip {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 88px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  pointer-events: none;
+  background: rgba(20, 12, 40, 0.9);
+  border: 1px solid rgba(201, 180, 255, 0.55);
+  border-radius: 999px;
+  padding: 9px 20px;
+  font-size: 15px;
+  color: #e8defc;
+  white-space: nowrap;
+  max-width: 94vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 0 18px rgba(143, 107, 255, 0.35);
+  animation: gfxNotice 9s ease-in-out forwards; /* 같은 페이드 곡선 재사용 */
+}
+
 /* ── 현재 빌드 표시 ── */
 .build-row {
   position: absolute;
@@ -982,6 +1004,50 @@ body {
 }
 
 /* '돌아갈 곳' 부활 배너 */
+/* 🤖 AI 사서 — HUD 층 칩 안의 목표 표시 */
+.ghost-mark {
+  color: #b9aede;
+  opacity: 0.9;
+}
+
+.ghost-mark.beaten {
+  color: #ffd166;
+  text-shadow: 0 0 8px rgba(255, 209, 102, 0.6);
+}
+
+/* 🤖 AI 사서 추월 토스트 — 판당 1회 (넘어서는 순간) */
+.ghost-banner {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 46px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  pointer-events: none;
+  background: rgba(20, 12, 40, 0.92);
+  border: 1px solid rgba(255, 209, 102, 0.7);
+  border-radius: 999px;
+  padding: 9px 20px;
+  font-size: 15px;
+  color: #ffe9b3;
+  white-space: nowrap;
+  max-width: 94vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 0 22px rgba(255, 209, 102, 0.45);
+  animation: gfxNotice 4.2s ease-in-out forwards;
+}
+
+/* 게임오버 — AI 사서와의 비교 한 줄 */
+.ghost-line {
+  font-size: 14px;
+  color: #b9aede;
+}
+
+.ghost-line.win {
+  color: #ffd166;
+  text-shadow: 0 0 10px rgba(255, 209, 102, 0.4);
+}
+
 .revive-banner {
   position: absolute;
   top: 50%;
@@ -1387,6 +1453,37 @@ h2 {
   border: 1px solid rgba(156, 143, 196, 0.45);
   border-radius: 999px;
   padding: 1px 8px;
+}
+
+/* 진화 조합 힌트 — 이 카드가 어느 합본의 재료인지 (첫 드래프트부터 목표가 보인다) */
+.evo-hint {
+  font-size: 11px;
+  color: #d9b3ff;
+  border: 1px dashed rgba(217, 179, 255, 0.5);
+  border-radius: 999px;
+  padding: 1px 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 이 카드를 집으면 합본 완성 — 금빛으로 두근거림 */
+.evo-hint.ready {
+  color: #ffd166;
+  border: 1px solid rgba(255, 209, 102, 0.8);
+  background: rgba(255, 209, 102, 0.12);
+  animation: evoHintPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes evoHintPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(255, 209, 102, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(255, 209, 102, 0.7);
+  }
 }
 
 /* ── 가상 조이스틱 — 터치 드래그 시각화 (useMoveInput이 DOM을 직접 구동) ── */
