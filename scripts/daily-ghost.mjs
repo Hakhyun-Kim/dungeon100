@@ -5,7 +5,7 @@
 //
 // 로컬 실행: npm run daily-ghost (설치된 Chrome 사용, 5~15분 — 봇이 진짜로 죽을 때까지 플레이)
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { startVite, waitServer, launchBrowser, collectErrors, stopChild, wait } from './lib/driver.mjs';
+import { startVite, waitServer, launchBrowser, gamePage, collectErrors, stopChild, wait } from './lib/driver.mjs';
 
 const PORT = 5198;
 const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
@@ -23,8 +23,7 @@ try {
   await waitServer(`http://localhost:${PORT}/`);
   browser = await launchBrowser();
   // 페이지의 todayKey()는 브라우저 로컬 날짜 — KST로 고정해 파일명과 시드를 일치시킨다
-  const ctx = await browser.newContext({ timezoneId: 'Asia/Seoul' });
-  const page = await ctx.newPage();
+  const { page } = await gamePage(browser, { timezoneId: 'Asia/Seoul' });
   const errors = collectErrors(page);
   await page.goto(`http://localhost:${PORT}/?rafshim&debug`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => !!window.__d100sim, { timeout: 60000 });

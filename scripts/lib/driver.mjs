@@ -43,6 +43,22 @@ export async function launchBrowser(opts = {}) {
   return chromium.launch(o);
 }
 
+// 봇 주행용 페이지 — CI 소프트웨어 렌더러(SwiftShader)에서 프레임 비용이 지배적이라
+// 뷰포트를 줄이고 ⚡가벼움(lite)을 강제한다. 렌더 전용 설정이라 시뮬 로직·밸런스 불변.
+// (실측: 기본 설정 CI에서 하드런 1판 ~30분 — 5판 회귀가 예산을 넘겼다, 2026-07-24)
+export async function gamePage(browser, ctxOpts = {}) {
+  const ctx = await browser.newContext({ viewport: { width: 640, height: 360 }, ...ctxOpts });
+  await ctx.addInitScript(() => {
+    try {
+      localStorage.setItem('d100-gfx', JSON.stringify('lite'));
+    } catch {
+      // localStorage 접근 불가 환경 — 무시 (auto 판정으로 진행)
+    }
+  });
+  const page = await ctx.newPage();
+  return { ctx, page };
+}
+
 // 콘솔 error + 미처리 예외 수집 — 스모크의 합격 기준
 export function collectErrors(page) {
   const errors = [];

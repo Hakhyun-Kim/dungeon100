@@ -5,7 +5,7 @@
 //
 // 로컬 실행: npm run balance-regression (기본 5판 — 20분+ 걸릴 수 있음, RUNS=2 로 축소 가능)
 import { readFileSync, writeFileSync } from 'node:fs';
-import { startVite, waitServer, launchBrowser, collectErrors, stopChild, wait } from './lib/driver.mjs';
+import { startVite, waitServer, launchBrowser, gamePage, collectErrors, stopChild, wait } from './lib/driver.mjs';
 
 const PORT = 5196;
 const baseline = JSON.parse(readFileSync(new URL('./balance-baseline.json', import.meta.url), 'utf8'));
@@ -18,7 +18,7 @@ let report = null;
 try {
   await waitServer(`http://localhost:${PORT}/`);
   browser = await launchBrowser();
-  const page = await (await browser.newContext()).newPage();
+  const { page } = await gamePage(browser);
   collectErrors(page);
   await page.goto(`http://localhost:${PORT}/?rafshim&debug`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => !!window.__d100sim, { timeout: 60000 });
