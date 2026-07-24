@@ -27,6 +27,12 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+      # 부팅 스모크 — 첫 방문자 동선(타이틀→⚡빠른 시작→1층)과 DEV 훅 심층(드래프트·합본·사서)을
+      # 실제 브라우저로 재생. 콘솔 에러 하나라도 있으면 여기서 멈추고 배포하지 않는다.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Boot smoke (prod preview + dev hooks)
+        run: npm run smoke
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
