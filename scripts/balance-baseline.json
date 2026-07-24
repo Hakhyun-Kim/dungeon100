@@ -1,0 +1,7 @@
+{
+  "note": "하드런(보물상자 미개봉·simBot 기본) 사망 층 기준선 — 2026-07-19 실측 6·6·9·9·10·10 (평균 8.3). 야간 회귀(balance-regression.mjs)가 이 범위를 벗어나면 드리프트로 판정한다.",
+  "medianMin": 5,
+  "medianMax": 13,
+  "hardFloorMin": 3,
+  "runs": 5
+}
