@@ -50,8 +50,10 @@ export function collectErrors(page) {
     if (m.type() !== 'error') return;
     const url = m.location()?.url ?? '';
     const t = m.text();
-    // 파비콘·터치 아이콘류 404는 게임 결함이 아님 (URL은 location에만 온다)
+    // 파비콘·터치 아이콘류 404는 게임 결함이 아님 (URL은 location에만 온다).
+    // ghost/<날짜>.json 404도 by-design — 사서 실기록은 '없으면 모델 폴백'이 정상 경로다.
     if (/favicon|apple-touch-icon|manifest\.webmanifest/.test(url + t)) return;
+    if (/\/ghost\/[\d-]+\.json/.test(url) && /Failed to load resource/.test(t)) return;
     errors.push(`[console] ${t}${url ? ` ← ${url}` : ''}`);
   });
   page.on('pageerror', (e) => errors.push(`[pageerror] ${e.message}`));

@@ -14,7 +14,7 @@ import { ALL_UPGRADES, BASE_STATS, draftThree, pickUpgrades, type Stats, type Up
 import { makeQuiz, MAX_DOOR_ROUND, type DungeonMode } from './lib/quiz';
 import { metaSpeed, shopCost, type Meta } from './lib/meta';
 import { todayKey, dailySeed, type DailyRecord } from './lib/daily';
-import { ghostRun, GHOST_CAUSE_TEXT } from './lib/ghost';
+import { ghostRun, GHOST_CAUSE_TEXT, type GhostRecord } from './lib/ghost';
 import { EMPTY_DEX, DEX_MILESTONES, dexPct, type DexState } from './lib/dex';
 import DexScreen from './ui/DexScreen';
 import { mulberry32 } from './lib/rng';
@@ -310,6 +310,12 @@ export default function App() {
   const ghost = useMemo(() => (ghostSeed > 0 ? ghostRun(ghostSeed) : null), [ghostSeed]);
   const [ghostBeaten, setGhostBeaten] = useState(false);
   const [ghostNotice, setGhostNotice] = useState(0);
+  // 사서 실기록 — 크론 봇(daily-ghost.yml)이 오늘의 던전을 실제로 플레이해 커밋한
+  // public/ghost/<날짜>.json. 일일 던전에서 파일이 있으면 모델(ghost.ts) 대신 이걸 쓴다.
+  const [ghostReal, setGhostReal] = useState<{ floor: number; cause?: GhostRecord['cause'] } | null>(
+    null,
+  );
+  const ghostShown = runType === 'daily' && ghostReal ? ghostReal : ghost;
   const [muted, setMutedState] = useState(isMuted());
   const [bossHp, setBossHp] = useState(0);
   const [bossMax, setBossMax] = useState(0);
@@ -401,12 +407,12 @@ export default function App() {
 
   // 🤖 사서를 넘어서는 순간 — 1회 연출 (배너 4.2초 + 해금음)
   useEffect(() => {
-    if (!ghost || ghostBeaten || floorNo <= ghost.floor) return;
+    if (!ghostShown || ghostBeaten || floorNo <= ghostShown.floor) return;
     setGhostBeaten(true);
     setGhostNotice((n) => n + 1);
     sfx.unlock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [floorNo, ghost, ghostBeaten]);
+  }, [floorNo, ghostShown, ghostBeaten]);
   useEffect(() => {
     if (ghostNotice === 0) return;
     const id = setTimeout(() => setGhostNotice(0), 4200);
@@ -631,6 +637,23 @@ export default function App() {
     // 이번 판의 AI 사서 — 일일 던전은 날짜 시드(모두 동일), 보통 판은 판마다 새 시드
     setGhostSeed(rt === 'daily' ? dailyNum : ((Math.random() * 0x7fffffff) | 0) || 1);
     setGhostBeaten(false);
+    setGhostReal(null);
+    if (rt === 'daily') {
+      // 사서 실기록이 배포에 있으면 가져온다 (정적 파일 — 백엔드 없음 원칙 유지, 없으면 모델)
+      fetch(`ghost/${todayKey()}.json`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (j && typeof j.floor === 'number') {
+            const cause =
+              j.cause === 'boss' || j.cause === 'guardian' || j.cause === 'horde'
+                ? (j.cause as GhostRecord['cause'])
+                : undefined;
+            setGhostReal({ floor: j.floor, cause });
+            setGhostBeaten(false); // 실기록 기준으로 추월 판정 재계산
+          }
+        })
+        .catch(() => {}); // 파일 없음(404)·JSON 아님 — 조용히 모델 유지
+    }
     setRunId((id) => id + 1);
     setPhase('run');
   };
@@ -1462,9 +1485,9 @@ export default function App() {
       )}
 
       {/* 🤖 AI 사서 추월 토스트 — 판당 1회 (층이 오르는 순간이라 lore 위에도 뜬다) */}
-      {ghostNotice > 0 && ghost && (
+      {ghostNotice > 0 && ghostShown && (
         <div key={`gh${ghostNotice}`} className="ghost-banner">
-          🤖 AI 사서의 기록({ghost.floor}층)을 넘어섰다 — 이 책을 가장 깊이 읽는 중!
+          🤖 AI 사서의 기록({ghostShown.floor}층)을 넘어섰다 — 이 책을 가장 깊이 읽는 중!
         </div>
       )}
 
@@ -1481,7 +1504,7 @@ export default function App() {
           muted={muted}
           gfx={gfx}
           danger={dangerFloor === floorNo}
-          ghostFloor={ghost?.floor ?? null}
+          ghostFloor={ghostShown?.floor ?? null}
           ghostBeaten={ghostBeaten}
           onToggleMute={toggleMute}
           onToggleGfx={toggleGfx}
@@ -1707,7 +1730,7 @@ export default function App() {
               best,
               mode,
               cleared: true,
-              ghost: ghost?.floor,
+              ghost: ghostShown?.floor,
               daily: runType === 'daily' ? todayKey() : undefined,
             });
           }}
@@ -1743,8 +1766,8 @@ export default function App() {
           lore={overLore}
           checkpointFloor={checkpointFloor}
           daily={runType === 'daily'}
-          ghostFloor={ghost?.floor ?? null}
-          ghostCause={ghost ? GHOST_CAUSE_TEXT[ghost.cause] : undefined}
+          ghostFloor={ghostShown?.floor ?? null}
+          ghostCause={ghostShown?.cause ? GHOST_CAUSE_TEXT[ghostShown.cause] : undefined}
           onResume={resumeFromCheckpoint}
           onRetry={() => enterDungeon()}
           onVillage={() => goVillage('enter')}
@@ -1757,7 +1780,7 @@ export default function App() {
               memMax: MEMORIES.length,
               best,
               mode,
-              ghost: ghost?.floor,
+              ghost: ghostShown?.floor,
               daily: runType === 'daily' ? todayKey() : undefined,
             });
           }}

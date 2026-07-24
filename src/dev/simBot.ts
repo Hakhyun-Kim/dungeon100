@@ -14,6 +14,7 @@ interface SimOpts {
   chestEvery: number; // 0=보물상자 무시, n=매 n층마다 전설 보물 지급(Shift+P — 완주 가정)
   pumpN: number; // 헤드리스(__pump)일 때 반복당 프레임 수
   fixdt: number; // 고정 dt (헤드리스 전용)
+  daily: boolean; // true = 타이틀에서 「오늘의 던전」으로 입장 (AI 사서 실기록 생성용)
 }
 interface RunResult {
   run: number;
@@ -26,7 +27,7 @@ type AnyWin = Record<string, any>;
 const W = window as unknown as AnyWin;
 const RESUME_KEY = 'd100sim-resume';
 
-const DEF: SimOpts = { runs: 5, maxFloor: 30, chestEvery: 0, pumpN: 3, fixdt: 0.05 };
+const DEF: SimOpts = { runs: 5, maxFloor: 30, chestEvery: 0, pumpN: 3, fixdt: 0.05, daily: false };
 
 let opts: SimOpts = { ...DEF };
 let running = false;
@@ -459,6 +460,17 @@ async function loop() {
     if (clickBtn('.quiz-screen .choice-btn', '던전에 집중한다')) continue;
     // 6.5) 방 이벤트(제단·찢어진 페이지) — 그만둔다 (기존 밸런스 측정과 조건을 동일하게 유지)
     if (clickBtn('.quiz-screen .choice-btn', '그만둔다')) continue;
+    // 6.7) 타이틀 — 범용 big-btn(7)이 첫 버튼을 아무거나 누르기 전에 명시적으로.
+    //      daily 옵션이면 「오늘의 던전」(사서 실주행), 아니면 「모험 시작」.
+    if (document.querySelector('.title-screen')) {
+      clickBtn('.title-screen button', opts.daily ? '오늘의 던전' : '모험 시작');
+      continue;
+    }
+    // 6.8) 인트로 — 프레시 프로필(CI 러너)은 인트로가 뜨고 책 퀴즈에서 진행이 잠긴다: 건너뛰기
+    if (document.querySelector('.story-screen')) {
+      clickBtn('.story-screen .skip-btn', '건너뛰');
+      continue;
+    }
     // 7) 진행 버튼 (로어·기억·흔적·보상 확인 등)
     if (clickBtn('.screen .big-btn')) continue;
     // 8) 소녀 찻자리 등 town 화면 — 대화 넘기고 돌아간다
@@ -495,10 +507,11 @@ async function loop() {
       }
       continue;
     }
-    // 10) 타이틀
-    if (clickBtn('button', '모험 시작')) continue;
-    // 11) 던전 run phase
+    // 10) 던전 run phase (타이틀·인트로는 6.7/6.8에서 처리).
+    //     HUD는 떴는데 씬 훅이 없다 = 헤드리스 캔버스 미측정으로 r3f가 못 뜬 것 —
+    //     마을 분기(9)와 같은 재측정 강제 킥 (봇의 tick 루프가 RO 폴링 타이머를 굶긴다)
     if (W.__d100) runBrain();
+    else if (document.querySelector('.hud')) window.dispatchEvent(new Event('resize'));
   }
   releaseKeys();
 }

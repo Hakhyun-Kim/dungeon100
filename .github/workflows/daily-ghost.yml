@@ -1,0 +1,53 @@
+# 🤖 AI 사서 실주행 — 매일 00:15 KST에 오늘의 던전을 실제 봇(simBot)이 플레이해
+# public/ghost/<날짜>.json 실기록을 커밋하고, 그대로 Pages를 재배포한다.
+# (GITHUB_TOKEN 푸시는 다른 워크플로를 깨우지 않으므로 배포까지 여기서 직접 잇는다)
+name: Daily librarian run
+
+on:
+  schedule:
+    - cron: '15 15 * * *' # 15:15 UTC = 00:15 KST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages # 메인 배포와 같은 그룹 — Pages 동시 배포 충돌 방지
+
+jobs:
+  run-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Play today's dungeon (simBot, 1 run)
+        run: npm run daily-ghost
+      - name: Commit record
+        run: |
+          git config user.name "d100-librarian"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/ghost
+          if git diff --cached --quiet; then
+            echo "변경 없음 — 커밋 생략"
+          else
+            DATE=$(node -e "console.log(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul'}).format(new Date()))")
+            git commit -m "🤖 오늘의 사서 실주행 기록 ${DATE}"
+            git pull --rebase origin main
+            git push origin main
+          fi
+      - name: Build
+        run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
