@@ -48,6 +48,37 @@ body {
   height: 100%;
 }
 
+/* ── 강제 가로 모드 — 시스템 회전 잠금이 걸려 있어도 기기를 눕히면 게임을 돌린다 ──
+   (물리 방향 감지는 src/lib/rotate.ts — 뷰포트는 세로인 채 UI만 90° 회전.
+    회전된 .app이 fixed 자손의 containing block이 되므로 내부 fixed 요소도 함께 돈다) */
+.app.force-cw,
+.app.force-ccw {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vh;
+  height: 100vw;
+  width: 100dvh;
+  height: 100dvw;
+  transform-origin: top left;
+}
+
+.app.force-cw {
+  transform: translateX(100vw) rotate(90deg);
+  transform: translateX(100dvw) rotate(90deg);
+}
+
+.app.force-ccw {
+  transform: translateY(100vh) rotate(-90deg);
+  transform: translateY(100dvh) rotate(-90deg);
+}
+
+/* 회전 중에는 스크롤 제스처 축이 뷰포트 기준과 어긋나므로 양축 팬 허용 */
+.app.force-cw .screen,
+.app.force-ccw .screen {
+  touch-action: pan-x pan-y;
+}
+
 .canvas {
   position: absolute !important;
   inset: 0;
@@ -1329,69 +1360,70 @@ h2 {
   box-shadow: 0 0 18px rgba(255, 209, 102, 0.35);
 }
 
-/* ── 폰 가로 모드(낮은 화면) 압축 — 오버레이가 스크롤 없이도 최대한 들어가게 ── */
-@media (max-height: 520px) {
-  .screen {
-    gap: 8px;
-    padding-top: 12px;
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
-  }
+/* ── 낮은 화면 압축 — 오버레이가 스크롤 없이도 최대한 들어가게 ──
+   App이 html에 .low-h를 부여: 진짜 낮은 뷰포트(폰 가로, max-height 520px)뿐 아니라
+   강제 가로 회전(force-cw/ccw — 시각 높이 = 뷰포트 '너비')도 미디어쿼리로는 못 잡아서
+   클래스 하나로 통일했다 (src/App.tsx low-h effect). */
+:root.low-h .screen {
+  gap: 8px;
+  padding-top: 12px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
 
-  h1 {
-    font-size: clamp(28px, 10vh, 44px);
-  }
+:root.low-h h1 {
+  font-size: clamp(28px, 10vh, 44px);
+}
 
-  h2 {
-    font-size: clamp(18px, 6vh, 26px);
-  }
+:root.low-h h2 {
+  font-size: clamp(18px, 6vh, 26px);
+}
 
-  .howto {
-    font-size: 13px;
-    padding: 8px 14px;
-    gap: 2px;
-  }
+:root.low-h .howto {
+  font-size: 13px;
+  padding: 8px 14px;
+  gap: 2px;
+}
 
-  .menu-col {
-    gap: 8px;
-  }
+:root.low-h .menu-col {
+  gap: 8px;
+}
 
-  .big-btn {
-    font-size: 18px;
-    padding: 10px 34px;
-  }
+:root.low-h .big-btn {
+  font-size: 18px;
+  padding: 10px 34px;
+}
 
-  .story-icon,
-  .memory-icon {
-    font-size: 40px;
-  }
+:root.low-h .story-icon,
+:root.low-h .memory-icon {
+  font-size: 40px;
+}
 
-  .story-text,
-  .lore-text,
-  .memory-text,
-  .over-lore {
-    font-size: 15px;
-    line-height: 1.5;
-  }
+:root.low-h .story-text,
+:root.low-h .lore-text,
+:root.low-h .memory-text,
+:root.low-h .over-lore {
+  font-size: 15px;
+  line-height: 1.5;
+}
 
-  .card {
-    padding: 12px 8px;
-    gap: 5px;
-  }
+:root.low-h .card {
+  padding: 12px 8px;
+  gap: 5px;
+}
 
-  .dialog-box {
-    padding: 12px 16px 10px;
-  }
+:root.low-h .dialog-box {
+  padding: 12px 16px 10px;
+}
 
-  .dialog-text {
-    font-size: 15px;
-  }
+:root.low-h .dialog-text {
+  font-size: 15px;
+}
 
-  .dialog-choices {
-    gap: 6px;
-  }
+:root.low-h .dialog-choices {
+  gap: 6px;
+}
 
-  .choice-btn {
-    font-size: 15px;
-    padding: 9px 14px;
-  }
+:root.low-h .choice-btn {
+  font-size: 15px;
+  padding: 9px 14px;
 }

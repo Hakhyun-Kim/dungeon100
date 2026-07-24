@@ -41,6 +41,7 @@ import {
   type TownNode,
   type TownOption,
 } from './lib/story';
+import { initAutoRotate, type AppRotation } from './lib/rotate';
 import { useDemoDriver } from './demo/useDemoDriver';
 import { GameHud, ArenaHud, VillageHud, BuildRow, BossBar } from './ui/Hud';
 import MiniMap, { makeMiniMapChannel } from './ui/MiniMap';
@@ -136,6 +137,27 @@ export default function App() {
   }, [combo.seq, combo.n]);
   // 미니맵 채널 — DungeonScene이 채우고 MiniMap(DOM 캔버스)이 읽는다
   const minimapRef = useRef(makeMiniMapChannel());
+  // 강제 가로 모드 — 시스템 회전 잠금 상태에서 기기를 눕히면 UI를 통째로 90° 회전
+  // (기울기 센서 감지는 src/lib/rotate.ts, 실제 회전은 .app의 force-cw/ccw CSS)
+  const [forceRot, setForceRot] = useState<AppRotation>(0);
+  useEffect(() => initAutoRotate(setForceRot), []);
+  // 낮은 화면 압축(.low-h) — 진짜 낮은 뷰포트(폰 가로)든 강제 회전으로 시각 높이가
+  // 뷰포트 '너비'가 된 경우든, 오버레이 압축 스타일을 한 클래스로 통일해서 적용
+  useEffect(() => {
+    const mq = window.matchMedia('(max-height: 520px)');
+    const sync = () =>
+      document.documentElement.classList.toggle(
+        'low-h',
+        mq.matches || (forceRot !== 0 && window.innerWidth <= 520),
+      );
+    sync();
+    mq.addEventListener('change', sync);
+    window.addEventListener('resize', sync);
+    return () => {
+      mq.removeEventListener('change', sync);
+      window.removeEventListener('resize', sync);
+    };
+  }, [forceRot]);
   // 부활 체크포인트 — 마지막으로 다녀온 5층 단위 마을 층 (죽으면 여기서 다시 시작)
   const [checkpointFloor, setCheckpointFloor] = useState(1);
   const [stats, setStats] = useState<Stats>(BASE_STATS);
@@ -1172,7 +1194,7 @@ export default function App() {
     phase !== 'arenaover';
 
   return (
-    <div className="app">
+    <div className={`app${forceRot === 90 ? ' force-cw' : forceRot === -90 ? ' force-ccw' : ''}`}>
       {/* 잉크 전환 — key가 바뀔 때마다 애니메이션 재생 (pointer-events 없음, 조작 안 막음) */}
       {inkSeq > 0 && <div className="ink-wipe" key={inkSeq} />}
 
@@ -1187,6 +1209,9 @@ export default function App() {
           className="canvas"
           camera={{ fov: 50, position: [0, 15.5, 9.5] }}
           dpr={lite ? [1, 1.5] : [1, 2]}
+          // offsetSize: 강제 가로 회전(.force-cw/ccw) 시 getBoundingClientRect는 회전된
+          // bbox(세로)를 돌려줘 캔버스가 잘못 재진다 — 레이아웃 크기(offsetWidth)로 측정
+          resize={{ offsetSize: true }}
           gl={{ powerPreference: 'high-performance' }}
         >
           <color attach="background" args={[canvasBg]} />

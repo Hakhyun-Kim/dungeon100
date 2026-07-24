@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Quiz } from '../lib/quiz';
+import { appRotation } from '../lib/rotate';
 import { sfx } from '../lib/sound';
 import Hero, { type HeroVariant } from './Hero';
 import { BlobShadow } from './fx';
@@ -347,8 +348,17 @@ function useSteer() {
       zoneR = document.createElement('div');
       zoneR.className = 'steer-zone right';
       zoneR.textContent = '▶';
-      document.body.append(zoneL, zoneR);
+      // .app 안에 넣어야 강제 가로 회전 시 UI와 함께 돈다 (회전된 .app이 fixed의 containing block)
+      (document.querySelector('.app') ?? document.body).append(zoneL, zoneR);
     }
+
+    // 화면에 '보이는' 왼쪽/오른쪽 판정 — 강제 가로 회전 중이면 뷰포트 축이 90° 돌아가 있다
+    const sideOf = (e: PointerEvent) => {
+      const rot = appRotation();
+      if (rot === 90) return e.clientY < window.innerHeight / 2 ? -1 : 1;
+      if (rot === -90) return e.clientY > window.innerHeight / 2 ? -1 : 1;
+      return e.clientX < window.innerWidth / 2 ? -1 : 1;
+    };
 
     const update = () => {
       let x = 0;
@@ -371,12 +381,12 @@ function useSteer() {
     const pdown = (e: PointerEvent) => {
       if (!e.isPrimary) return;
       if ((e.target as HTMLElement).closest('button')) return;
-      touch = e.clientX < window.innerWidth / 2 ? -1 : 1;
+      touch = sideOf(e);
       update();
     };
     const pmove = (e: PointerEvent) => {
       if (!e.isPrimary || touch === 0) return;
-      touch = e.clientX < window.innerWidth / 2 ? -1 : 1;
+      touch = sideOf(e);
       update();
     };
     const pup = (e: PointerEvent) => {

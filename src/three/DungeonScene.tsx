@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { CELL, canStand, cellToWorld, generateFloor, GRID, isFloor } from '../lib/dungeon';
 import type { Stats } from '../lib/upgrades';
+import { appRotation } from '../lib/rotate';
 import { sfx } from '../lib/sound';
 import Hero, { type HeroVariant } from './Hero';
 import { BlobShadow, getBlobShadowTexture, getFloorTexture, getWallTexture } from './fx';
@@ -1978,8 +1979,19 @@ export function useMoveInput(pausedRef?: React.MutableRefObject<boolean>) {
       if (keys.has('ArrowUp') || keys.has('KeyW')) z -= 1;
       if (keys.has('ArrowDown') || keys.has('KeyS')) z += 1;
       if (drag.active) {
-        const dx = drag.x - drag.ox;
-        const dy = drag.y - drag.oy;
+        let dx = drag.x - drag.ox;
+        let dy = drag.y - drag.oy;
+        // 강제 가로 회전 중이면 손가락 벡터(뷰포트 기준)를 화면에 보이는 축으로 변환
+        const rot = appRotation();
+        if (rot === 90) {
+          const t = dx;
+          dx = dy;
+          dy = -t;
+        } else if (rot === -90) {
+          const t = dx;
+          dx = -dy;
+          dy = t;
+        }
         const len = Math.hypot(dx, dy);
         if (len > 10) {
           const m = Math.min(1, len / STICK_R);
