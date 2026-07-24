@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>쓰이는 동안 — 백층 던전 개발 일지</title>
-<meta name="description" content="git 히스토리와 실제 대화를 근거로, 지시하는 방식이 어떻게 성장했는지 데이터로 짚은 백층 던전 개발 일지 (07-11 → 07-22)." />
+<meta name="description" content="git 히스토리와 실제 대화를 근거로, 지시하는 방식이 어떻게 성장했는지 데이터로 짚은 백층 던전 개발 일지 (07-11 → 07-24)." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E" />
 <style>
   html, body { margin: 0; padding: 0; }
@@ -369,15 +369,15 @@
 
     <div class="stats-row">
       <div class="stat-tile">
-        <div class="stat-num mono">58</div>
+        <div class="stat-num mono">76</div>
         <div class="stat-label">커밋</div>
       </div>
       <div class="stat-tile">
-        <div class="stat-num mono">12<small>일</small></div>
-        <div class="stat-label">2026-07-11 → 07-22</div>
+        <div class="stat-num mono">14<small>일</small></div>
+        <div class="stat-label">2026-07-11 → 07-24</div>
       </div>
       <div class="stat-tile">
-        <div class="stat-num mono">+14,638</div>
+        <div class="stat-num mono">+17,084</div>
         <div class="stat-label">순증가 줄 수 (현재 저장소와 일치)</div>
       </div>
       <div class="stat-tile">
@@ -444,7 +444,7 @@
     <!-- ============ 3. 무엇을 만들었나 ============ -->
     <section id="s3">
       <div class="sec-head"><span class="sec-no serif">Ⅲ</span><h2>무엇을 만들었나</h2></div>
-      <p class="sec-dek">58개 커밋을 성격별로 나누면, 후반으로 갈수록 <b>새 기능</b>보다 <b>있는 것을 맞추는 일</b>(밸런스·자동화·문서·그래픽 품질)이 늘어난 것이 드러난다. 행에 마우스를 올리면 대표 커밋이 보인다.</p>
+      <p class="sec-dek">76개 커밋을 성격별로 나누면, 후반으로 갈수록 <b>새 기능</b>보다 <b>있는 것을 맞추는 일</b>(밸런스·자동화·문서·그래픽 품질)이 늘어난 것이 드러난다. 행에 마우스를 올리면 대표 커밋이 보인다.</p>
 
       <div class="panel">
         <div class="cat-list" id="djCatList"></div>
@@ -554,23 +554,27 @@
   var root = document.querySelector('.dj');
 
   // ── data (git log 기반, 정확값) ──
+  // [journal-data:start] — npm run journal-data 로 자동 생성 (수동 편집 금지)
   var days = [
     { date: '07-12', commits: 11, ins: 5053, del: 466 },
-    { date: '07-13', commits: 8,  ins: 1211, del: 96  },
-    { date: '07-14', commits: 2,  ins: 86,   del: 10  },
-    { date: '07-15', commits: 3,  ins: 722,  del: 30  },
-    { date: '07-16', commits: 1,  ins: 19,   del: 4   },
-    { date: '07-17', commits: 3,  ins: 36,   del: 22  },
+    { date: '07-13', commits: 8, ins: 1211, del: 96 },
+    { date: '07-14', commits: 2, ins: 86, del: 10 },
+    { date: '07-15', commits: 3, ins: 722, del: 30 },
+    { date: '07-16', commits: 1, ins: 19, del: 4 },
+    { date: '07-17', commits: 3, ins: 36, del: 22 },
     { date: '07-18', commits: 10, ins: 1642, del: 580 },
     { date: '07-19', commits: 11, ins: 3579, del: 1421 },
-    { date: '07-20', commits: 2,  ins: 810,  del: 1   },
-    { date: '07-22', commits: 6,  ins: 870,  del: 67  }
+    { date: '07-20', commits: 2, ins: 810, del: 1 },
+    { date: '07-22', commits: 14, ins: 1985, del: 669 },
+    { date: '07-23', commits: 1, ins: 246, del: 19 },
+    { date: '07-24', commits: 9, ins: 1891, del: 185 }
   ];
   var ledgerAll = [
-    { date: '07-11', commits: 1,  ins: 3307, del: 0,   day1: true },
+    { date: '07-11', commits: 1, ins: 3307, del: 0, day1: true },
   ].concat(days);
 
-  var cum = [3307,3891,4298,4808,5420,5770,6021,6864,7148,7252,7538,7894,7897,7897,7969,8045,8911,9006,9006,9009,9024,9085,9771,9774,9777,9792,9803,9803,9806,9933,10292,10366,10050,10304,10340,10350,10357,10362,10868,11587,11630,11818,11931,12342,12348,12429,12460,12508,12544,13026,13835,13835,13932,14068,14347,14501,14504,14638];
+  var cum = [3307,3891,4298,4808,5420,5770,6021,6864,7148,7252,7538,7894,7897,7897,7969,8045,8911,9006,9006,9009,9024,9085,9771,9774,9777,9792,9803,9803,9806,9933,10292,10366,10050,10304,10340,10350,10357,10362,10868,11587,11630,11818,11931,12342,12348,12429,12460,12508,12544,13026,13835,13835,13932,14068,14347,14501,14504,14638,14665,14757,14998,15201,15368,14989,15062,15151,15378,15531,15784,15786,16231,16235,16424,16826,16838,17084];
+  // [journal-data:end]
   // side/anchor/dy는 실제 좌표를 확인해 겹치지 않도록 점마다 수동 배치
   var milestones = [
     { idx: 1,  label: '코어 루프',       sub: '+3,307',  dip: false, side: 'below', anchor: 'start',  dy: 26 },
