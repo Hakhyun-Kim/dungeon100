@@ -96,6 +96,22 @@
             }
             return r;
           };
+          // Canvas가 resize={{ offsetSize: true }}로 측정하면(강제 가로 모드 대응, 2026-07-24)
+          // gBCR 폴백을 안 타므로 offsetWidth/Height에도 같은 가상 뷰포트 폴백을 건다.
+          function patchOffset(name, fallback) {
+            var d = Object.getOwnPropertyDescriptor(HTMLElement.prototype, name);
+            if (!d || !d.get) return;
+            Object.defineProperty(HTMLElement.prototype, name, {
+              configurable: true,
+              get: function () {
+                var v = d.get.call(this);
+                if (v === 0 && this.isConnected && window.innerWidth === 0) return fallback;
+                return v;
+              },
+            });
+          }
+          patchOffset('offsetWidth', 1280);
+          patchOffset('offsetHeight', 800);
         })();
       }
     </script>

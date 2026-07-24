@@ -92,6 +92,7 @@ export default function TitleScreen({
   storySeen,
   muted,
   gfx,
+  dexPct,
   dailyRecord,
   onToggleMute,
   onToggleGfx,
@@ -99,6 +100,7 @@ export default function TitleScreen({
   onDaily,
   onReplay,
   onDemo,
+  onDex,
 }: {
   best: number;
   memCount: number;
@@ -106,6 +108,7 @@ export default function TitleScreen({
   storySeen: boolean;
   muted: boolean;
   gfx: 'high' | 'lite'; // 그래픽 품질 (⚡가벼움 = 기존 렌더 경로)
+  dexPct: number; // 도감 「채워지는 책」 수집률
   dailyRecord: DailyRecord | null; // 오늘 날짜의 기록 (없으면 null)
   onToggleMute: () => void;
   onToggleGfx: () => void;
@@ -113,6 +116,7 @@ export default function TitleScreen({
   onDaily: () => void;
   onReplay: () => void;
   onDemo: () => void;
+  onDex: () => void;
 }) {
   return (
     <div className="screen title-screen">
@@ -157,11 +161,18 @@ export default function TitleScreen({
         <br />
         🎬 자동 시연: 게임이 스스로 주요 장면을 보여 줍니다 (약 2분, 언제든 중단 가능)
       </p>
-      {storySeen && (
-        <button className="skip-btn" onClick={onReplay}>
-          📖 스토리 다시 보기
-        </button>
-      )}
+      <div className="story-btns">
+        {dexPct > 0 && (
+          <button className="skip-btn" onClick={onDex}>
+            📖 채워지는 책 {dexPct}%
+          </button>
+        )}
+        {storySeen && (
+          <button className="skip-btn" onClick={onReplay}>
+            🔖 스토리 다시 보기
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -170,8 +170,12 @@ function pullWeighted(rand: () => number, pool: Upgrade[], boost: Set<UpgradeTag
   return pool.pop()!;
 }
 
-export function draftThree(rand: () => number, build?: Record<string, number>): Upgrade[] {
-  const picks = pickUpgrades(rand, 3, build);
+export function draftThree(
+  rand: () => number,
+  build?: Record<string, number>,
+  premium = false, // 갈림길 「모험의 길」 보상 — 3장 전부 레어 이상
+): Upgrade[] {
+  const picks = pickUpgrades(rand, 3, build, premium);
   // 진화 「합본」 — 조건을 달성했으면 첫 슬롯에 확정 등장 (잿팟은 놓치지 않게)
   const evos = eligibleEvolutions(build);
   if (evos.length > 0) picks[0] = evos[Math.floor(rand() * evos.length)];
@@ -183,8 +187,9 @@ export function pickUpgrades(
   rand: () => number,
   n: number,
   build?: Record<string, number>,
+  premium = false,
 ): Upgrade[] {
-  const pool = [...UPGRADES];
+  const pool = premium ? UPGRADES.filter((u) => u.rarity !== 'common') : [...UPGRADES];
   const boost = synergyTags(build);
   const picks: Upgrade[] = [];
   for (let i = 0; i < n && pool.length > 0; i++) picks.push(pullWeighted(rand, pool, boost));

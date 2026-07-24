@@ -23,6 +23,7 @@ export function GameHud({
   coins,
   muted,
   gfx,
+  danger = false,
   onToggleMute,
   onToggleGfx,
 }: {
@@ -35,6 +36,7 @@ export function GameHud({
   coins: number;
   muted: boolean;
   gfx: 'high' | 'lite';
+  danger?: boolean; // 갈림길 「모험의 길」 계약 층 표시 (🔥)
   onToggleMute: () => void;
   onToggleGfx: () => void; // 그래픽 품질 토글 — 게임 중에도 즉시 전환
 }) {
@@ -43,6 +45,7 @@ export function GameHud({
     <div className="hud">
       <div className="hud-chip">
         {daily ? '📅' : mode === 'kids' ? '🎒' : mode === 'adult' ? '🧠' : '👹'} {floorNo}층
+        {danger && ' 🔥'}
       </div>
       <div className="hp-wrap">
         {/* 잔상 바가 뒤에서 천천히 따라와 '깎인 만큼'이 잠시 보인다 */}

@@ -14,6 +14,8 @@ import { ALL_UPGRADES, BASE_STATS, draftThree, pickUpgrades, type Stats, type Up
 import { makeQuiz, MAX_DOOR_ROUND, type DungeonMode } from './lib/quiz';
 import { metaSpeed, shopCost, type Meta } from './lib/meta';
 import { todayKey, dailySeed, type DailyRecord } from './lib/daily';
+import { EMPTY_DEX, DEX_MILESTONES, dexPct, type DexState } from './lib/dex';
+import DexScreen from './ui/DexScreen';
 import { mulberry32 } from './lib/rng';
 import { useLocalStorage, suspendPersistence } from './lib/store';
 import { sfx, isMuted, setMuted } from './lib/sound';
@@ -91,6 +93,7 @@ type Phase =
   | 'secretdoor'
   | 'rift' // 두 갈래 틈 — 층 안 순간이동 지름길
   | 'shop'
+  | 'dex' // 도감 「채워지는 책」 (타이틀에서 열람)
   | 'trace'
   | 'ending'
   | 'over';
@@ -181,6 +184,30 @@ export default function App() {
   const [girlMet, setGirlMet] = useLocalStorage<boolean>('d100-girl', false);
   // 떠돌이 상인 🎩 — 첫 만남(원본 독백 + 덤) 여부. 마을 방문 중에만 광장에 와 있다
   const [peddlerMet, setPeddlerMet] = useLocalStorage<boolean>('d100-peddler', false);
+  // ── 도감 「채워지는 책」 — 만난 것들이 페이지로 기록된다 (수집률 마일스톤 = 1회성 코인)
+  const [dex, setDex] = useLocalStorage<DexState>('d100-dex', EMPTY_DEX);
+  const [dexClaimed, setDexClaimed] = useLocalStorage<number>('d100-dex-claim', 0);
+  const dexAdd = useCallback((kind: keyof DexState, id: string) => {
+    setDex((d) => (d[kind].includes(id) ? d : { ...d, [kind]: [...d[kind], id] }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const pct = dexPct(dex);
+    let claim = dexClaimed;
+    let gain = 0;
+    while (claim < DEX_MILESTONES.length && pct >= DEX_MILESTONES[claim].pct) {
+      gain += DEX_MILESTONES[claim].coins;
+      claim++;
+    }
+    if (gain > 0) {
+      setDexClaimed(claim);
+      setCoins((c) => c + gain);
+      sfx.gift();
+      setGoldFlash((f) => f + 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dex]);
+
   // 그래픽 품질 — ⚡가벼움(기존 렌더 경로: 포스트프로세싱 없음·DPR 캡·플랫 재질) / ✨고품질.
   // 기본은 'auto': 실플레이 FPS를 재서 스스로 결정(아래 측정 effect), 결정은 d100-gfx-auto에 저장.
   // 토글을 누르면 그때부터 수동 설정(auto 해제).
@@ -363,10 +390,22 @@ export default function App() {
   // 일일 던전은 재도전해도 같은 드래프트·같은 문제가 나오게 runId 대신 날짜 시드를 쓴다
   const runVar = runType === 'daily' ? dailyNum % 100000 : runId;
 
-  // 드래프트 — 희귀도 가중 + 태그 시너지(같은 태그 2개+ 보유 시 그 태그가 더 잘 나온다)
+  // ── 갈림길 「모험의 길」 — 층 시드 35%로 포털에 위험 선택지가 열린다 (StS식 경로 선택).
+  //    수락하면 다음 층이 사나워지고(스폰↑·피해↑), 그 층 돌파 드래프트는 전부 레어 이상.
+  const [dangerFloor, setDangerFloor] = useState(0); // 위험 계약이 걸린 층 (0 = 없음)
+  const branchOpen = useMemo(
+    () =>
+      floorNo >= 3 &&
+      (floorNo + 1) % 10 !== 0 && // 다음 층이 보스면 안 연다 (보스전은 이미 위험)
+      mulberry32(runVar * 613 + floorNo * 977 + 41)() < 0.35,
+    [runVar, floorNo],
+  );
+
+  // 드래프트 — 희귀도 가중 + 태그 시너지(같은 태그 2개+ 보유 시 그 태그가 더 잘 나온다).
+  // 위험 층(dangerFloor)을 돌파하는 드래프트는 전부 레어 이상 (모험의 보상)
   const draft = useMemo(
-    () => draftThree(mulberry32(runVar * 7919 + floorNo * 131 + 7), build),
-    [runVar, floorNo, build],
+    () => draftThree(mulberry32(runVar * 7919 + floorNo * 131 + 7), build, dangerFloor === floorNo),
+    [runVar, floorNo, build, dangerFloor],
   );
 
   // 문(라운드)마다 새 문제 — 깊은 라운드일수록 어려운 문제 등급, 던전 종류에 따라 수준 조절
@@ -521,6 +560,7 @@ export default function App() {
     setStorySeen(true);
     setFloorNo(1);
     setCheckpointFloor(1); // 새 도전 — 체크포인트 초기화
+    setDangerFloor(0); // 위험 계약 초기화
     reviveUsedRef.current = false; // '돌아갈 곳'은 판마다 다시 채워진다
     // 대장간 영구 강화 + 기억 완성 보너스 반영
     const startStats: Stats = {
@@ -630,6 +670,7 @@ export default function App() {
       // 대사(첫 만남은 원본 독백 + 덤) 뒤에 매대가 붙는다 — 마지막 대사의 next = 매대 인덱스
       script = [...peddlerTalk(peddlerMet, villageFloor), makePeddlerWaresNode(coins)];
       if (!peddlerMet) setPeddlerMet(true);
+      dexAdd('events', 'peddler');
     } else if (target === 'entrance') script = entranceOptions(villageCtx, floorNo);
     if (!script.length) return;
     applyVillageGift(script[0]);
@@ -756,6 +797,7 @@ export default function App() {
     setStats((s) => u.apply(s));
     if (u.id === 'hp') setHp((h) => h + 25);
     setBuild((b) => ({ ...b, [u.id]: (b[u.id] ?? 0) + 1 }));
+    dexAdd('items', u.id); // 도감 — 얻어 본 보물 기록 (진화 포함)
   };
 
   // 통과한 문 수(tier)만큼 보물 지급 — 3문 완주는 전설 보물(전부 + 완전 회복)
@@ -771,6 +813,7 @@ export default function App() {
       return nb;
     });
     setRewards(picks);
+    picks.forEach((u) => dexAdd('items', u.id)); // 도감 — 보물 경로도 기록
     setGoldFlash((f) => f + 1);
     if (tier >= MAX_DOOR_ROUND) sfx.legend();
     else sfx.treasure();
@@ -813,10 +856,11 @@ export default function App() {
     setHp((h) => Math.min(statsRef.current.maxHp, h + amount));
   }, []);
   const onKill = useCallback(
-    (bounty: number) => {
+    (bounty: number, kind?: string) => {
       sfx.kill();
       buzz(12); // 모바일 진동 — 처치
       setKills((k) => k + 1);
+      if (kind) dexAdd('mobs', kind); // 도감 — 처치한 몬스터 종류 기록
       // 처치 콤보 — 3초 안에 이어서 처치하면 코인 배율 (4연속 ×2, 8연속 ×3)
       const now = performance.now();
       const cb = comboRef.current;
@@ -845,7 +889,9 @@ export default function App() {
   quizSeedRef.current = quizSeed;
   // 보스 처치 — 확정 보물 1개 + 회복 30 + 코인 25, 포털 봉인 해제
   const onBossDown = useCallback(() => {
+    dexAdd('mobs', 'boss'); // 도감 — 페이지의 수호자
     const pick = pickUpgrades(mulberry32(quizSeedRef.current + 777), 1)[0];
+    dexAdd('items', pick.id);
     const next = pick.apply(statsRef.current);
     setStats(next);
     setHp((h) => Math.min(next.maxHp, h + 30 + (pick.id === 'hp' ? 25 : 0)));
@@ -877,18 +923,33 @@ export default function App() {
       setPhase('doorrun');
     }
   }, []);
-  const onHomeDoor = useCallback(() => setPhase('homedoor'), []);
-  // 제단·찢어진 페이지 접촉 → 선택 화면
+  const onHomeDoor = useCallback(() => {
+    dexAdd('events', 'homedoor');
+    setPhase('homedoor');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // 제단·찢어진 페이지 접촉 → 선택 화면 (도감에도 기록)
   const onAltar = useCallback(() => {
+    dexAdd('events', 'altar');
     setAltarReward(null);
     setPhase('altar');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const onSecret = useCallback(() => setPhase('secretdoor'), []);
-  const onRift = useCallback(() => setPhase('rift'), []);
+  const onSecret = useCallback(() => {
+    dexAdd('events', 'secret');
+    setPhase('secretdoor');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const onRift = useCallback(() => {
+    dexAdd('events', 'rift');
+    setPhase('rift');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // 몬스터 하우스 코인 무더기 (탐욕 배율 적용)
   const onCoins = useCallback(
     (n: number) => {
       sfx.treasure();
+      dexAdd('events', 'house'); // 코인 무더기 = 몬스터 하우스에 들어왔다는 뜻
       setCoins((c) => c + Math.max(1, Math.round(n * statsRef.current.greed)));
       // 진화 「인세」 — 코인 무더기에도 적용
       if (statsRef.current.royalty > 0) setHp((h) => Math.min(statsRef.current.maxHp, h + 2));
@@ -898,6 +959,7 @@ export default function App() {
   );
   const onTrace = useCallback(() => {
     sfx.memory();
+    dexAdd('events', 'trace');
     const fl = floorNoRef.current;
     setTracesSeen((prev) => (prev.includes(fl) ? prev : [...prev, fl]));
     setPhase('trace');
@@ -905,6 +967,7 @@ export default function App() {
   }, []);
   const onGirl = useCallback(() => {
     sfx.gift();
+    dexAdd('events', 'girl');
     setGirlMet(true);
     goTown(girlScript(tracesSeenRef.current.includes(42)), 'girl', {
       sky: '✨',
@@ -914,6 +977,7 @@ export default function App() {
   }, []);
 
   const pickUpgrade = (u: Upgrade) => {
+    if (dangerFloor === floorNo) setDangerFloor(0); // 위험 계약 층을 떠난다 — 계약 종료
     if (u.evo) {
       // 진화 「합본」 — 잿팟 연출 (전설음 + 황금 잔광 + 햅틱)
       sfx.legend();
@@ -1148,6 +1212,7 @@ export default function App() {
     sfx.tap();
     setFloorNo(checkpointFloor);
     setHp(stats.maxHp); // 부활 — 완전 회복 (스탯·빌드는 유지)
+    setDangerFloor(0); // 죽었으면 위험 계약도 사라진다
     setDoorRound(1);
     quizResultRef.current = null;
     setRunId((id) => id + 1); // 씬 강제 리마운트 (같은 층에서 죽어도 새로 시작)
@@ -1203,6 +1268,7 @@ export default function App() {
     phase === 'title' ||
     phase === 'story' ||
     phase === 'shop' ||
+    phase === 'dex' ||
     (phase === 'town' && townMode === 'pre')
   );
   const inDungeonUi =
@@ -1241,6 +1307,7 @@ export default function App() {
             heroVariant={mode}
             minimapRef={minimapRef}
             lite={lite}
+            danger={dangerFloor === floorNo}
             seedOffset={runType === 'daily' ? dailyNum : 0}
             hidden={
               phase === 'doorrun' ||
@@ -1331,6 +1398,7 @@ export default function App() {
           coins={coins}
           muted={muted}
           gfx={gfx}
+          danger={dangerFloor === floorNo}
           onToggleMute={toggleMute}
           onToggleGfx={toggleGfx}
         />
@@ -1401,13 +1469,28 @@ export default function App() {
           storySeen={storySeen}
           muted={muted}
           gfx={gfx}
+          dexPct={dexPct(dex)}
           dailyRecord={dailyBest?.date === todayKey() ? dailyBest : null}
           onToggleMute={toggleMute}
           onToggleGfx={toggleGfx}
+          onDex={() => {
+            sfx.tap();
+            setPhase('dex');
+          }}
           onStart={startAdventure}
           onDaily={() => enterDungeon(undefined, 'daily')}
           onReplay={replayStory}
           onDemo={startDemo}
+        />
+      )}
+      {phase === 'dex' && (
+        <DexScreen
+          dex={dex}
+          claimed={dexClaimed}
+          onBack={() => {
+            sfx.tap();
+            setPhase('title');
+          }}
         />
       )}
       {phase === 'story' && (
@@ -1441,8 +1524,16 @@ export default function App() {
       {phase === 'portal' && (
         <PortalScreen
           floorNo={floorNo}
+          danger={branchOpen}
           onDescend={() => {
             sfx.tap();
+            setPhase('draft');
+          }}
+          onDanger={() => {
+            // 모험의 길 — 다음 층에 위험 계약 (그 층 돌파 보상은 전부 레어 이상)
+            sfx.roar();
+            buzz(30);
+            setDangerFloor(floorNo + 1);
             setPhase('draft');
           }}
           onStay={stayOnFloor}

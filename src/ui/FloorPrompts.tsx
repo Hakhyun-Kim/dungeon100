@@ -5,20 +5,41 @@ import { ChoiceList, PrimaryButton } from './Menu';
 
 export function PortalScreen({
   floorNo,
+  danger = false,
   onDescend,
+  onDanger,
   onStay,
 }: {
   floorNo: number;
+  danger?: boolean; // 갈림길 — 「모험의 길」 선택지가 열려 있는가 (층 시드 35%)
   onDescend: () => void;
+  onDanger?: () => void;
   onStay: () => void;
 }) {
   return (
     <div className="screen quiz-screen">
       <h2>🌀 아래로 내려가는 포털이 열려 있다</h2>
-      <p className="quiz-sub">다음 층은 더 위험하다. {floorNo + 1}층으로 내려가시겠습니까?</p>
+      <p className="quiz-sub">
+        다음 층은 더 위험하다. {floorNo + 1}층으로 내려가시겠습니까?
+        {danger && (
+          <>
+            <br />
+            …포털 너머, 평소보다 붉게 일렁이는 갈림길이 보인다.
+          </>
+        )}
+      </p>
       <ChoiceList
         items={[
           { key: 'down', label: '⬇️ 내려간다', onPick: onDescend },
+          ...(danger && onDanger
+            ? [
+                {
+                  key: 'danger',
+                  label: '🔥 모험의 길 — 사나운 층, 대신 돌파 보상은 전부 레어 이상',
+                  onPick: onDanger,
+                },
+              ]
+            : []),
           { key: 'stay', label: '🕐 아직 이 층을 더 둘러볼래', onPick: onStay },
         ]}
       />

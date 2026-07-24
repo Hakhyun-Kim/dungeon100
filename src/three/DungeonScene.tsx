@@ -56,7 +56,12 @@ interface Shot {
   alive: boolean;
 }
 
-// 10층마다 등장하는 보스 "페이지의 수호자"
+// 10층마다 등장하는 보스 "페이지의 수호자" — 10층 주기로 패턴이 순환한다 (2026-07-24):
+// radial(방사 탄막·기본) → summon(죽은 몬스터를 '다시 쓴다') → charge(조준 돌진 + 착지 링)
+type BossVariant = 'radial' | 'summon' | 'charge';
+const bossVariantOf = (floorNo: number): BossVariant =>
+  (['radial', 'summon', 'charge'] as const)[(Math.floor(floorNo / 10) - 1) % 3];
+
 interface Boss {
   x: number;
   z: number;
@@ -66,6 +71,11 @@ interface Boss {
   hitCd: number;
   fireTimer: number;
   flash: number;
+  mode: number; // charge: 0 추격 / 1 조준 / 2 돌진 / 3 숨 고르기
+  ai: number; // 단계 타이머
+  adx: number; // 돌진 방향
+  adz: number;
+  volley: number; // summon: 격발 횟수 (2회마다 소환)
 }
 
 interface EShot {
@@ -138,6 +148,7 @@ function DungeonScene({
   heroVariant,
   minimapRef,
   lite = false,
+  danger = false,
   statsRef,
   damageMulRef,
   pausedRef,
@@ -171,6 +182,7 @@ function DungeonScene({
   heroVariant?: HeroVariant; // 던전 종류에 따른 주인공 모습 (초등학생/대학생/모험가)
   minimapRef?: React.MutableRefObject<MiniMapChannel>; // 미니맵 채널 — 프레임마다 좌표·탐사 마스크를 써 넣는다
   lite?: boolean; // ⚡가벼움 모드 — 텍스처·범프 없이 플랫 재질 (기존 렌더 경로)
+  danger?: boolean; // 갈림길 「모험의 길」 계약 층 — 스폰 1.5배·받는 피해 1.25배
   statsRef: React.MutableRefObject<Stats>;
   /** 기억 능력 '두근거림' 등 상황형 공격 배율 (1 = 없음) */
   damageMulRef: React.MutableRefObject<number>;
@@ -186,7 +198,7 @@ function DungeonScene({
   riftGoRef: React.MutableRefObject<number>; // 두 갈래 틈 "들어간다" → 반대편으로 순간이동
   onDamage: (dmg: number) => void;
   onHeal: (amount: number) => void; // 흡혈의 잉크 — 처치 시 회복
-  onKill: (bounty: number) => void; // bounty = 코인 (탱커 3, 그 외 1)
+  onKill: (bounty: number, kind?: string) => void; // bounty = 코인 (탱커 3, 그 외 1), kind = 도감 기록용 종류
   onExit: () => void;
   onChest: () => void;
   onHomeDoor: () => void;
@@ -239,6 +251,41 @@ function DungeonScene({
           elite: false,
         };
       });
+      // 소환형 보스 층 — '다시 쓰일' 예비 슬롯을 미리 만들어 둔다
+      // (InstancedMesh 개수는 마운트 시 고정이라, 소환 = 죽은 슬롯을 되살리는 방식)
+      if (isBossFloor && bossVariantOf(floorNo) === 'summon') {
+        const [ex2, ez2] = cellToWorld(floor.exit.x, floor.exit.y);
+        for (let k = 0; k < 12; k++) {
+          list.push({
+            x: ex2, z: ez2, hp: 0, alive: false, hitCd: 0, wobble: Math.random() * 6,
+            flash: 0, type: 'chaser', ai: 0, mode: 0, adx: 0, adz: 0, elite: false,
+          });
+        }
+      }
+      // 갈림길 「모험의 길」 — 계약된 층은 스폰이 1.5배로 몰려온다
+      if (danger) {
+        floor.spawns
+          .filter((_, i) => i % 2 === 0)
+          .forEach((s) => {
+            const [wx, wz] = cellToWorld(s.x, s.y);
+            const type = pickEnemyType(floorNo);
+            list.push({
+              x: wx + 0.8,
+              z: wz + 0.8,
+              hp: type === 'tank' ? baseHp * 2.8 : type === 'shooter' ? baseHp * 0.8 : baseHp,
+              alive: true,
+              hitCd: 0,
+              wobble: Math.random() * 6,
+              flash: 0,
+              type,
+              ai: Math.random() * 1.5,
+              mode: 0,
+              adx: 0,
+              adz: 0,
+              elite: false,
+            });
+          });
+      }
       // 출구 수문장 — 보스 없는 층(4층부터)의 문 앞을 정예가 지킨다.
       // 조준 후 강하게 돌진해 HP를 크게 깎아, 깊이 내려갈수록 긴장감을 유지한다.
       if (!isBossFloor && floorNo >= 4) {
@@ -323,6 +370,7 @@ function DungeonScene({
   const [exitX, exitZ] = useMemo(() => cellToWorld(floor.exit.x, floor.exit.y), [floor]);
 
   // 보스 (10층마다) — 출구를 지키고 있으며, 쓰러뜨려야 포털이 열린다
+  const bossVariant = isBossFloor ? bossVariantOf(floorNo) : 'radial';
   const boss = useRef<Boss | null>(
     isBossFloor
       ? {
@@ -334,6 +382,11 @@ function DungeonScene({
           hitCd: 0,
           fireTimer: 1.5,
           flash: 0,
+          mode: 0,
+          ai: 0,
+          adx: 0,
+          adz: 0,
+          volley: 0,
         }
       : null,
   );
@@ -601,7 +654,9 @@ function DungeonScene({
         orbsLeft: orbTaken.current.filter((v) => !v).length,
         orbWorlds: orbPos.filter((_, i) => !orbTaken.current[i]),
         enemyTier,
-        boss: boss.current ? { hp: boss.current.hp, alive: boss.current.alive } : null,
+        boss: boss.current
+          ? { hp: boss.current.hp, alive: boss.current.alive, variant: bossVariant, mode: boss.current.mode }
+          : null,
         // 밸런스 봇용 좌표 노출 — 보스·탄막·적 위치를 읽어 회피 기동을 계산한다 (DEV 전용)
         bossWorld:
           boss.current && boss.current.alive ? [boss.current.x, boss.current.z] : null,
@@ -703,7 +758,7 @@ function DungeonScene({
       burst(e.x, 0.8, e.z, e.elite ? '#ff3020' : '#ff5d7e', e.elite ? 22 : 12, e.elite ? 2.6 : 2.0);
       if (e.elite) burst(e.x, 1.3, e.z, '#ffffff', 10, 1.8);
       shake.current = Math.min(0.6, shake.current + (e.elite ? 0.35 : 0.1));
-      onKill(e.elite ? 12 : e.type === 'tank' ? 3 : 1); // 코인 보상 (수문장 두둑)
+      onKill(e.elite ? 12 : e.type === 'tank' ? 3 : 1, e.elite ? 'elite' : e.type); // 코인 + 도감 기록
       if (stats.lifesteal > 0) onHeal(stats.lifesteal);
       if (chain && stats.boom > 0) {
         burst(e.x, 0.9, e.z, '#ff9a3d', 14, 2.2);
@@ -1018,7 +1073,7 @@ function DungeonScene({
       // 적 스탯 캡(스폰·속도)이 15~21층에 걸린 뒤에도 아이템은 복리로 쌓여
       // 파밍 빌드가 무적 순항했다 (시뮬 실측: 160아이템 61층 무저항). 피해만 올려
       // 얕은 층(≤30)과 이동·조작 감각은 그대로 둔다.
-      const threatFloor = floorNo + Math.max(0, floorNo - 30) * 0.6;
+      const threatFloor = (floorNo + Math.max(0, floorNo - 30) * 0.6) * (danger ? 1.25 : 1);
       const espeed = 2.5 + Math.min(3.3, floorNo * 0.16);
       for (const e of enemies.current) {
         if (!e.alive) continue;
@@ -1136,7 +1191,8 @@ function DungeonScene({
         }
       }
 
-      // ── 보스 (10층마다): 추격 + 방사형 탄막 — 저체력이 되면 광폭화(더 자주 발사)
+      // ── 보스 (10층마다): 10층 주기로 패턴 순환 — radial(방사 탄막) / summon(소환) / charge(돌진).
+      //    공통: 저체력 40% 미만 광폭화, 접촉 강타.
       const bAi = boss.current;
       if (bAi && bAi.alive) {
         bAi.hitCd -= dt;
@@ -1144,32 +1200,102 @@ function DungeonScene({
         const bx = p.position.x - bAi.x;
         const bz = p.position.z - bAi.z;
         const bd = Math.hypot(bx, bz);
-        if (bd < 16 && bd > 0.001) {
+        const rage = bAi.hp < bAi.maxHp * 0.4 ? 0.72 : 1; // 광폭화 페이즈
+        const fireRing = (n: number, reach: number) => {
+          for (let k = 0; k < n; k++) {
+            const slot = eshots.current.find((s2) => !s2.alive);
+            if (!slot) break;
+            const ang = (k / n) * Math.PI * 2 + t;
+            slot.x = bAi.x;
+            slot.z = bAi.z;
+            slot.dx = Math.sin(ang);
+            slot.dz = Math.cos(ang);
+            slot.left = reach;
+            slot.alive = true;
+          }
+        };
+
+        if (bossVariant === 'charge' && bd < 18 && bd > 0.001) {
+          // 돌진형 — 느리게 접근 → 부풀며 조준 → 강돌진 → 착지 링 탄막 → 숨 고르기
+          if (bAi.mode === 0) {
+            const nx = bAi.x + (bx / bd) * 1.7 * dt;
+            const nz = bAi.z + (bz / bd) * 1.7 * dt;
+            if (canStand(floor.cells, nx, bAi.z, 0.9)) bAi.x = nx;
+            if (canStand(floor.cells, bAi.x, nz, 0.9)) bAi.z = nz;
+            if (bAi.fireTimer <= 0) {
+              bAi.fireTimer = Math.max(1.6, 2.4 - floorNo * 0.012) * rage;
+              fireRing(6, 12);
+            }
+            if (bd < 9) {
+              bAi.mode = 1;
+              bAi.ai = 0.75 * rage;
+            }
+          } else if (bAi.mode === 1) {
+            bAi.ai -= dt;
+            if (bAi.ai <= 0) {
+              bAi.mode = 2;
+              bAi.ai = 0.55;
+              bAi.adx = bx / bd;
+              bAi.adz = bz / bd;
+              sfx.roar();
+            }
+          } else if (bAi.mode === 2) {
+            bAi.ai -= dt;
+            const nx = bAi.x + bAi.adx * 13 * dt;
+            const nz = bAi.z + bAi.adz * 13 * dt;
+            if (canStand(floor.cells, nx, bAi.z, 0.9)) bAi.x = nx;
+            if (canStand(floor.cells, bAi.x, nz, 0.9)) bAi.z = nz;
+            if (bAi.ai <= 0) {
+              bAi.mode = 3;
+              bAi.ai = 1.0 * rage;
+              fireRing(10, 10); // 착지 충격 링
+              shake.current = Math.min(0.7, shake.current + 0.3);
+              burst(bAi.x, 0.8, bAi.z, '#c06bff', 14, 2.2);
+            }
+          } else {
+            bAi.ai -= dt;
+            if (bAi.ai <= 0) bAi.mode = 0;
+          }
+        } else if (bd < 16 && bd > 0.001) {
+          // radial(기본)·summon 공통 — 추격
           const nx = bAi.x + (bx / bd) * 2.3 * dt;
           const nz = bAi.z + (bz / bd) * 2.3 * dt;
           if (canStand(floor.cells, nx, bAi.z, 0.9)) bAi.x = nx;
           if (canStand(floor.cells, bAi.x, nz, 0.9)) bAi.z = nz;
           if (bAi.fireTimer <= 0) {
-            const rage = bAi.hp < bAi.maxHp * 0.4 ? 0.72 : 1; // 광폭화 페이즈
             bAi.fireTimer = Math.max(1.3, 2.0 - floorNo * 0.012) * rage;
-            const nB = floorNo >= 60 ? 14 : floorNo >= 30 ? 12 : 10;
-            for (let k = 0; k < nB; k++) {
-              const slot = eshots.current.find((s2) => !s2.alive);
-              if (!slot) break;
-              const ang = (k / nB) * Math.PI * 2 + t;
-              slot.x = bAi.x;
-              slot.z = bAi.z;
-              slot.dx = Math.sin(ang);
-              slot.dz = Math.cos(ang);
-              slot.left = 15;
-              slot.alive = true;
+            bAi.volley++;
+            if (bossVariant === 'summon' && bAi.volley % 2 === 0) {
+              // 소환형 — "책이 죽은 몬스터를 다시 쓴다": 죽은 슬롯 3기를 보스 곁에 되살림
+              let revived = 0;
+              for (const e2 of enemies.current) {
+                if (e2.alive || e2.elite) continue;
+                const ang = Math.random() * Math.PI * 2;
+                const sx2 = bAi.x + Math.sin(ang) * 2.2;
+                const sz2 = bAi.z + Math.cos(ang) * 2.2;
+                if (!canStand(floor.cells, sx2, sz2, 0.38)) continue;
+                e2.x = sx2;
+                e2.z = sz2;
+                e2.type = 'chaser';
+                e2.hp = 14 + floorNo * 3; // 소환수는 약하다 (물량이 위협)
+                e2.alive = true;
+                e2.flash = 1;
+                e2.hitCd = 0.6;
+                burst(sx2, 0.7, sz2, '#c06bff', 8, 1.4);
+                if (++revived >= 3) break;
+              }
+              sfx.unlock();
+            } else {
+              const nB = floorNo >= 60 ? 14 : floorNo >= 30 ? 12 : 10;
+              fireRing(bossVariant === 'summon' ? nB - 3 : nB, 15);
+              sfx.roar();
             }
-            sfx.roar();
           }
         }
         if (bd < 1.6 && bAi.hitCd <= 0) {
           bAi.hitCd = 1.0;
-          if (hurtPlayer(16 + Math.round(threatFloor * 0.7)) > 0) {
+          const heavy = bossVariant === 'charge' && bAi.mode === 2; // 돌진 강타
+          if (hurtPlayer((heavy ? 22 : 16) + Math.round(threatFloor * 0.7)) > 0) {
             shake.current = Math.min(0.7, shake.current + 0.4);
             burst(p.position.x, 0.8, p.position.z, '#ff4d5e', 8, 1.8);
           }
@@ -1439,7 +1565,9 @@ function DungeonScene({
         bR.flash = Math.max(0, bR.flash - dt * 5);
         bm.position.set(bR.x, 1.35 + Math.sin(t * 2.2) * 0.15, bR.z);
         bm.rotation.y = t * 0.8;
-        bm.scale.setScalar(1 + bR.flash * 0.12);
+        // 돌진형 조준 중엔 부들부들 (대셔와 같은 예고 문법)
+        const tremble = bossVariant === 'charge' && bR.mode === 1 ? Math.sin(t * 26) * 0.08 : 0;
+        bm.scale.setScalar(1 + bR.flash * 0.12 + tremble);
         if (bossMatRef.current) {
           palette.tmp.copy(palette.enemyBase).lerp(palette.white, bR.flash);
           bossMatRef.current.color.copy(palette.tmp);

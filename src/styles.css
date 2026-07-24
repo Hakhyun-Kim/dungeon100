@@ -227,6 +227,70 @@ body {
   }
 }
 
+/* ── 도감 「채워지는 책」 ── */
+.dex-screen {
+  background:
+    var(--paper),
+    radial-gradient(ellipse at 50% 20%, #3d2f1e 0%, #150f08 75%);
+}
+
+.dex-sec {
+  font-size: 15px;
+  color: #d8b98a;
+  margin-top: 4px;
+}
+
+.dex-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  max-width: 680px;
+}
+
+.dex-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 96px;
+  padding: 7px 4px;
+  background: rgba(20, 14, 8, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.dex-entry.found {
+  background: rgba(40, 28, 14, 0.7);
+  border-color: rgba(255, 209, 102, 0.45);
+}
+
+.dex-icon {
+  font-size: 22px;
+  filter: grayscale(1) opacity(0.5);
+}
+
+.dex-entry.found .dex-icon {
+  filter: none;
+}
+
+.dex-name {
+  font-size: 11px;
+  color: #7d6f56;
+  text-align: center;
+}
+
+.dex-entry.found .dex-name {
+  color: #ffe9b3;
+}
+
+.dex-milestones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
 /* ── 자동 품질 강등 안내 배너 ── */
 .gfx-notice {
   position: absolute;
