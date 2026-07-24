@@ -10,7 +10,7 @@ import TownScene, {
   VILLAGE_STAGE_BG,
   type TownTarget,
 } from './three/TownScene';
-import { BASE_STATS, draftThree, pickUpgrades, type Stats, type Upgrade } from './lib/upgrades';
+import { ALL_UPGRADES, BASE_STATS, draftThree, pickUpgrades, type Stats, type Upgrade } from './lib/upgrades';
 import { makeQuiz, MAX_DOOR_ROUND, type DungeonMode } from './lib/quiz';
 import { metaSpeed, shopCost, type Meta } from './lib/meta';
 import { todayKey, dailySeed, type DailyRecord } from './lib/daily';
@@ -449,7 +449,14 @@ export default function App() {
         setPhase('run');
       },
       mode: (m: DungeonMode) => setMode(m), // 주인공 변신 검증용 (kids/adult/monster)
+      give: (id: string) => {
+        // 업그레이드 강제 지급 — 진화 조합 검증용 (DEV 전용)
+        const u = ALL_UPGRADES.find((x) => x.id === id);
+        if (u) gainUpgrade(u);
+        return u ? u.name : 'unknown id';
+      },
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 디버그 보물 (Shift+P): 보물방 클리어(전설)와 동일 — 아이템 3개 + 완전 회복.
@@ -819,6 +826,8 @@ export default function App() {
       if (cb.n >= 2) setCombo((v) => ({ n: cb.n, mult, seq: v.seq + 1 }));
       // 탐욕의 책갈피 — 코인 배율 (콤보 배율과 곱연산 = 시너지)
       setCoins((c) => c + Math.max(1, Math.round(bounty * statsRef.current.greed * mult)));
+      // 진화 「인세」 — 코인이 들어올 때마다 회복
+      if (statsRef.current.royalty > 0) setHp((h) => Math.min(statsRef.current.maxHp, h + 2));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -881,6 +890,8 @@ export default function App() {
     (n: number) => {
       sfx.treasure();
       setCoins((c) => c + Math.max(1, Math.round(n * statsRef.current.greed)));
+      // 진화 「인세」 — 코인 무더기에도 적용
+      if (statsRef.current.royalty > 0) setHp((h) => Math.min(statsRef.current.maxHp, h + 2));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -903,7 +914,15 @@ export default function App() {
   }, []);
 
   const pickUpgrade = (u: Upgrade) => {
-    sfx.pick();
+    if (u.evo) {
+      // 진화 「합본」 — 잿팟 연출 (전설음 + 황금 잔광 + 햅틱)
+      sfx.legend();
+      sfx.unlock();
+      setGoldFlash((f) => f + 1);
+      buzz(60);
+    } else {
+      sfx.pick();
+    }
     gainUpgrade(u);
     setFloorNo((n) => n + 1);
     // ☕ '사소한 것들의 힘' — 새 층에 도착할 때마다 조금씩 회복된다

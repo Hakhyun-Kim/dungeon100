@@ -18,13 +18,14 @@ export default function DraftScreen({
         kind="card"
         items={draft.map((u) => ({
           key: u.id,
-          className: `rarity-${u.rarity}`,
+          className: `rarity-${u.rarity}${u.evo ? ' evo' : ''}`,
           label: (
             <>
               <span className="card-icon">{u.icon}</span>
               <span className="card-name">{u.name}</span>
               <span className="card-desc">{u.desc}</span>
-              <span className="card-tag">{u.tag}</span>
+              {/* 진화 카드는 '합본' 표기 — 조합 달성의 잿팟임을 보여준다 */}
+              <span className="card-tag">{u.evo ? '📖 합본' : u.tag}</span>
             </>
           ),
           onPick: () => onPick(u),

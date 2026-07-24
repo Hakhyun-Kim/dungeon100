@@ -66,6 +66,7 @@ interface AShot {
   dz: number;
   left: number;
   pierce: number; // 남은 관통 횟수 (관통 서표)
+  bounce: number; // 남은 벽 반사 횟수 (진화 「종이 표창」 — 아레나 경계에 튕김)
   last: number; // 마지막으로 맞힌 적 인덱스 (관통탄 연속 타격 방지)
   alive: boolean;
 }
@@ -130,8 +131,9 @@ export default function GemArenaScene({
     })),
   );
   const shots = useRef<AShot[]>(
-    Array.from({ length: MAX_SHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, pierce: 0, last: -1, alive: false })),
+    Array.from({ length: MAX_SHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, pierce: 0, bounce: 0, last: -1, alive: false })),
   );
+  const fanCounter = useRef(0); // 진화 「쏟아지는 문장」 카운터
   const eshots = useRef<AEShot[]>(
     Array.from({ length: MAX_ESHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, alive: false })),
   );
@@ -291,16 +293,22 @@ export default function GemArenaScene({
         }
         if (best) {
           const base = Math.atan2(best.x - c.position.x, best.z - c.position.z);
-          for (let s = 0; s < stats.shots; s++) {
+          // 진화 「쏟아지는 문장」 — N번째 공격은 부채꼴 9연발 (본체와 동일)
+          fanCounter.current++;
+          const isFan = stats.fanEvery > 0 && fanCounter.current % stats.fanEvery === 0;
+          const nShots = isFan ? 9 : stats.shots;
+          const spread = isFan ? 0.24 : 0.16;
+          for (let s = 0; s < nShots; s++) {
             const slot = shots.current.find((sh) => !sh.alive);
             if (!slot) break;
-            const ang = base + (s - (stats.shots - 1) / 2) * 0.16;
+            const ang = base + (s - (nShots - 1) / 2) * spread;
             slot.x = c.position.x;
             slot.z = c.position.z;
             slot.dx = Math.sin(ang);
             slot.dz = Math.cos(ang);
             slot.left = stats.range;
             slot.pierce = stats.pierce;
+            slot.bounce = stats.bounce;
             slot.last = -1;
             slot.alive = true;
           }
@@ -338,9 +346,23 @@ export default function GemArenaScene({
         sh.x += sh.dx * shotSpd * dt;
         sh.z += sh.dz * shotSpd * dt;
         sh.left -= shotSpd * dt;
-        if (sh.left <= 0 || Math.abs(sh.x) > ARENA_R || Math.abs(sh.z) > ARENA_R) {
+        if (sh.left <= 0) {
           sh.alive = false;
           continue;
+        }
+        // 진화 「종이 표창」 — 아레나 경계에 한 번 튕긴다
+        if (Math.abs(sh.x) > ARENA_R || Math.abs(sh.z) > ARENA_R) {
+          if (sh.bounce > 0) {
+            sh.bounce -= 1;
+            if (Math.abs(sh.x) > ARENA_R) sh.dx = -sh.dx;
+            if (Math.abs(sh.z) > ARENA_R) sh.dz = -sh.dz;
+            sh.x = THREE.MathUtils.clamp(sh.x, -ARENA_R, ARENA_R);
+            sh.z = THREE.MathUtils.clamp(sh.z, -ARENA_R, ARENA_R);
+            burst(sh.x, 0.75, sh.z, '#f4efe0', 2, 0.8);
+          } else {
+            sh.alive = false;
+            continue;
+          }
         }
         for (let ei = 0; ei < enemies.current.length; ei++) {
           const e = enemies.current[ei];
@@ -348,7 +370,8 @@ export default function GemArenaScene({
           if (ei === sh.last) continue;
           if (Math.hypot(e.x - sh.x, e.z - sh.z) < 0.62) {
             const crit = stats.crit > 0 && Math.random() < stats.crit;
-            e.hp -= stats.damage * (crit ? 2 : 1);
+            const adm = stats.damage * (crit ? 2 : 1);
+            e.hp -= adm;
             e.flash = 1;
             if (sh.pierce > 0) {
               sh.pierce -= 1;
@@ -358,6 +381,19 @@ export default function GemArenaScene({
             }
             sfx.hit();
             burst(e.x, 0.7, e.z, crit ? '#ff8a3d' : '#ffe08a', 4, 1.4);
+            // 진화 「마침표」 — 치명타 대폭발 (무리 상대라 특히 강력)
+            if (crit && stats.critBoom > 0) {
+              burst(e.x, 0.9, e.z, '#ff9a3d', 16, 2.4);
+              shake.current = Math.min(0.6, shake.current + 0.15);
+              for (const e2 of enemies.current) {
+                if (!e2.alive || e2 === e) continue;
+                if (Math.hypot(e2.x - e.x, e2.z - e.z) < 2.6) {
+                  e2.hp -= adm * 0.8;
+                  e2.flash = 1;
+                  if (e2.hp <= 0) killEnemy(e2, false);
+                }
+              }
+            }
             if (e.type !== 'tank') {
               // 탱커는 넉백 면역 — 밀어내기 배율 반영
               e.x = THREE.MathUtils.clamp(e.x + sh.dx * 0.4 * stats.knock, -bound, bound);
@@ -396,6 +432,23 @@ export default function GemArenaScene({
         shake.current = Math.min(0.6, shake.current + 0.26);
         burst(c.position.x, 0.8, c.position.z, '#ff4d5e', 6, 1.6);
         sfx.hurt();
+        // 진화 「단단한 장정」 — 맞는 순간 충격파 (본체와 동일)
+        if (stats.shockwave > 0) {
+          burst(c.position.x, 0.6, c.position.z, '#ffd166', 14, 2.6);
+          for (const e2 of enemies.current) {
+            if (!e2.alive) continue;
+            const dd = Math.hypot(e2.x - c.position.x, e2.z - c.position.z);
+            if (dd < 3.2) {
+              e2.hp -= 10 + stats.thorns;
+              e2.flash = 1;
+              if (e2.type !== 'tank') {
+                e2.x = THREE.MathUtils.clamp(e2.x + ((e2.x - c.position.x) / (dd || 1)) * 2.2, -bound, bound);
+                e2.z = THREE.MathUtils.clamp(e2.z + ((e2.z - c.position.z) / (dd || 1)) * 2.2, -bound, bound);
+              }
+              if (e2.hp <= 0) killEnemy(e2, true);
+            }
+          }
+        }
         if (hp.current <= 0 && !doneCalled.current) {
           doneCalled.current = true;
           onDone(false, gemCount.current);

@@ -1,4 +1,4 @@
-import { UPGRADES } from '../lib/upgrades';
+import { ALL_UPGRADES } from '../lib/upgrades';
 import type { DungeonMode } from '../lib/quiz';
 
 // 캔버스 위 상시 표시 UI — HUD 칩·체력바·빌드 칩·보스 체력바.
@@ -115,7 +115,7 @@ export function VillageHud({
 export function BuildRow({ build }: { build: Record<string, number> }) {
   return (
     <div className="build-row">
-      {UPGRADES.filter((u) => build[u.id]).map((u) => (
+      {ALL_UPGRADES.filter((u) => build[u.id]).map((u) => (
         <span key={u.id} className="build-chip">
           {u.icon}
           {build[u.id] > 1 && <em>×{build[u.id]}</em>}

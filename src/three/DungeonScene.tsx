@@ -51,6 +51,7 @@ interface Shot {
   dz: number;
   left: number; // 남은 사거리
   pierce: number; // 남은 관통 횟수 (관통 서표)
+  bounce: number; // 남은 벽 반사 횟수 (진화 「종이 표창」)
   last: number; // 마지막으로 맞힌 적 인덱스 (관통탄 연속 타격 방지)
   alive: boolean;
 }
@@ -278,8 +279,9 @@ function DungeonScene({
     })(),
   );
   const shots = useRef<Shot[]>(
-    Array.from({ length: MAX_SHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, pierce: 0, last: -1, alive: false })),
+    Array.from({ length: MAX_SHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, pierce: 0, bounce: 0, last: -1, alive: false })),
   );
+  const fanCounter = useRef(0); // 진화 「쏟아지는 문장」 — N번째 공격 카운터
   const particles = useRef<Particle[]>(
     Array.from({ length: MAX_PARTICLES }, () => ({
       x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ttl: 0, max: 1, size: 0.1, alive: false,
@@ -670,6 +672,28 @@ function DungeonScene({
       }
       const applied = Math.max(1, Math.round(dmg * (1 - stats.armor)));
       onDamage(applied);
+      // 진화 「단단한 장정」 — 맞는 순간 충격파: 주변을 밀쳐내고 벤다
+      if (stats.shockwave > 0) {
+        burst(p.position.x, 0.6, p.position.z, '#ffd166', 16, 2.8);
+        shake.current = Math.min(0.6, shake.current + 0.2);
+        for (const e2 of enemies.current) {
+          if (!e2.alive) continue;
+          const dd = Math.hypot(e2.x - p.position.x, e2.z - p.position.z);
+          if (dd < 3.2) {
+            e2.hp -= 10 + stats.thorns;
+            e2.flash = 1;
+            if (!e2.elite && e2.type !== 'tank') {
+              const ux2 = (e2.x - p.position.x) / (dd || 1);
+              const uz2 = (e2.z - p.position.z) / (dd || 1);
+              const kx = e2.x + ux2 * 2.2;
+              const kz = e2.z + uz2 * 2.2;
+              if (canStand(floor.cells, kx, e2.z, 0.38)) e2.x = kx;
+              if (canStand(floor.cells, e2.x, kz, 0.38)) e2.z = kz;
+            }
+            if (e2.hp <= 0) killEnemy(e2, true);
+          }
+        }
+      }
       return applied;
     };
 
@@ -857,16 +881,22 @@ function DungeonScene({
         }
         if (hasTarget) {
           const base = Math.atan2(tx - p.position.x, tz - p.position.z);
-          for (let s = 0; s < stats.shots; s++) {
+          // 진화 「쏟아지는 문장」 — N번째 공격은 부채꼴 9연발
+          fanCounter.current++;
+          const isFan = stats.fanEvery > 0 && fanCounter.current % stats.fanEvery === 0;
+          const nShots = isFan ? 9 : stats.shots;
+          const spread = isFan ? 0.24 : 0.16;
+          for (let s = 0; s < nShots; s++) {
             const slot = shots.current.find((sh) => !sh.alive);
             if (!slot) break;
-            const ang = base + (s - (stats.shots - 1) / 2) * 0.16;
+            const ang = base + (s - (nShots - 1) / 2) * spread;
             slot.x = p.position.x;
             slot.z = p.position.z;
             slot.dx = Math.sin(ang);
             slot.dz = Math.cos(ang);
             slot.left = stats.range;
             slot.pierce = stats.pierce;
+            slot.bounce = stats.bounce;
             slot.last = -1;
             slot.alive = true;
           }
@@ -883,9 +913,33 @@ function DungeonScene({
         sh.left -= shotSpd * dt;
         const cx = Math.floor(sh.x / CELL + GRID / 2);
         const cz = Math.floor(sh.z / CELL + GRID / 2);
-        if (sh.left <= 0 || !isFloor(floor.cells, cx, cz)) {
+        if (sh.left <= 0) {
           sh.alive = false;
           continue;
+        }
+        if (!isFloor(floor.cells, cx, cz)) {
+          // 진화 「종이 표창」 — 벽에 한 번 튕긴다 (막힌 축을 판정해 반사)
+          if (sh.bounce > 0) {
+            sh.bounce -= 1;
+            const px2 = sh.x - sh.dx * shotSpd * dt;
+            const pz2 = sh.z - sh.dz * shotSpd * dt;
+            const cxPrev = Math.floor(px2 / CELL + GRID / 2);
+            const czPrev = Math.floor(pz2 / CELL + GRID / 2);
+            const blockX = !isFloor(floor.cells, cx, czPrev);
+            const blockZ = !isFloor(floor.cells, cxPrev, cz);
+            if (blockX) sh.dx = -sh.dx;
+            if (blockZ) sh.dz = -sh.dz;
+            if (!blockX && !blockZ) {
+              sh.dx = -sh.dx;
+              sh.dz = -sh.dz;
+            }
+            sh.x = px2;
+            sh.z = pz2;
+            burst(sh.x, 0.75, sh.z, '#f4efe0', 2, 0.8);
+          } else {
+            sh.alive = false;
+            continue;
+          }
         }
         // 보스 명중
         const bh = boss.current;
@@ -898,6 +952,18 @@ function DungeonScene({
           sfx.hit();
           burst(sh.x, 0.9, sh.z, '#e0b3ff', 4, 1.4);
           spawnDmg(bh.x, bh.z, Math.round(dmg), crit ? '#ff8a3d' : undefined);
+          // 진화 「마침표」 — 보스 치명타도 주변 잡몹에 폭발
+          if (crit && stats.critBoom > 0) {
+            burst(bh.x, 1.1, bh.z, '#ff9a3d', 16, 2.4);
+            for (const e2 of enemies.current) {
+              if (!e2.alive) continue;
+              if (Math.hypot(e2.x - bh.x, e2.z - bh.z) < 2.6) {
+                e2.hp -= dmg * 0.8;
+                e2.flash = 1;
+                if (e2.hp <= 0) killEnemy(e2, false);
+              }
+            }
+          }
           onBossHp(Math.max(0, bh.hp), bh.maxHp);
           if (bh.hp <= 0) killBoss();
           continue;
@@ -920,6 +986,20 @@ function DungeonScene({
             sfx.hit();
             burst(e.x, 0.7, e.z, '#ffe08a', 4, 1.4);
             spawnDmg(e.x, e.z, Math.round(dmg), crit ? '#ff8a3d' : undefined);
+            // 진화 「마침표」 — 치명타가 대폭발을 새긴다 (반경 2.6, 주변 80% 피해)
+            if (crit && stats.critBoom > 0) {
+              burst(e.x, 0.9, e.z, '#ff9a3d', 18, 2.6);
+              shake.current = Math.min(0.6, shake.current + 0.18);
+              for (const e2 of enemies.current) {
+                if (!e2.alive || e2 === e) continue;
+                if (Math.hypot(e2.x - e.x, e2.z - e.z) < 2.6) {
+                  e2.hp -= dmg * 0.8;
+                  e2.flash = 1;
+                  spawnDmg(e2.x, e2.z, Math.round(dmg * 0.8), '#ff9a3d');
+                  if (e2.hp <= 0) killEnemy(e2, false);
+                }
+              }
+            }
             // 넉백 (탱커·수문장은 밀리지 않음, 벽은 통과 못 함) — 밀어내기 배율 반영
             if (e.type !== 'tank' && !e.elite) {
               const kx = e.x + sh.dx * 0.4 * stats.knock;

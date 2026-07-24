@@ -16,6 +16,12 @@ export interface Stats {
   knock: number; // 넉백 배율
   shotSpeed: number; // 투사체 속도 배율
   pierce: number; // 투사체 관통 횟수
+  // ── 진화 「합본」 효과 (2026-07-24) — 숫자가 아니라 '행동'을 바꾼다
+  fanEvery: number; // N번째 공격마다 부채꼴 9연발 (0 = 없음)
+  bounce: number; // 투사체 벽 반사 횟수
+  critBoom: number; // 치명타 시 대폭발 (0/1)
+  shockwave: number; // 피격 시 충격파 (0/1)
+  royalty: number; // 코인 획득 시 회복 (0/1)
 }
 
 export const BASE_STATS: Stats = {
@@ -35,6 +41,11 @@ export const BASE_STATS: Stats = {
   knock: 1,
   shotSpeed: 1,
   pierce: 0,
+  fanEvery: 0,
+  bounce: 0,
+  critBoom: 0,
+  shockwave: 0,
+  royalty: 0,
 };
 
 // 희귀도 — 드래프트·보물 모두 가중 등장 (전설은 귀하다)
@@ -49,6 +60,7 @@ export interface Upgrade {
   desc: string;
   rarity: Rarity;
   tag: UpgradeTag;
+  evo?: boolean; // 진화 「합본」 카드 (전용 연출·판당 1회)
   apply: (s: Stats) => Stats;
 }
 
@@ -82,6 +94,57 @@ export const UPGRADES: Upgrade[] = [
   { id: 'knock', icon: '🌪️', name: '밀어내기', desc: '넉백 +40%', rarity: 'common', tag: '보조', apply: (s) => ({ ...s, knock: s.knock + 0.4 }) },
 ];
 
+// ── 진화 「합본」 (2026-07-24) — 특정 조합을 모으면 다음 드래프트 첫 슬롯에 확정 등장하는
+//    금빛 카드. 스탯 복리가 아니라 '플레이 방식'을 바꾼다 (VS류 진화의 잿팟 순간). 판당 각 1회.
+//    세계관: 되찾은 페이지 두 묶음이 합쳐져 '개정 합본'으로 다시 쓰인다.
+export interface Evolution extends Upgrade {
+  evo: true;
+  recipe: string; // 카드에 보여줄 조합 (달성 조건)
+  need: (build: Record<string, number>) => boolean;
+}
+
+export const EVOLUTIONS: Evolution[] = [
+  {
+    id: 'evo_verse', icon: '🌊', name: '쏟아지는 문장', recipe: '🔱 멀티샷×2 + ⚡ 연사×2',
+    desc: '네 번째 공격마다 문장이 쏟아진다 — 부채꼴 9연발', rarity: 'legendary', tag: '공격', evo: true,
+    need: (b) => (b.multi ?? 0) >= 2 && (b.rate ?? 0) >= 2,
+    apply: (s) => ({ ...s, fanEvery: 4 }),
+  },
+  {
+    id: 'evo_shuriken', icon: '📄', name: '종이 표창', recipe: '🗡️ 관통 서표 + 🏹 시위 강화×2',
+    desc: '투사체가 벽에 한 번 튕겨 계속 난다', rarity: 'legendary', tag: '공격', evo: true,
+    need: (b) => (b.pierce ?? 0) >= 1 && (b.shotspd ?? 0) >= 2,
+    apply: (s) => ({ ...s, bounce: s.bounce + 1 }),
+  },
+  {
+    id: 'evo_period', icon: '⭕', name: '마침표', recipe: '💥 폭발 구슬 + 💢 급소 일격×2',
+    desc: '치명타가 대폭발을 새긴다 — 문장의 끝', rarity: 'legendary', tag: '공격', evo: true,
+    need: (b) => (b.boom ?? 0) >= 1 && (b.crit ?? 0) >= 2,
+    apply: (s) => ({ ...s, critBoom: 1 }),
+  },
+  {
+    id: 'evo_binding', icon: '📕', name: '단단한 장정', recipe: '🌵 가시 문장 + 🛡️ 단단한 표지×2',
+    desc: '맞는 순간 충격파 — 주변을 밀쳐내고 벤다', rarity: 'legendary', tag: '생존', evo: true,
+    need: (b) => (b.thorns ?? 0) >= 1 && (b.armor ?? 0) >= 2,
+    apply: (s) => ({ ...s, shockwave: 1 }),
+  },
+  {
+    id: 'evo_royalty', icon: '💰', name: '인세', recipe: '🩸 흡혈의 잉크 + 🪙 탐욕의 책갈피',
+    desc: '코인이 들어올 때마다 체력 +2', rarity: 'legendary', tag: '보조', evo: true,
+    need: (b) => (b.steal ?? 0) >= 1 && (b.greed ?? 0) >= 1,
+    apply: (s) => ({ ...s, royalty: 1 }),
+  },
+];
+
+// 빌드 칩·도감 등 표시용 전체 풀 (랜덤 뽑기 풀에는 진화가 안 섞인다 — 조건 달성 시 확정 등장)
+export const ALL_UPGRADES: Upgrade[] = [...UPGRADES, ...EVOLUTIONS];
+
+// 조건을 달성했지만 아직 안 가진 진화
+export function eligibleEvolutions(build?: Record<string, number>): Evolution[] {
+  if (!build) return [];
+  return EVOLUTIONS.filter((e) => !build[e.id] && e.need(build));
+}
+
 const RARITY_WEIGHT: Record<Rarity, number> = { common: 1, rare: 0.5, legendary: 0.22 };
 
 // 빌드에서 2개 이상 모인 태그 — 드래프트·보물이 그 태그를 살짝 밀어준다 (×1.35)
@@ -108,7 +171,11 @@ function pullWeighted(rand: () => number, pool: Upgrade[], boost: Set<UpgradeTag
 }
 
 export function draftThree(rand: () => number, build?: Record<string, number>): Upgrade[] {
-  return pickUpgrades(rand, 3, build);
+  const picks = pickUpgrades(rand, 3, build);
+  // 진화 「합본」 — 조건을 달성했으면 첫 슬롯에 확정 등장 (잿팟은 놓치지 않게)
+  const evos = eligibleEvolutions(build);
+  if (evos.length > 0) picks[0] = evos[Math.floor(rand() * evos.length)];
+  return picks;
 }
 
 // 보물·선물·보스 보상 공용 — n개 중복 없이 가중 뽑기
