@@ -312,6 +312,10 @@ export default function GemArenaScene({
             slot.last = -1;
             slot.alive = true;
           }
+          if (isFan) {
+            burst(c.position.x, 0.85, c.position.z, '#ffd166', 8, 1.8);
+            sfx.pass();
+          }
           fireTimer.current = 1 / stats.fireRate;
         }
       }

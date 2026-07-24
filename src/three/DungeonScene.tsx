@@ -161,6 +161,7 @@ function DungeonScene({
   secretRetryRef,
   riftRetryRef,
   riftGoRef,
+  evoFxRef,
   onDamage,
   onHeal,
   onKill,
@@ -196,6 +197,7 @@ function DungeonScene({
   secretRetryRef: React.MutableRefObject<number>; // 찢어진 페이지 "그만둔다" → 재무장
   riftRetryRef: React.MutableRefObject<number>; // 두 갈래 틈 "그만둔다" → 벗어나면 재무장
   riftGoRef: React.MutableRefObject<number>; // 두 갈래 틈 "들어간다" → 반대편으로 순간이동
+  evoFxRef?: React.MutableRefObject<number>; // 진화 「합본」 획득 순간 — 대형 연출 트리거 (seq 증가)
   onDamage: (dmg: number) => void;
   onHeal: (amount: number) => void; // 흡혈의 잉크 — 처치 시 회복
   onKill: (bounty: number, kind?: string) => void; // bounty = 코인 (탱커 3, 그 외 1), kind = 도감 기록용 종류
@@ -329,6 +331,8 @@ function DungeonScene({
     Array.from({ length: MAX_SHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, pierce: 0, bounce: 0, last: -1, alive: false })),
   );
   const fanCounter = useRef(0); // 진화 「쏟아지는 문장」 — N번째 공격 카운터
+  const evoFxSeen = useRef(evoFxRef?.current ?? 0); // 진화 획득 연출 트리거 감지
+  const evoRingRef = useRef<THREE.Mesh>(null); // 진화 보유 상시 표시 — 발밑 금빛 룬 링
   const particles = useRef<Particle[]>(
     Array.from({ length: MAX_PARTICLES }, () => ({
       x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ttl: 0, max: 1, size: 0.1, alive: false,
@@ -954,6 +958,11 @@ function DungeonScene({
             slot.bounce = stats.bounce;
             slot.last = -1;
             slot.alive = true;
+          }
+          if (isFan) {
+            // 「쏟아지는 문장」 발사 순간 — 골드 스파크 + 확인음 (잿팟이 계속 보이게)
+            burst(p.position.x, 0.85, p.position.z, '#ffd166', 8, 1.8);
+            sfx.pass();
           }
           fireTimer.current = 1 / stats.fireRate;
         }
@@ -1745,6 +1754,37 @@ function DungeonScene({
       glowRef.current.intensity = glowTimer.current * 3.2;
     }
 
+    // ── 진화 「합본」 획득 순간 — 확실한 대형 연출 (금-장미 이중 폭발 + 잔광 + 셰이크)
+    if (evoFxRef && evoFxRef.current !== evoFxSeen.current) {
+      evoFxSeen.current = evoFxRef.current;
+      burst(p.position.x, 0.9, p.position.z, '#ffd166', 26, 3.2);
+      burst(p.position.x, 1.3, p.position.z, '#ff9ec4', 18, 2.4);
+      burst(p.position.x, 0.6, p.position.z, '#ffffff', 10, 1.6);
+      shake.current = Math.min(0.7, shake.current + 0.45);
+      glowTimer.current = 2.6; // 황금 잔광 길게
+      for (const e of enemies.current) e.hitCd = Math.max(e.hitCd, 1.2); // 감상할 자비
+    }
+
+    // ── 진화 보유 상시 표시 — 발밑 금빛 룬 링 (보유 수만큼 크고 밝게)
+    if (evoRingRef.current) {
+      const evoN =
+        (stats.fanEvery > 0 ? 1 : 0) +
+        (stats.bounce > 0 ? 1 : 0) +
+        (stats.critBoom > 0 ? 1 : 0) +
+        (stats.shockwave > 0 ? 1 : 0) +
+        (stats.royalty > 0 ? 1 : 0);
+      if (evoN > 0) {
+        evoRingRef.current.visible = true;
+        evoRingRef.current.rotation.z = t * 0.9;
+        const s = 1 + (evoN - 1) * 0.12 + Math.sin(t * 2.6) * 0.04;
+        evoRingRef.current.scale.setScalar(s);
+        (evoRingRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity =
+          0.8 + evoN * 0.25 + Math.sin(t * 3.4) * 0.2;
+      } else {
+        evoRingRef.current.visible = false;
+      }
+    }
+
     // ── 카메라 추적 + 셰이크 (미니게임 중에는 미니게임이 카메라를 잡는다)
     if (!hiddenRef.current) {
       shake.current = Math.max(0, shake.current - dt * 1.6);
@@ -1862,6 +1902,19 @@ function DungeonScene({
         ))}
         {/* 보물 획득 황금 잔광 */}
         <pointLight ref={glowRef} color="#ffcf5c" intensity={0} distance={7} position={[0, 1.2, 0]} />
+        {/* 진화 「합본」 보유 표시 — 발밑에 회전하는 금빛 룬 링 (조합됨이 상시 보인다) */}
+        <mesh ref={evoRingRef} visible={false} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.07, 0]}>
+          <ringGeometry args={[0.78, 0.92, 24, 1]} />
+          <meshStandardMaterial
+            color="#ffd166"
+            emissive="#c98f1e"
+            emissiveIntensity={1}
+            transparent
+            opacity={0.75}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
       </group>
 
       {/* 보물상자 */}

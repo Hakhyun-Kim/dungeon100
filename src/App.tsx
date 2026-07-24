@@ -352,6 +352,8 @@ export default function App() {
   // 두 갈래 틈 — 거절 시 재무장 / 수락 시 반대편으로 순간이동 (씬이 처리)
   const riftRetryRef = useRef(0);
   const riftGoRef = useRef(0);
+  // 진화 「합본」 획득 순간 — 씬 대형 연출 트리거 (금-장미 폭발 + 잔광 + 셰이크)
+  const evoFxRef = useRef(0);
   const [altarReward, setAltarReward] = useState<Upgrade | null>(null);
   const visitGiftGiven = useRef<Set<number>>(new Set()); // 방문당 노드별 선물 1회
 
@@ -979,11 +981,12 @@ export default function App() {
   const pickUpgrade = (u: Upgrade) => {
     if (dangerFloor === floorNo) setDangerFloor(0); // 위험 계약 층을 떠난다 — 계약 종료
     if (u.evo) {
-      // 진화 「합본」 — 잿팟 연출 (전설음 + 황금 잔광 + 햅틱)
+      // 진화 「합본」 — 잿팟 연출 (전설음 + 황금 잔광 + 햅틱 + 씬 대형 폭발)
       sfx.legend();
       sfx.unlock();
       setGoldFlash((f) => f + 1);
       buzz(60);
+      evoFxRef.current += 1;
     } else {
       sfx.pick();
     }
@@ -1233,6 +1236,23 @@ export default function App() {
     },
     arena: startArena,
     jump: debugJump,
+    evolve: () => {
+      // 진화 시연 — 조합(멀티샷×2+연사×2)을 채우고 드래프트를 바로 연다 → 「쏟아지는 문장」 확정 등장
+      const multi = ALL_UPGRADES.find((u) => u.id === 'multi')!;
+      const rate = ALL_UPGRADES.find((u) => u.id === 'rate')!;
+      gainUpgrade(multi);
+      gainUpgrade(multi);
+      gainUpgrade(rate);
+      gainUpgrade(rate);
+      setPhase('draft');
+    },
+    nav: () => {
+      // 시연 길찾기용 — 미니맵 채널(프로덕션 포함)의 그리드·좌표 스냅샷
+      const ch = minimapRef.current;
+      return ch.cells
+        ? { cells: ch.cells, px: ch.px, py: ch.py, exitX: ch.exitX, exitY: ch.exitY }
+        : null;
+    },
     altar: () => {
       setAltarReward(null);
       setPhase('altar');
@@ -1327,6 +1347,7 @@ export default function App() {
             secretRetryRef={secretRetryRef}
             riftRetryRef={riftRetryRef}
             riftGoRef={riftGoRef}
+            evoFxRef={evoFxRef}
             onDamage={onDamage}
             onHeal={onHeal}
             onKill={onKill}

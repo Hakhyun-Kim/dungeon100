@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { generateFloor } from '../lib/dungeon';
+import { findPathCells } from '../lib/path';
 import { sfx } from '../lib/sound';
 
 // 층 번호 = 시드라 방 이벤트 배치도 결정적 — 시연에 쓸 '그 층'을 미리 찾아 둔다.
@@ -32,6 +33,10 @@ export interface DemoActions {
   arena: () => void;
   /** 층 점프 (체력 회복 포함) */
   jump: (floor: number) => void;
+  /** 진화 시연 — 조합을 채우고 드래프트를 연다 (「쏟아지는 문장」 확정 등장) */
+  evolve: () => void;
+  /** 길찾기용 스냅샷 — 미니맵 채널의 그리드·플레이어/출구 셀 좌표 */
+  nav: () => { cells: Uint8Array; px: number; py: number; exitX: number; exitY: number } | null;
   /** 낡은 제단 선택 화면 열기 (방 이벤트 쇼케이스) */
   altar: () => void;
   /** 찢어진 페이지(비밀 문) 선택 화면 열기 */
@@ -110,7 +115,7 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
         if (!stop) clickTalk();
       }
     };
-    // 무작위 산책 — 전투·마을 구경용 (자동 조준이 알아서 싸운다)
+    // 무작위 산책 — 마을 구경·아레나용 (자동 조준이 알아서 싸운다)
     const wander = async (ms: number) => {
       const until = Date.now() + ms;
       while (Date.now() < until && !stop) {
@@ -120,6 +125,51 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
         await sleep(450 + Math.random() * 450);
         key(c, false);
       }
+      releaseAll();
+    };
+    // 던전에서는 헤매지 않는다 — BFS 경로를 따라 출구를 향해 걸으며 싸운다 (2026-07-24).
+    // 미니맵 채널(프로덕션 포함)에서 그리드·좌표를 읽고, 다음 웨이포인트 방향의 키만 누른다.
+    const marchToExit = async (ms: number) => {
+      const until = Date.now() + ms;
+      let held: string[] = [];
+      const setKeys = (want: string[]) => {
+        held.forEach((c) => !want.includes(c) && key(c, false));
+        want.forEach((c) => !held.includes(c) && key(c, true));
+        held = want;
+      };
+      while (Date.now() < until && !stop) {
+        if (act().phase() !== 'run') {
+          setKeys([]);
+          await settle();
+          await sleep(200);
+          continue;
+        }
+        const nv = act().nav();
+        if (!nv) {
+          await sleep(250);
+          continue;
+        }
+        const cx = Math.round(nv.px);
+        const cy = Math.round(nv.py);
+        const path = findPathCells(nv.cells, cx, cy, nv.exitX, nv.exitY);
+        if (!path || path.length === 0) {
+          setKeys([]);
+          await sleep(250);
+          continue;
+        }
+        // 다음 웨이포인트(두 칸 앞을 보면 덜 지그재그) 방향의 키 조합
+        const wp = path[Math.min(1, path.length - 1)];
+        const dx = wp[0] - nv.px;
+        const dy = wp[1] - nv.py;
+        const want: string[] = [];
+        if (dx > 0.25) want.push('KeyD');
+        else if (dx < -0.25) want.push('KeyA');
+        if (dy > 0.25) want.push('KeyS');
+        else if (dy < -0.25) want.push('KeyW');
+        setKeys(want);
+        await sleep(160);
+      }
+      setKeys([]);
       releaseAll();
     };
     // 원하는 phase가 될 때까지 오버레이를 넘기며 대기 (두 문 달리기 중이면 조향도)
@@ -154,9 +204,9 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
       await talkFor(11000);
       if (stop) return;
 
-      await caption('⚔️ 매판 새로 생성되는 던전 — 가까운 적은 자동 조준!');
+      await caption('⚔️ 매판 새로 생성되는 던전 — 출구를 향해, 가까운 적은 자동 조준!');
       act().dungeon();
-      await wander(5000);
+      await marchToExit(5200);
       if (stop) return;
 
       await caption('🎁 보물 16종 — 희귀도(레어·전설)와 시너지 태그, 빌드가 바로 눈에 보입니다!');
@@ -164,7 +214,19 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
         act().treasure();
         await sleep(1200);
       }
-      await wander(2200);
+      await marchToExit(2200);
+      if (stop) return;
+
+      // ── 진화 「합본」 — 이 게임의 잿팟 순간 (조합 달성 → 확정 등장 → 플레이 방식이 바뀐다)
+      await caption('📖 핵심! 조합의 잿팟 — 멀티샷×2 + 연사×2를 모으면 「합본」 진화가 확정 등장!');
+      act().evolve();
+      await sleep(3400); // 금-장미빛 진화 카드를 관객이 볼 시간
+      if (stop) return;
+      document.querySelector<HTMLButtonElement>('.draft-screen .card.evo')?.click();
+      await settleUntil(['run'], 8000); // 획득 대형 연출(금-장미 폭발)과 함께 던전 복귀
+      if (stop) return;
+      await caption('🌊 「쏟아지는 문장」 — 네 번째 공격마다 부채꼴 9연발! 발밑 금빛 룬이 조합의 증표');
+      await marchToExit(6800);
       if (stop) return;
 
       // ── 방 이벤트 ① 낡은 제단 — 「피를 잉크로.」 (수락까지 보여 준다)
@@ -205,7 +267,7 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
         act().jump(houseFloor);
         await sleep(300);
         act().treasure();
-        await wander(6000);
+        await marchToExit(6000);
         if (stop) return;
       }
 
@@ -222,11 +284,11 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
       act().jump(45);
       await sleep(300);
       act().treasure();
-      await wander(3800);
+      await marchToExit(3800);
       act().jump(75);
       await sleep(300);
       act().treasure();
-      await wander(3800);
+      await marchToExit(3800);
       if (stop) return;
 
       await caption('🫖 56층의 소녀 — 작가가 쓰다 만 「공주님」, 여백의 찻자리');
@@ -242,11 +304,11 @@ export function useDemoDriver(running: boolean, actions: DemoActions) {
       await wander(6000);
       if (stop) return;
 
-      await caption('📖 10층마다 페이지의 수호자가 포털을 봉인합니다 — 탄막을 뚫어라!');
+      await caption('📖 10층마다 페이지의 수호자가 포털을 봉인합니다 — 층마다 얼굴이 다른 보스!');
       act().jump(30);
       await sleep(300);
       act().treasure();
-      await wander(9000);
+      await marchToExit(9000); // 출구 = 보스 위치 — 곧장 보스전으로 걸어간다
       if (stop) return;
 
       await caption('📅 오늘의 던전 — 날짜가 시드, 모두가 같은 맵에 도전하고 기록 카드로 인증!');
