@@ -16,6 +16,8 @@ export interface MiniMapChannel {
   chestY: number;
   homeX: number; // -1 = 없음/소진
   homeY: number;
+  forkX: number; // 🔥 모험의 길 붉은 포털 (-1 = 없음)
+  forkY: number;
   bossAlive: boolean;
   floorColor: string; // 테마 바닥색 (밝은 칸)
   version: number; // 층이 바뀌면 증가 → 즉시 다시 그림
@@ -33,6 +35,8 @@ export function makeMiniMapChannel(): MiniMapChannel {
     chestY: -1,
     homeX: -1,
     homeY: -1,
+    forkX: -1,
+    forkY: -1,
     bossAlive: false,
     floorColor: '#3a2f55',
     version: 0,
@@ -85,6 +89,7 @@ export default function MiniMap({ chRef }: { chRef: React.MutableRefObject<MiniM
         if (seenAt(ch.exitX, ch.exitY)) dot(ch.exitX, ch.exitY, ch.bossAlive ? '#ff5d7e' : '#b9a3ff', 2.6);
         if (ch.chestX >= 0 && seenAt(ch.chestX, ch.chestY)) dot(ch.chestX, ch.chestY, '#ffd166', 2.2);
         if (ch.homeX >= 0 && seenAt(ch.homeX, ch.homeY)) dot(ch.homeX, ch.homeY, '#ffcf8a', 2.2);
+        if (ch.forkX >= 0 && seenAt(ch.forkX, ch.forkY)) dot(ch.forkX, ch.forkY, '#ff5136', 2.4);
         // 플레이어 (깜빡이는 흰 점)
         dot(ch.px, ch.py, pulse < 5 ? '#ffffff' : '#d8cff2', 2.8);
       }

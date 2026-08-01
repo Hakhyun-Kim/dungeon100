@@ -1,30 +1,9 @@
 import type { Upgrade } from '../lib/upgrades';
 import { ChoiceList, PrimaryButton } from './Menu';
 
-// 층 진행·방 이벤트 선택 화면들 — 포털·마을 문·제단·찢어진 페이지(비밀 문).
-
-export function PortalScreen({
-  floorNo,
-  onDescend,
-  onStay,
-}: {
-  floorNo: number;
-  onDescend: () => void;
-  onStay: () => void;
-}) {
-  return (
-    <div className="screen quiz-screen">
-      <h2>🌀 아래로 내려가는 포털이 열려 있다</h2>
-      <p className="quiz-sub">다음 층은 더 위험하다. {floorNo + 1}층으로 내려가시겠습니까?</p>
-      <ChoiceList
-        items={[
-          { key: 'down', label: '⬇️ 내려간다', onPick: onDescend },
-          { key: 'stay', label: '🕐 아직 이 층을 더 둘러볼래', onPick: onStay },
-        ]}
-      />
-    </div>
-  );
-}
+// 방 이벤트 선택 화면들 — 마을 문·제단·찢어진 페이지(비밀 문)·두 갈래 틈·무너지는 서가.
+// 포털 확인 화면은 없다: 층 이동은 포털에 몸을 넣는 순간 일어나고,
+// 갈림길(🔥 모험의 길)도 던전 바닥의 붉은 포털로 고른다 (2026-07-27).
 
 export function HomeDoorScreen({ onOpen, onSkip }: { onOpen: () => void; onSkip: () => void }) {
   return (
@@ -115,6 +94,39 @@ export function RiftScreen({ onEnter, onDecline }: { onEnter: () => void; onDecl
       <ChoiceList
         items={[
           { key: 'enter', label: '🌀 틈으로 들어간다', onPick: onEnter },
+          { key: 'skip', label: '🕯️ 지금은 그만둔다', onPick: onDecline },
+        ]}
+      />
+    </div>
+  );
+}
+
+// 무너지는 서가 — 보물을 지금 받고, 무너지는 층에서 제한 시간 안에 출구까지 달린다.
+// 제단(체력↔보물)과 짝을 이루는 '시간↔보물' 트레이드.
+export function CollapseScreen({
+  seconds,
+  onShake,
+  onDecline,
+}: {
+  seconds: number;
+  onShake: () => void;
+  onDecline: () => void;
+}) {
+  return (
+    <div className="screen quiz-screen">
+      <h2>📚 기울어진 서가</h2>
+      <p className="quiz-sub">
+        천장까지 닿은 책장이 위태롭게 기울어 있다. 틈새로 금박 표지가 반짝인다.
+        <br />
+        …건드리면 이 장(章) 전체가 무너져 내릴 것 같다.
+      </p>
+      <ChoiceList
+        items={[
+          {
+            key: 'shake',
+            label: `📚 서가를 흔든다 — 보물을 받고 ${seconds}초 안에 출구로`,
+            onPick: onShake,
+          },
           { key: 'skip', label: '🕯️ 지금은 그만둔다', onPick: onDecline },
         ]}
       />

@@ -50,6 +50,10 @@ const BUILDINGS: Building[] = [
 
 const ENTRANCE: [number, number] = [3.6, -8.6];
 const NEAR_R = 2.3; // 상호작용 감지 반경
+// 입구 아치는 '몸을 넣으면 들어간다' — 감지 반경보다 훨씬 좁게 잡아야
+// 옆을 지나가다 끌려 들어가지 않는다 (던전 포털 1.3과 같은 감각).
+const ENTER_R = 1.25;
+const ENTER_REARM_R = 2.8; // 거절하고 그 자리에 서 있을 때 — 벗어나야 다시 무장
 const TREES: [number, number][] = [
   [-10, 8],
   [10, 8],
@@ -269,11 +273,17 @@ function buildDecor(floorNo: number): Decor {
 export default function TownScene({
   pausedRef,
   onNear,
+  onEnter,
+  autoEnter = true,
   floorNo = 0,
   heroVariant,
 }: {
   pausedRef: React.MutableRefObject<boolean>;
   onNear: (t: TownTarget) => void;
+  /** 던전 입구 아치에 몸을 넣었다 — 던전 포털과 같은 규칙(묻지 않고 들어간다, 2026-07-27) */
+  onEnter?: () => void;
+  /** 자동 시연은 동선을 직접 잡으므로 산책 중 입구에 닿아도 끌려 들어가면 안 된다 */
+  autoEnter?: boolean;
   floorNo?: number;
   heroVariant?: HeroVariant; // 마지막으로 고른 던전 종류의 모습 그대로 마을을 걷는다
 }) {
@@ -286,6 +296,7 @@ export default function TownScene({
   // undefined로 시작 → 마운트 후 첫 프레임에 실제 근접값(보통 null)을 반드시 1회 보고.
   // (상점 등에서 씬이 리마운트될 때 App의 stale한 '무크와 대화' 버튼을 확실히 지운다)
   const lastNear = useRef<TownTarget | undefined>(undefined);
+  const enteredRef = useRef(false); // 입구를 이미 밟았다 (벗어나면 재무장)
 
   const decor = useMemo(() => buildDecor(floorNo), [floorNo]);
   const cfg = decor.s;
@@ -400,6 +411,16 @@ export default function TownScene({
     if (near !== lastNear.current) {
       lastNear.current = near;
       onNear(near);
+    }
+
+    // ── 던전 입구 — 아치 안으로 걸어 들어가면 묻지 않고 내려간다 (2026-07-27).
+    // 대화 중(pausedRef)에는 발동하지 않는다: 입구에서 연 선택지를 닫는 순간
+    // 같은 자리라 곧바로 다시 열리는 무한 루프가 된다.
+    if (enteredRef.current) {
+      if (ed > ENTER_REARM_R) enteredRef.current = false;
+    } else if (autoEnter && onEnter && !pausedRef.current && ed < ENTER_R) {
+      enteredRef.current = true;
+      onEnter();
     }
 
     // ── NPC 연출 (둥실둥실 + 가까이 가면 강조)

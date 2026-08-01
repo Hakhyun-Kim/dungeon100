@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { DailyRecord } from '../lib/daily';
+import type { DungeonMode } from '../lib/quiz';
 import { MEMORIES } from '../lib/memories';
+import { sfx } from '../lib/sound';
 import { ChoiceList } from './Menu';
 import { SetProgressRow } from './LoreScreens';
 
@@ -92,13 +94,16 @@ export default function TitleScreen({
   storySeen,
   muted,
   gfx,
+  dexPct,
   dailyRecord,
   onToggleMute,
   onToggleGfx,
   onStart,
+  onQuickStart,
   onDaily,
   onReplay,
   onDemo,
+  onDex,
 }: {
   best: number;
   memCount: number;
@@ -106,14 +111,19 @@ export default function TitleScreen({
   storySeen: boolean;
   muted: boolean;
   gfx: 'high' | 'lite'; // 그래픽 품질 (⚡가벼움 = 기존 렌더 경로)
+  dexPct: number; // 도감 「채워지는 책」 수집률
   dailyRecord: DailyRecord | null; // 오늘 날짜의 기록 (없으면 null)
   onToggleMute: () => void;
   onToggleGfx: () => void;
   onStart: () => void;
+  onQuickStart: (m: DungeonMode) => void; // ⚡ 빠른 시작 — 마을·인트로 없이 바로 1층 전투로
   onDaily: () => void;
   onReplay: () => void;
   onDemo: () => void;
+  onDex: () => void;
 }) {
+  // ⚡ 빠른 시작 서브메뉴 — 던전 종류만 고르면 바로 입장 (처음 온 사람이 30초 안에 전투를 본다)
+  const [quickOpen, setQuickOpen] = useState(false);
   return (
     <div className="screen title-screen">
       <TitleFx />
@@ -143,25 +153,83 @@ export default function TitleScreen({
           📅 오늘의 던전 기록: {dailyRecord.cleared ? '100층 완주!' : `${dailyRecord.floor}층`}
         </p>
       )}
-      {/* 첫 항목이 기본 하이라이트 — Enter는 언제나 '모험 시작' */}
-      <ChoiceList
-        kind="big"
-        items={[
-          { key: 'start', label: '모험 시작', onPick: onStart },
-          { key: 'daily', label: '📅 오늘의 던전', className: 'daily-btn', onPick: onDaily },
-          { key: 'demo', label: '🎬 자동 시연 보기', className: 'demo-start', onPick: onDemo },
-        ]}
-      />
-      <p className="quiz-sub daily-hint">
-        📅 오늘의 던전: 날짜가 시드 — 모두가 같은 맵에 도전 (기록 카드로 인증)
-        <br />
-        🎬 자동 시연: 게임이 스스로 주요 장면을 보여 줍니다 (약 2분, 언제든 중단 가능)
-      </p>
-      {storySeen && (
-        <button className="skip-btn" onClick={onReplay}>
-          📖 스토리 다시 보기
-        </button>
+      {/* 첫 항목이 기본 하이라이트 — Enter는 언제나 '모험 시작'.
+          key로 메뉴를 통째 교체(서브메뉴 열림/닫힘) — ChoiceList 포커스가 첫 항목으로 리셋된다 */}
+      {quickOpen ? (
+        <ChoiceList
+          key="quick"
+          kind="big"
+          items={[
+            {
+              key: 'kids',
+              label: '🎒 초등학교 던전 (쉬운 문제)',
+              onPick: () => onQuickStart('kids'),
+            },
+            {
+              key: 'adult',
+              label: '🧠 어른 던전 (어려운 문제)',
+              onPick: () => onQuickStart('adult'),
+            },
+            {
+              key: 'monster',
+              label: '👹 몬스터 던전 (문제 대신 전투)',
+              onPick: () => onQuickStart('monster'),
+            },
+            {
+              key: 'back',
+              label: '↩️ 뒤로',
+              onPick: () => {
+                sfx.tap();
+                setQuickOpen(false);
+              },
+            },
+          ]}
+        />
+      ) : (
+        <ChoiceList
+          key="main"
+          kind="big"
+          items={[
+            { key: 'start', label: '모험 시작', onPick: onStart },
+            {
+              key: 'quick',
+              label: '⚡ 바로 던전으로',
+              className: 'quick-btn',
+              onPick: () => {
+                sfx.tap();
+                setQuickOpen(true);
+              },
+            },
+            { key: 'daily', label: '📅 오늘의 던전', className: 'daily-btn', onPick: onDaily },
+            { key: 'demo', label: '🎬 자동 시연 보기', className: 'demo-start', onPick: onDemo },
+          ]}
+        />
       )}
+      <p className="quiz-sub daily-hint">
+        {quickOpen ? (
+          <>⚡ 어느 장(章)부터 읽을까? — 마을 인사는 건너뛰고 곧장 1층 전투로</>
+        ) : (
+          <>
+            ⚡ 바로 던전으로: 마을을 건너뛰고 즉시 전투 (마을은 5층마다 들를 수 있어요)
+            <br />
+            📅 오늘의 던전: 날짜가 시드 — 모두가 같은 맵에 도전 (기록 카드로 인증)
+            <br />
+            🎬 자동 시연: 게임이 스스로 주요 장면을 보여 줍니다 (약 2분, 언제든 중단 가능)
+          </>
+        )}
+      </p>
+      <div className="story-btns">
+        {dexPct > 0 && (
+          <button className="skip-btn" onClick={onDex}>
+            📖 채워지는 책 {dexPct}%
+          </button>
+        )}
+        {storySeen && (
+          <button className="skip-btn" onClick={onReplay}>
+            🔖 스토리 다시 보기
+          </button>
+        )}
+      </div>
     </div>
   );
 }

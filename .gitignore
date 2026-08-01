@@ -1,6 +1,10 @@
 node_modules/
+node_modules
 dist/
 *.local
 
 # 대용량 화면녹화 영상 — GitHub 100MB 제한 초과, 로컬 보관 (영상은 YouTube에 업로드됨)
 assets/*.mp4
+
+# 밸런스 회귀 스크립트가 남기는 리포트 (CI에선 아티팩트로만 보관)
+balance-report.json

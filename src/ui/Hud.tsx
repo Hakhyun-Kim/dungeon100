@@ -1,4 +1,4 @@
-import { UPGRADES } from '../lib/upgrades';
+import { ALL_UPGRADES } from '../lib/upgrades';
 import type { DungeonMode } from '../lib/quiz';
 
 // 캔버스 위 상시 표시 UI — HUD 칩·체력바·빌드 칩·보스 체력바.
@@ -23,6 +23,9 @@ export function GameHud({
   coins,
   muted,
   gfx,
+  danger = false,
+  ghostFloor = null,
+  ghostBeaten = false,
   onToggleMute,
   onToggleGfx,
 }: {
@@ -35,6 +38,9 @@ export function GameHud({
   coins: number;
   muted: boolean;
   gfx: 'high' | 'lite';
+  danger?: boolean; // 갈림길 「모험의 길」 계약 층 표시 (🔥)
+  ghostFloor?: number | null; // 🤖 AI 사서가 먼저 읽고 잠든 층 (넘어서면 ✓)
+  ghostBeaten?: boolean;
   onToggleMute: () => void;
   onToggleGfx: () => void; // 그래픽 품질 토글 — 게임 중에도 즉시 전환
 }) {
@@ -43,6 +49,16 @@ export function GameHud({
     <div className="hud">
       <div className="hud-chip">
         {daily ? '📅' : mode === 'kids' ? '🎒' : mode === 'adult' ? '🧠' : '👹'} {floorNo}층
+        {danger && ' 🔥'}
+        {ghostFloor != null && (
+          <span
+            className={`ghost-mark${ghostBeaten ? ' beaten' : ''}`}
+            title="🤖 이 책을 먼저 읽은 AI 사서가 잠든 층 — 넘어서 보자"
+          >
+            {' '}
+            · 🤖{ghostFloor}{ghostBeaten ? '✓' : ''}
+          </span>
+        )}
       </div>
       <div className="hp-wrap">
         {/* 잔상 바가 뒤에서 천천히 따라와 '깎인 만큼'이 잠시 보인다 */}
@@ -115,7 +131,7 @@ export function VillageHud({
 export function BuildRow({ build }: { build: Record<string, number> }) {
   return (
     <div className="build-row">
-      {UPGRADES.filter((u) => build[u.id]).map((u) => (
+      {ALL_UPGRADES.filter((u) => build[u.id]).map((u) => (
         <span key={u.id} className="build-chip">
           {u.icon}
           {build[u.id] > 1 && <em>×{build[u.id]}</em>}
@@ -132,6 +148,22 @@ export function BossBar({ hp, max }: { hp: number; max: number }) {
       <span className="boss-label">📖 페이지의 수호자</span>
       <div className="boss-bar-outer">
         <div className="boss-bar" style={{ width: `${(hp / max) * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
+// 역류 카운트다운 — 「무너지는 서가」를 흔든 뒤 출구까지 남은 시간.
+// 보스바와 같은 자리를 쓰지만 둘이 동시에 뜰 일은 없다 (서가는 비보스 층에만 배치된다).
+export function RushBar({ left, total }: { left: number; total: number }) {
+  const p = Math.max(0, Math.min(1, left / total));
+  return (
+    <div className="boss-bar-wrap rush-bar-wrap">
+      <span className="boss-label rush-label">
+        📚 서가가 무너진다 — 출구까지 {left.toFixed(1)}초
+      </span>
+      <div className="boss-bar-outer">
+        <div className="boss-bar rush-bar" style={{ width: `${p * 100}%` }} />
       </div>
     </div>
   );

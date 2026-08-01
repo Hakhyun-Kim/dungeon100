@@ -1,0 +1,22 @@
+{
+  "_": "리소스 원장 — 기계가 읽는 원본. 사람이 읽는 docs/ASSETS.md의 표는 이 파일에서 생성된다(npm run assets-write). 손으로 쓴 표는 반드시 낡으므로 여기만 고친다.",
+  "hosts": [
+    {
+      "host": "fonts.googleapis.com",
+      "use": "Jua 웹폰트 CSS (index.html)",
+      "license": "SIL OFL 1.1",
+      "source": "https://fonts.google.com/specimen/Jua",
+      "form": "② 참조 — 저장소에 폰트 파일 없음",
+      "fallback": "styles.css·textTexture.ts의 시스템 폰트(Apple SD Gothic Neo·Malgun Gothic·sans-serif)"
+    },
+    {
+      "host": "fonts.gstatic.com",
+      "use": "위 CSS가 가리키는 폰트 파일",
+      "license": "SIL OFL 1.1",
+      "source": "https://fonts.google.com/specimen/Jua",
+      "form": "② 참조 — 저장소에 폰트 파일 없음",
+      "fallback": "같음"
+    }
+  ],
+  "files": []
+}

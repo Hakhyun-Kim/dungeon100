@@ -10,14 +10,29 @@ import TownScene, {
   VILLAGE_STAGE_BG,
   type TownTarget,
 } from './three/TownScene';
-import { BASE_STATS, draftThree, pickUpgrades, type Stats, type Upgrade } from './lib/upgrades';
+import {
+  ALL_UPGRADES,
+  BASE_STATS,
+  draftThree,
+  pickUpgrades,
+  expireVolatile,
+  ELITE_SIGNATURE,
+  type Stats,
+  type Upgrade,
+  type ExpiringBuff,
+} from './lib/upgrades';
+import { applyArenaBuffs, pickArenaBuffs } from './lib/arenaBuffs';
 import { makeQuiz, MAX_DOOR_ROUND, type DungeonMode } from './lib/quiz';
 import { metaSpeed, shopCost, type Meta } from './lib/meta';
 import { todayKey, dailySeed, type DailyRecord } from './lib/daily';
+import { ghostRun, GHOST_CAUSE_TEXT, type GhostRecord } from './lib/ghost';
+import { EMPTY_DEX, DEX_MILESTONES, dexPct, type DexState } from './lib/dex';
+import DexScreen from './ui/DexScreen';
 import { mulberry32 } from './lib/rng';
+import { isCaveFloor } from './lib/dungeon';
 import { useLocalStorage, suspendPersistence } from './lib/store';
 import { sfx, isMuted, setMuted } from './lib/sound';
-import { music } from './lib/music';
+import { music, deriveIntensity } from './lib/music';
 import { shareCard } from './lib/shareCard';
 import {
   MEMORIES,
@@ -43,14 +58,15 @@ import {
 } from './lib/story';
 import { initAutoRotate, type AppRotation } from './lib/rotate';
 import { useDemoDriver } from './demo/useDemoDriver';
-import { GameHud, ArenaHud, VillageHud, BuildRow, BossBar } from './ui/Hud';
+import { GameHud, ArenaHud, VillageHud, BuildRow, BossBar, RushBar } from './ui/Hud';
 import MiniMap, { makeMiniMapChannel } from './ui/MiniMap';
 import TitleScreen from './ui/TitleScreen';
 import StoryScreen from './ui/StoryScreen';
 import TownDialogScreen from './ui/TownDialogScreen';
 import VillageOverlay, { type VillageTalk } from './ui/VillageOverlay';
 import ShopScreen from './ui/ShopScreen';
-import { PortalScreen, HomeDoorScreen, AltarScreen, SecretDoorScreen, RiftScreen } from './ui/FloorPrompts';
+import { HomeDoorScreen, AltarScreen, SecretDoorScreen, RiftScreen, CollapseScreen } from './ui/FloorPrompts';
+import ArenaBuffScreen from './ui/ArenaBuffScreen';
 import { QuizResultScreen, ArenaOverScreen, type QuizView } from './ui/ChestScreens';
 import {
   LoreScreen,
@@ -65,10 +81,18 @@ import EndingScreen, { type EndingVariant } from './ui/EndingScreen';
 import DebugPanel from './ui/DebugPanel';
 import { DemoCaption, DemoExitButton, DemoEndScreen } from './ui/DemoOverlay';
 
+// phase 상태 머신 + 배선. 이 파일이 하는 일은 셋뿐이다:
+//   ① phase 전이 (아래 흐름도)  ② 씬↔오버레이 배선  ③ 보상·저장 같은 판정
+// 전투·이동·연출은 전부 씬(three/*)이 한다 — 여기서 매 프레임 상태를 바꾸면 안 된다.
+//
+// 읽는 순서: Phase 타입 → App 안의 state/ref 선언부 → 콜백(grantRewards·onChest·openPortal…)
+//            → useEffect(음악·사망 판정·카운트다운) → JSX(Canvas + phase별 오버레이).
+// Canvas는 run 계열 phase에서만 마운트되고, 층 전환은 DungeonScene의 key 리마운트로 한다.
+//
 // 흐름: title → story(인트로) → village(마을) → run
 //  - 보물상자(수학 모드): run → doorrun(두 문 달리기, 최대 3연속) → quiz(결과) → memory(되찾은 기억) → run
 //  - 보물상자(몬스터 모드): run → arena(무리 처치+보석 3개) → quiz(보상) / arenaover(쓰러짐 → 재도전·포기) → memory → run
-//  - 층 이동: run → portal(내려갈지 선택) → draft(보상 3택 1) → lore(벽의 글귀) → run(다음 층)
+//  - 층 이동: run(포털에 몸을 넣으면 즉시) → draft(보상 3택 1) → lore(벽의 글귀) → run(다음 층)
 //  - 5층마다: run → homedoor(마을 문 선택) → village(방문 — 층 유지) → run
 type Phase =
   | 'title'
@@ -83,14 +107,16 @@ type Phase =
   | 'memory'
   | 'memset' // 기억 갈래 완성 — 특별한 능력 각성
   | 'memfull'
-  | 'portal'
   | 'draft'
   | 'lore'
   | 'homedoor'
   | 'altar'
   | 'secretdoor'
   | 'rift' // 두 갈래 틈 — 층 안 순간이동 지름길
+  | 'collapse' // 무너지는 서가 — 보물을 받고 역류에 쫓길지 선택
+  | 'housebuff' // 몬스터 하우스 코인 무더기 1·2번째 — 이번 층 한정 버프 2택 1
   | 'shop'
+  | 'dex' // 도감 「채워지는 책」 (타이틀에서 열람)
   | 'trace'
   | 'ending'
   | 'over';
@@ -174,6 +200,8 @@ export default function App() {
   const powers = useMemo(() => powersOf(memIds), [memIds]);
   const [setUnlocked, setSetUnlocked] = useState<MemorySetId | null>(null);
   const reviveUsedRef = useRef(false); // '돌아갈 곳' — 판당 1회
+  const eliteMarkGivenRef = useRef(false); // 🔥 정예의 증표 — 판당 첫 수문장 처치 1회
+  const eliteMarkPendingRef = useRef(false); // 처치는 됐지만 아직 지급 전(다음 안전한 출구에서 지급)
   const [reviveNotice, setReviveNotice] = useState(0);
   const [coins, setCoins] = useLocalStorage<number>('d100-coins', 0);
   const [meta, setMeta] = useLocalStorage<Meta>('d100-meta', { dmg: 0, hp: 0, spd: 0 });
@@ -181,6 +209,30 @@ export default function App() {
   const [girlMet, setGirlMet] = useLocalStorage<boolean>('d100-girl', false);
   // 떠돌이 상인 🎩 — 첫 만남(원본 독백 + 덤) 여부. 마을 방문 중에만 광장에 와 있다
   const [peddlerMet, setPeddlerMet] = useLocalStorage<boolean>('d100-peddler', false);
+  // ── 도감 「채워지는 책」 — 만난 것들이 페이지로 기록된다 (수집률 마일스톤 = 1회성 코인)
+  const [dex, setDex] = useLocalStorage<DexState>('d100-dex', EMPTY_DEX);
+  const [dexClaimed, setDexClaimed] = useLocalStorage<number>('d100-dex-claim', 0);
+  const dexAdd = useCallback((kind: keyof DexState, id: string) => {
+    setDex((d) => (d[kind].includes(id) ? d : { ...d, [kind]: [...d[kind], id] }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const pct = dexPct(dex);
+    let claim = dexClaimed;
+    let gain = 0;
+    while (claim < DEX_MILESTONES.length && pct >= DEX_MILESTONES[claim].pct) {
+      gain += DEX_MILESTONES[claim].coins;
+      claim++;
+    }
+    if (gain > 0) {
+      setDexClaimed(claim);
+      setCoins((c) => c + gain);
+      sfx.gift();
+      setGoldFlash((f) => f + 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dex]);
+
   // 그래픽 품질 — ⚡가벼움(기존 렌더 경로: 포스트프로세싱 없음·DPR 캡·플랫 재질) / ✨고품질.
   // 기본은 'auto': 실플레이 FPS를 재서 스스로 결정(아래 측정 effect), 결정은 d100-gfx-auto에 저장.
   // 토글을 누르면 그때부터 수동 설정(auto 해제).
@@ -236,6 +288,9 @@ export default function App() {
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gfxPref, gfxAuto, phase, lite]);
+  // 1층 첫 판 조작 코치마크 — 평생 딱 한 번, 9초 (튜토리얼 없이 조작이 이해되게)
+  const [coachSeen, setCoachSeen] = useLocalStorage<boolean>('d100-coach', false);
+  const [coachShow, setCoachShow] = useState(false);
   // 본 흔적(14·28·42·49층)의 층 번호 — 42층 초대장을 봤으면 56층 소녀의 첫인사·선물이 달라진다
   const [tracesSeen, setTracesSeen] = useLocalStorage<number[]>('d100-traces', []);
   const tracesSeenRef = useRef(tracesSeen);
@@ -248,6 +303,8 @@ export default function App() {
   const [flash, setFlash] = useState(0);
   const [goldFlash, setGoldFlash] = useState(0);
   const [build, setBuild] = useState<Record<string, number>>({});
+  // 휘발되는 장 — 지금 활성인 시한부 카드들(id+획득 층). 층이 바뀔 때 expireVolatile로 되돌린다.
+  const [expiring, setExpiring] = useState<ExpiringBuff[]>([]);
   const [quizSeq, setQuizSeq] = useState(0);
   const [quizView, setQuizView] = useState<QuizView>('no');
   const [rewards, setRewards] = useState<Upgrade[]>([]);
@@ -258,6 +315,26 @@ export default function App() {
   const [arenaGems, setArenaGems] = useState(0);
   const [arenaTry, setArenaTry] = useState(0); // 재도전 시 씬 리마운트 key
   const [arenaDeathGems, setArenaDeathGems] = useState(0);
+  // 아레나 임시 버프 — 보석을 주울 때마다 2택 1, 아레나를 나가면 전부 사라진다 (본체 빌드 불변)
+  const [arenaBuffs, setArenaBuffs] = useState<Upgrade[]>([]);
+  const [arenaBuffPick, setArenaBuffPick] = useState<{ gems: number; choices: Upgrade[] } | null>(
+    null,
+  );
+  // 몬스터 하우스 임시 버프 (2026-07-27) — 아레나와 같은 훅을 던전 몬스터 하우스로 이식.
+  // 코인 무더기 1·2번째를 주우면 2택 1, 「이번 층 한정」이라 층을 넘으면 사라진다(본체 빌드 불변).
+  const [houseBuffs, setHouseBuffs] = useState<Upgrade[]>([]);
+  const [houseBuffPick, setHouseBuffPick] = useState<{ n: number; choices: Upgrade[] } | null>(
+    null,
+  );
+  // 역류 — 「무너지는 서가」를 흔든 뒤 출구까지의 제한 시간 (0 = 진행 중 아님)
+  const [surgeLeft, setSurgeLeft] = useState(0); // 「마지막 문단」 남은 시간 (0 = 없음)
+  const [rushLeft, setRushLeft] = useState(0);
+  const [rushWin, setRushWin] = useState<{ pick: Upgrade; seq: number } | null>(null);
+  const [rushFail, setRushFail] = useState(0);
+  const RUSH_SECONDS = 16;
+  // 🔥 정예의 증표 — 판당 첫 수문장 처치 배너 (rushWin과 같은 '배너만, 화면 전환 없음' 패턴)
+  const [eliteMark, setEliteMark] = useState<{ seq: number } | null>(null);
+  const eliteMarkSeqRef = useRef(1);
   const [storyIdx, setStoryIdx] = useState(0);
   const [townIdx, setTownIdx] = useState(0);
   const [townScript, setTownScript] = useState<TownNode[]>([]); // DOM 마을 화면(현재 56층 소녀 전용)
@@ -273,6 +350,18 @@ export default function App() {
   const [runType, setRunType] = useState<'normal' | 'daily'>('normal');
   const [dailyBest, setDailyBest] = useLocalStorage<DailyRecord | null>('d100-daily', null);
   const dailyNum = useMemo(() => dailySeed(todayKey()), []);
+  // 🤖 AI 사서 고스트 — 이번 판을 '먼저 읽은' AI(밸런스 모델)의 기록. 판마다 시드가 다르고,
+  // 일일 던전은 날짜 시드라 모두가 같은 사서와 겨룬다. 넘어서는 순간 1회 연출.
+  const [ghostSeed, setGhostSeed] = useState(0);
+  const ghost = useMemo(() => (ghostSeed > 0 ? ghostRun(ghostSeed) : null), [ghostSeed]);
+  const [ghostBeaten, setGhostBeaten] = useState(false);
+  const [ghostNotice, setGhostNotice] = useState(0);
+  // 사서 실기록 — 크론 봇(daily-ghost.yml)이 오늘의 던전을 실제로 플레이해 커밋한
+  // public/ghost/<날짜>.json. 일일 던전에서 파일이 있으면 모델(ghost.ts) 대신 이걸 쓴다.
+  const [ghostReal, setGhostReal] = useState<{ floor: number; cause?: GhostRecord['cause'] } | null>(
+    null,
+  );
+  const ghostShown = runType === 'daily' && ghostReal ? ghostReal : ghost;
   const [muted, setMutedState] = useState(isMuted());
   const [bossHp, setBossHp] = useState(0);
   const [bossMax, setBossMax] = useState(0);
@@ -307,6 +396,17 @@ export default function App() {
   modeRef.current = mode;
   const pausedRef = useRef(false);
   pausedRef.current = phase !== 'run' || debugOpen;
+  // 아레나는 본체 빌드에 '이번 아레나 한정' 임시 버프를 얹은 사본으로 싸운다.
+  // 본체 stats·build는 절대 안 건드리므로 아레나를 나가면 강화가 흔적 없이 사라진다.
+  const arenaStatsRef = useRef(stats);
+  arenaStatsRef.current = applyArenaBuffs(stats, arenaBuffs);
+  const arenaPausedRef = useRef(false);
+  arenaPausedRef.current = arenaBuffPick !== null || debugOpen;
+  // 몬스터 하우스도 같은 방식 — 던전은 phase가 'run'을 벗어나면(housebuff 포함) 이미
+  // pausedRef로 멈추므로 아레나처럼 별도 paused ref는 필요 없다. buffs가 비어 있으면
+  // applyArenaBuffs가 base를 그대로 반환해 평소엔 비용이 0이다.
+  const houseStatsRef = useRef(stats);
+  houseStatsRef.current = applyArenaBuffs(stats, houseBuffs);
   // 마을에선 대화창이 열려 있을 때만 이동 정지 (그 외엔 자유롭게 걸어다님)
   const villagePausedRef = useRef(false);
   villagePausedRef.current = villageTalk !== null || debugOpen;
@@ -315,7 +415,6 @@ export default function App() {
   const damageMulRef = useRef(1);
   damageMulRef.current =
     powers.desperateMul > 1 && hp > 0 && hp < stats.maxHp * 0.3 ? powers.desperateMul : 1;
-  const portalRetryRef = useRef(0);
   const homeRetryRef = useRef(0);
   const homeUsedRef = useRef(0);
   // 방 이벤트 — 제단·찢어진 페이지 (거절 시 재무장, 제단은 바치면 소멸)
@@ -325,6 +424,13 @@ export default function App() {
   // 두 갈래 틈 — 거절 시 재무장 / 수락 시 반대편으로 순간이동 (씬이 처리)
   const riftRetryRef = useRef(0);
   const riftGoRef = useRef(0);
+  const collapseRetryRef = useRef(0);
+  const collapseUsedRef = useRef(0);
+  const rushRef = useRef(false); // 씬이 매 프레임 참조 (먼지 연출·미니맵 출구 표시)
+  const rushLeftRef = useRef(0); // onExit(useCallback([]))에서 최신 잔여 시간 참조
+  const rushWinSeqRef = useRef(1);
+  // 진화 「합본」 획득 순간 — 씬 대형 연출 트리거 (금-장미 폭발 + 잔광 + 셰이크)
+  const evoFxRef = useRef(0);
   const [altarReward, setAltarReward] = useState<Upgrade | null>(null);
   const visitGiftGiven = useRef<Set<number>>(new Set()); // 방문당 노드별 선물 1회
 
@@ -360,17 +466,61 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hp, phase]);
 
+  // 🤖 사서를 넘어서는 순간 — 1회 연출 (배너 4.2초 + 해금음)
+  useEffect(() => {
+    if (!ghostShown || ghostBeaten || floorNo <= ghostShown.floor) return;
+    setGhostBeaten(true);
+    setGhostNotice((n) => n + 1);
+    sfx.unlock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floorNo, ghostShown, ghostBeaten]);
+  useEffect(() => {
+    if (ghostNotice === 0) return;
+    const id = setTimeout(() => setGhostNotice(0), 4200);
+    return () => clearTimeout(id);
+  }, [ghostNotice]);
+
+  // 코치마크 표시 — 1층 run에 처음 들어선 순간 (시연 중엔 자막과 겹치니 표시 안 함)
+  useEffect(() => {
+    if (phase !== 'run' || floorNo !== 1 || runId === 0 || coachSeen || demoRunning) return;
+    setCoachSeen(true);
+    setCoachShow(true);
+    const id = setTimeout(() => setCoachShow(false), 9000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, floorNo, runId, demoRunning]);
+
   // 일일 던전은 재도전해도 같은 드래프트·같은 문제가 나오게 runId 대신 날짜 시드를 쓴다
   const runVar = runType === 'daily' ? dailyNum % 100000 : runId;
 
-  // 드래프트 — 희귀도 가중 + 태그 시너지(같은 태그 2개+ 보유 시 그 태그가 더 잘 나온다)
+  // ── 갈림길 「모험의 길」 — 층 시드 35%로 출구 곁에 **붉은 포털**이 하나 더 열린다.
+  //    그리로 내려가면 다음 층이 사나워지고(스폰↑·피해↑), 그 층 돌파 드래프트는 전부 레어 이상.
+  //    (2026-07-27 화면 → 던전 바닥으로 이동 — 확인 화면이 '버그처럼' 읽히던 것을 없앴다)
+  const [dangerFloor, setDangerFloor] = useState(0); // 위험 계약이 걸린 층 (0 = 없음)
+  // onExit(useCallback([]))이 최신 값을 보기 위한 거울 ref
+  const descendRef = useRef(() => {}); // 포털 즉시 하강
+  const branchOpen = useMemo(
+    () =>
+      floorNo >= 3 &&
+      (floorNo + 1) % 10 !== 0 && // 다음 층이 보스면 안 연다 (보스전은 이미 위험)
+      mulberry32(runVar * 613 + floorNo * 977 + 41)() < 0.35,
+    [runVar, floorNo],
+  );
+
+  // 드래프트 — 희귀도 가중 + 태그 시너지(같은 태그 2개+ 보유 시 그 태그가 더 잘 나온다).
+  // 위험 층(dangerFloor)을 돌파하는 드래프트는 전부 레어 이상 (모험의 보상)
   const draft = useMemo(
-    () => draftThree(mulberry32(runVar * 7919 + floorNo * 131 + 7), build),
-    [runVar, floorNo, build],
+    () => draftThree(mulberry32(runVar * 7919 + floorNo * 131 + 7), build, dangerFloor === floorNo),
+    [runVar, floorNo, build, dangerFloor],
   );
 
   // 문(라운드)마다 새 문제 — 깊은 라운드일수록 어려운 문제 등급, 던전 종류에 따라 수준 조절
   const quizSeed = runVar * 104729 + floorNo * 131 + quizSeq * 17 + doorRound * 7 + 5;
+  // onExit·onArenaGem 등 [] 의존 콜백이 최신 값을 보기 위한 거울 ref들
+  const runVarRef = useRef(runVar);
+  runVarRef.current = runVar;
+  const buildRef = useRef(build);
+  buildRef.current = build;
   const quiz = useMemo(
     () => makeQuiz(quizSeed, floorNo + (doorRound - 1) * 6, mode),
     [quizSeed, floorNo, doorRound, mode],
@@ -382,7 +532,6 @@ export default function App() {
     else if (phase === 'arena') sfx.roar();
     else if (phase === 'memory') sfx.memory();
     else if (phase === 'lore') sfx.lore();
-    else if (phase === 'portal') sfx.portal();
     else if (phase === 'homedoor') sfx.bell();
     else if (phase === 'altar') sfx.lore();
     else if (phase === 'secretdoor') sfx.portal();
@@ -411,6 +560,38 @@ export default function App() {
       music.play(bossHp > 0 ? 'boss' : 'dungeon', Math.floor((floorNo - 1) / 5));
     }
   }, [phase, muted, floorNo, bossHp]);
+
+  // 적응형 강도 레이어 (2026-07-30) — dungeon/boss 트랙 안에서 콤보·저체력·보스HP·
+  // 「마지막 문단」·역류를 0~1로 합성해 music.ts에 흘려보낸다. 트랙 자체는 그대로 phase
+  // 단위로 전환되고, 이건 같은 트랙 안의 밀도만 바꾼다 — 화면을 안 봐도 압박이 들린다.
+  useEffect(() => {
+    if (phase === 'run') {
+      const bossActive = bossMax > 0;
+      music.setIntensity(
+        deriveIntensity({
+          hpRatio: stats.maxHp > 0 ? hp / stats.maxHp : 1,
+          comboMult: combo.mult,
+          bossActive,
+          bossHpRatio: bossActive ? bossHp / bossMax : 1,
+          surging: surgeLeft > 0,
+          rushing: rushLeft > 0,
+        }),
+      );
+    } else if (phase === 'arena') {
+      music.setIntensity(
+        deriveIntensity({
+          hpRatio: arenaMax > 0 ? arenaHp / arenaMax : 1,
+          comboMult: combo.mult,
+          bossActive: false,
+          bossHpRatio: 1,
+          surging: false,
+          rushing: false,
+        }),
+      );
+    } else {
+      music.setIntensity(0);
+    }
+  }, [phase, hp, stats.maxHp, combo.mult, bossHp, bossMax, surgeLeft, rushLeft, arenaHp, arenaMax]);
 
   // 위기 연출 — 체력 30% 미만이면 심장박동
   const hpRatioNow = stats.maxHp > 0 ? hp / stats.maxHp : 1;
@@ -449,7 +630,26 @@ export default function App() {
         setPhase('run');
       },
       mode: (m: DungeonMode) => setMode(m), // 주인공 변신 검증용 (kids/adult/monster)
+      give: (id: string) => {
+        // 업그레이드 강제 지급 — 진화 조합 검증용 (DEV 전용)
+        const u = ALL_UPGRADES.find((x) => x.id === id);
+        if (u) gainUpgrade(u);
+        return u ? u.name : 'unknown id';
+      },
+      // 사서 고스트 분포 확인 — ghost.ts 상수를 바꾸면 이걸로 재측정 (DEV 전용)
+      ghostDist: (n = 2000) => {
+        const fl: number[] = [];
+        for (let i = 1; i <= n; i++) fl.push(ghostRun((Math.imul(i, 2654435761) >>> 1) || i).floor);
+        fl.sort((a, b) => a - b);
+        return {
+          p10: fl[Math.floor(n * 0.1)],
+          med: fl[n >> 1],
+          p90: fl[Math.floor(n * 0.9)],
+          max: fl[n - 1],
+        };
+      },
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 디버그 보물 (Shift+P): 보물방 클리어(전설)와 동일 — 아이템 3개 + 완전 회복.
@@ -483,6 +683,27 @@ export default function App() {
     return () => window.removeEventListener('keydown', h);
   }, [debugAllowed]);
 
+  // 스크린샷 회수 훅 — AI가 헤드리스에서 '실제로 그려진 픽셀'을 보고 블룸·색·대비를 튜닝하기 위한 것.
+  // WebGL 캔버스는 그리기 직후 버퍼가 비워지므로 preserveDrawingBuffer(위 Canvas gl)와 짝이다.
+  useEffect(() => {
+    if (!debugAllowed) return;
+    const w = window as unknown as { __d100shot?: () => string | null };
+    w.__d100shot = () => {
+      // r3f는 className을 컨테이너 div에 붙이므로 캔버스는 그 안에 있다 (미니맵 캔버스와 구분)
+      const cv = (document.querySelector('.canvas canvas') ||
+        document.querySelector('canvas:not(.mini-map)')) as HTMLCanvasElement | null;
+      if (!cv) return null;
+      try {
+        return cv.toDataURL('image/png');
+      } catch {
+        return null;
+      }
+    };
+    return () => {
+      delete w.__d100shot;
+    };
+  }, [debugAllowed]);
+
   const debugJump = (n: number) => {
     if (!Number.isFinite(n)) return;
     const fl = Math.max(1, Math.min(100, Math.round(n)));
@@ -514,7 +735,10 @@ export default function App() {
     setStorySeen(true);
     setFloorNo(1);
     setCheckpointFloor(1); // 새 도전 — 체크포인트 초기화
+    setDangerFloor(0); // 위험 계약 초기화
     reviveUsedRef.current = false; // '돌아갈 곳'은 판마다 다시 채워진다
+    eliteMarkGivenRef.current = false; // 🔥 정예의 증표도 판마다 다시 채워진다
+    eliteMarkPendingRef.current = false;
     // 대장간 영구 강화 + 기억 완성 보너스 반영
     const startStats: Stats = {
       ...BASE_STATS,
@@ -527,12 +751,32 @@ export default function App() {
     setKills(0);
     setOverLore('');
     setBuild({});
+    setExpiring([]); // 새 판은 휘발 카드도 처음부터 — 이전 판의 시한부 버프가 새지 않는다
     setQuizSeq(0);
     setDoorRound(1);
     quizResultRef.current = null;
-    portalRetryRef.current = 0;
     homeRetryRef.current = 0;
     homeUsedRef.current = 0;
+    // 이번 판의 AI 사서 — 일일 던전은 날짜 시드(모두 동일), 보통 판은 판마다 새 시드
+    setGhostSeed(rt === 'daily' ? dailyNum : ((Math.random() * 0x7fffffff) | 0) || 1);
+    setGhostBeaten(false);
+    setGhostReal(null);
+    if (rt === 'daily') {
+      // 사서 실기록이 배포에 있으면 가져온다 (정적 파일 — 백엔드 없음 원칙 유지, 없으면 모델)
+      fetch(`ghost/${todayKey()}.json`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (j && typeof j.floor === 'number') {
+            const cause =
+              j.cause === 'boss' || j.cause === 'guardian' || j.cause === 'horde'
+                ? (j.cause as GhostRecord['cause'])
+                : undefined;
+            setGhostReal({ floor: j.floor, cause });
+            setGhostBeaten(false); // 실기록 기준으로 추월 판정 재계산
+          }
+        })
+        .catch(() => {}); // 파일 없음(404)·JSON 아님 — 조용히 모델 유지
+    }
     setRunId((id) => id + 1);
     setPhase('run');
   };
@@ -623,10 +867,30 @@ export default function App() {
       // 대사(첫 만남은 원본 독백 + 덤) 뒤에 매대가 붙는다 — 마지막 대사의 next = 매대 인덱스
       script = [...peddlerTalk(peddlerMet, villageFloor), makePeddlerWaresNode(coins)];
       if (!peddlerMet) setPeddlerMet(true);
-    } else if (target === 'entrance') script = entranceOptions(villageCtx, floorNo);
+      dexAdd('events', 'peddler');
+    } else if (target === 'entrance') {
+      // 입구는 '들어갈까?'를 묻는 자리가 아니다 — 새 도전일 때만 던전 종류를 고른다
+      if (villageCtx !== 'enter') {
+        enterFromVillage();
+        return;
+      }
+      script = entranceOptions(villageCtx, floorNo);
+    }
     if (!script.length) return;
     applyVillageGift(script[0]);
     setVillageTalk({ script, idx: 0 });
+  };
+
+  // 던전 입구 아치에 몸을 넣었을 때 — 던전 포털과 같은 규칙: **묻지 않고 들어간다** (2026-07-27).
+  // 예외는 새 도전(enter)뿐이다. 거기서 고르는 건 '들어갈까 말까'(확인)가 아니라
+  // **어떤 던전인가**(초등/어른/몬스터)라서, 없애면 난이도를 고를 자리 자체가 사라진다.
+  const enterFromVillage = () => {
+    if (villageCtx === 'enter') {
+      talkTo('entrance');
+      return;
+    }
+    sfx.portal();
+    setPhase('run');
   };
 
   // 대화 노드에 선물(gift)이 있으면 1회 지급 (여관 수프 = 완전 회복)
@@ -745,17 +1009,34 @@ export default function App() {
     else setTownIdx(o.next ?? townIdx);
   };
 
+  // 휘발되는 장 — pickUpgrades/draftThree가 어느 경로로든 뽑아 준 카드 중 expiresIn이 있는
+  // 것만 골라 (id, 획득 층) 목록에 얹는다. 지급 경로가 여럿(드래프트·보물·보스·선물)이라
+  // 한 곳에만 심으면 빠지는 경로가 생긴다 — 그래서 공유 헬퍼로 뺐다.
+  const trackExpiring = (picks: Upgrade[]) => {
+    const withExpiry = picks.filter((u) => u.expiresIn != null);
+    if (withExpiry.length === 0) return;
+    setExpiring((prev) => [
+      ...prev,
+      ...withExpiry.map((u) => ({ id: u.id, floor: floorNoRef.current })),
+    ]);
+  };
+
   const gainUpgrade = (u: Upgrade) => {
     setStats((s) => u.apply(s));
     if (u.id === 'hp') setHp((h) => h + 25);
     setBuild((b) => ({ ...b, [u.id]: (b[u.id] ?? 0) + 1 }));
+    dexAdd('items', u.id); // 도감 — 얻어 본 보물 기록 (진화 포함)
+    trackExpiring([u]);
   };
+  const gainUpgradeRef = useRef(gainUpgrade);
+  gainUpgradeRef.current = gainUpgrade;
 
   // 통과한 문 수(tier)만큼 보물 지급 — 3문 완주는 전설 보물(전부 + 완전 회복)
   const grantRewards = (tier: number, seed = quizSeed + 991) => {
     const picks = pickUpgrades(mulberry32(seed), tier, build);
     const next = picks.reduce((s, u) => u.apply(s), stats);
     setStats(next);
+    trackExpiring(picks);
     const healed = picks.filter((u) => u.id === 'hp').length * 25;
     setHp((h) => (tier >= MAX_DOOR_ROUND ? next.maxHp : Math.min(next.maxHp, h + healed)));
     setBuild((b) => {
@@ -764,6 +1045,7 @@ export default function App() {
       return nb;
     });
     setRewards(picks);
+    picks.forEach((u) => dexAdd('items', u.id)); // 도감 — 보물 경로도 기록
     setGoldFlash((f) => f + 1);
     if (tier >= MAX_DOOR_ROUND) sfx.legend();
     else sfx.treasure();
@@ -790,6 +1072,25 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, townMode, townNode]);
 
+  // 휘발되는 장 만료 — DungeonScene/GemArenaScene의 층 전환(포털·역류·찢어진 페이지 등,
+  // 전부 결국 floorNo를 바꾼다)마다 순수 함수 expireVolatile로 시한 지난 카드만 되돌린다.
+  // build 카운트도 같이 내려야 BuildRow 칩·다음 시너지 판정이 사라진 효과를 안 들고 간다.
+  useEffect(() => {
+    if (expiring.length === 0) return;
+    const result = expireVolatile(expiring, statsRef.current, floorNo);
+    if (result.expired.length === 0) return;
+    setStats(result.stats);
+    setBuild((b) => {
+      const nb = { ...b };
+      result.expired.forEach((u) => {
+        nb[u.id] = Math.max(0, (nb[u.id] ?? 0) - 1);
+      });
+      return nb;
+    });
+    setExpiring(result.expiring);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floorNo]);
+
   // 보물 획득 햅틱 — 황금 잔광(goldFlash)이 오르는 모든 지급 경로 공통
   useEffect(() => {
     if (goldFlash > 0) buzz(40);
@@ -806,10 +1107,23 @@ export default function App() {
     setHp((h) => Math.min(statsRef.current.maxHp, h + amount));
   }, []);
   const onKill = useCallback(
-    (bounty: number) => {
+    (bounty: number, kind?: string) => {
       sfx.kill();
       buzz(12); // 모바일 진동 — 처치
       setKills((k) => k + 1);
+      if (kind) dexAdd('mobs', kind); // 도감 — 처치한 몬스터 종류 기록
+      // 🔥 정예의 증표 — 판당 첫 수문장(elite) 처치를 표시만 해 두고, 실제 지급(gainUpgrade의
+      // 무거운 setState 묶음)은 onExit로 미룬다. 수문장은 포털 바로 앞을 지키므로 처치 직후
+      // 보통 그 포털로 걸어 들어간다 — 그 순간은 이미 층 전환이 시작돼 실전투가 아니다.
+      // ⚠️ 실측(2026-07-30): 처치 즉시 지급했더니 하드런 사망 층 중앙값이 8→4로 무너졌다 —
+      // 수문장은 다른 적들과 뒤엉킨 채 처치되는 경우가 많아, 그 프레임에 무거운 리렌더(스탯+
+      // 빌드+도감 갱신)가 겹치면 실시간 전투 중 프레임이 튀어 피해 판정이 불안정해진다. 반면
+      // 「무너지는 서가」 보상은 이미 onExit(비전투 전환 시점)에서 같은 패턴으로 안전하게
+      // 지급되고 있었다 — 그 자리를 그대로 재사용했다.
+      if (kind === 'elite' && !eliteMarkGivenRef.current) {
+        eliteMarkGivenRef.current = true;
+        eliteMarkPendingRef.current = true;
+      }
       // 처치 콤보 — 3초 안에 이어서 처치하면 코인 배율 (4연속 ×2, 8연속 ×3)
       const now = performance.now();
       const cb = comboRef.current;
@@ -819,15 +1133,57 @@ export default function App() {
       if (cb.n >= 2) setCombo((v) => ({ n: cb.n, mult, seq: v.seq + 1 }));
       // 탐욕의 책갈피 — 코인 배율 (콤보 배율과 곱연산 = 시너지)
       setCoins((c) => c + Math.max(1, Math.round(bounty * statsRef.current.greed * mult)));
+      // 진화 「인세」 — 코인이 들어올 때마다 회복
+      if (statsRef.current.royalty > 0) setHp((h) => Math.min(statsRef.current.maxHp, h + 2));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
-  // 100층의 출구는 포털이 아니라 집으로 가는 문 — 엔딩으로
-  const onExit = useCallback(
-    () => setPhase(floorNoRef.current >= 100 ? 'ending' : 'portal'),
-    [],
-  );
+  // 100층의 출구는 포털이 아니라 집으로 가는 문 — 엔딩으로.
+  // 역류 중이었다면 '제한 시간 안에 도착' = 성공 보상 (레어+ 1개 + 코인).
+  const onExit = useCallback((danger?: boolean) => {
+    // 🔥 정예의 증표 — 처치 시점이 아니라 여기(비전투 전환 시점)에서 실제로 지급한다.
+    if (eliteMarkPendingRef.current) {
+      eliteMarkPendingRef.current = false;
+      gainUpgradeRef.current(ELITE_SIGNATURE);
+      setEliteMark({ seq: eliteMarkSeqRef.current++ });
+      sfx.unlock();
+    }
+    if (rushLeftRef.current > 0) {
+      rushLeftRef.current = 0;
+      setRushLeft(0);
+      const pick = pickUpgrades(
+        mulberry32(runVarRef.current * 811 + floorNoRef.current * 53 + 7),
+        1,
+        buildRef.current,
+        true, // premium — 살아 나온 대가는 레어 이상
+      )[0];
+      gainUpgradeRef.current(pick);
+      setCoins((c) => c + 30);
+      setGoldFlash((f) => f + 1);
+      sfx.legend();
+      sfx.unlock();
+      buzz(50);
+      // 보상 화면을 따로 띄우지 않고 배너로만 알린다 — 여기서 quiz phase로 새면
+      // 돌아왔을 때 포털이 이미 'pending'이라 다시 안 물어봐서 갇힌다 (재무장은 이탈 필요).
+      setRushWin({ pick, seq: rushWinSeqRef.current++ });
+    }
+    if (floorNoRef.current >= 100) {
+      setPhase('ending');
+      return;
+    }
+    // 포털에 몸을 넣었다 = 내려가겠다는 뜻. 굳이 다시 묻지 않는다 (2026-07-26).
+    // 갈림길도 화면으로 묻지 않는다 (2026-07-27) — 어느 포털에 몸을 넣었는지가 곧 대답이다.
+    // danger = 출구 곁의 붉은 포털(🔥 모험의 길)로 들어왔다는 뜻.
+    if (danger) {
+      setDangerFloor(floorNoRef.current + 1);
+      sfx.roar();
+      buzz(30);
+    }
+    sfx.portal();
+    descendRef.current();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const onBossHp = useCallback((hpNow: number, maxHp: number) => {
     setBossHp(hpNow);
     setBossMax(maxHp);
@@ -836,11 +1192,14 @@ export default function App() {
   quizSeedRef.current = quizSeed;
   // 보스 처치 — 확정 보물 1개 + 회복 30 + 코인 25, 포털 봉인 해제
   const onBossDown = useCallback(() => {
+    dexAdd('mobs', 'boss'); // 도감 — 페이지의 수호자
     const pick = pickUpgrades(mulberry32(quizSeedRef.current + 777), 1)[0];
+    dexAdd('items', pick.id);
     const next = pick.apply(statsRef.current);
     setStats(next);
     setHp((h) => Math.min(next.maxHp, h + 30 + (pick.id === 'hp' ? 25 : 0)));
     setBuild((b) => ({ ...b, [pick.id]: (b[pick.id] ?? 0) + 1 }));
+    trackExpiring([pick]);
     setRewards([pick]);
     setCoins((c) => c + 25);
     setGoldFlash((f) => f + 1);
@@ -854,6 +1213,8 @@ export default function App() {
     setArenaGems(0);
     setArenaHp(ARENA_MAX_HP);
     setArenaMax(ARENA_MAX_HP);
+    setArenaBuffs([]); // 재도전할 때마다 임시 버프도 처음부터 (누적 금지)
+    setArenaBuffPick(null);
     setArenaTry((t) => t + 1);
     setPhase('arena');
   };
@@ -868,25 +1229,65 @@ export default function App() {
       setPhase('doorrun');
     }
   }, []);
-  const onHomeDoor = useCallback(() => setPhase('homedoor'), []);
-  // 제단·찢어진 페이지 접촉 → 선택 화면
+  const onHomeDoor = useCallback(() => {
+    dexAdd('events', 'homedoor');
+    setPhase('homedoor');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // 제단·찢어진 페이지 접촉 → 선택 화면 (도감에도 기록)
   const onAltar = useCallback(() => {
+    dexAdd('events', 'altar');
     setAltarReward(null);
     setPhase('altar');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const onSecret = useCallback(() => setPhase('secretdoor'), []);
-  const onRift = useCallback(() => setPhase('rift'), []);
+  const onSecret = useCallback(() => {
+    dexAdd('events', 'secret');
+    setPhase('secretdoor');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const onRift = useCallback(() => {
+    dexAdd('events', 'rift');
+    setPhase('rift');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const onSurge = useCallback((sec: number) => {
+    setSurgeLeft(sec);
+    if (sec > 0) buzz(60);
+  }, []);
+  const onCollapse = useCallback(() => {
+    dexAdd('events', 'collapse');
+    setPhase('collapse');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // 몬스터 하우스 코인 무더기 (탐욕 배율 적용)
   const onCoins = useCallback(
     (n: number) => {
       sfx.treasure();
+      dexAdd('events', 'house'); // 코인 무더기 = 몬스터 하우스에 들어왔다는 뜻
       setCoins((c) => c + Math.max(1, Math.round(n * statsRef.current.greed)));
+      // 진화 「인세」 — 코인 무더기에도 적용
+      if (statsRef.current.royalty > 0) setHp((h) => Math.min(statsRef.current.maxHp, h + 2));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
+  // 몬스터 하우스 코인 무더기 1·2번째 — 아레나 버프와 같은 훅(이번 층 한정 2택 1).
+  // 3번째(마지막)는 DungeonScene에서 이미 걸러 호출되지 않는다.
+  const onHouseBuff = (n: number) => {
+    const seed = runId * 7919 + floorNoRef.current * 131 + n * 991;
+    setHouseBuffPick({ n, choices: pickArenaBuffs(mulberry32(seed), houseBuffs.map((b) => b.id)) });
+    setPhase('housebuff');
+  };
+  const pickHouseBuff = (u: Upgrade) => {
+    sfx.pick();
+    setHouseBuffs((prev) => [...prev, u]);
+    setHouseBuffPick(null);
+    setPhase('run');
+  };
   const onTrace = useCallback(() => {
     sfx.memory();
+    dexAdd('events', 'trace');
     const fl = floorNoRef.current;
     setTracesSeen((prev) => (prev.includes(fl) ? prev : [...prev, fl]));
     setPhase('trace');
@@ -894,6 +1295,7 @@ export default function App() {
   }, []);
   const onGirl = useCallback(() => {
     sfx.gift();
+    dexAdd('events', 'girl');
     setGirlMet(true);
     goTown(girlScript(tracesSeenRef.current.includes(42)), 'girl', {
       sky: '✨',
@@ -902,14 +1304,106 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pickUpgrade = (u: Upgrade) => {
-    sfx.pick();
-    gainUpgrade(u);
+  // ── 역류 카운트다운 — 서가를 흔든 순간부터 출구까지 남은 시간.
+  // run phase에서만 흐른다 (오버레이·미니게임 중에는 멈춤 = 억울한 실패 방지).
+  rushLeftRef.current = rushLeft;
+  rushRef.current = rushLeft > 0;
+  useEffect(() => {
+    if (rushLeft <= 0 || phase !== 'run') return;
+    const id = setInterval(() => {
+      setRushLeft((v) => {
+        const next = Math.max(0, v - 0.1);
+        // 마지막 5초는 초침이 울린다 — 남은 시간을 바(bar)에서 눈으로 확인하려면
+        // 도망치는 화면에서 시선을 떼야 하므로, 압박을 귀로 옮긴다 (저체력 심장박동과 같은 수법)
+        if (next > 0 && next <= 5 && Math.ceil(next) !== Math.ceil(v)) {
+          sfx.countdown(next <= 3);
+        }
+        if (next <= 0) {
+          // 시간 초과 — 천장이 무너져 내린다 (받은 보물은 그대로, 대가는 피해로)
+          setRushFail((n) => n + 1);
+          sfx.crash();
+          buzz(70);
+          setHp((h) => Math.max(1, h - Math.round(statsRef.current.maxHp * 0.22)));
+        }
+        return next;
+      });
+    }, 100);
+    return () => clearInterval(id);
+  }, [rushLeft > 0, phase]);
+  // 층을 옮기거나 죽으면 역류는 그 층과 함께 끝난다
+  useEffect(() => {
+    setRushLeft(0);
+    setRushWin(null);
+    setSurgeLeft(0);
+    // 몬스터 하우스 임시 버프도 「이번 층 한정」이라 층을 넘으면 함께 사라진다
+    setHouseBuffs([]);
+    setHouseBuffPick(null);
+  }, [floorNo, runId]);
+  // 「마지막 문단」 카운트다운 — 화면 표시용 (판정은 씬이 한다)
+  useEffect(() => {
+    if (surgeLeft <= 0 || phase !== 'run') return;
+    const id = setInterval(() => setSurgeLeft((v) => Math.max(0, v - 0.1)), 100);
+    return () => clearInterval(id);
+  }, [surgeLeft > 0, phase]);
+  // 동굴 층에 발을 들이면 도감에 기록 (「깎여 나간 장」)
+  useEffect(() => {
+    if (phase === 'run' && isCaveFloor(floorNo, runType === 'daily' ? dailyNum : 0)) {
+      dexAdd('events', 'cave');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, floorNo, runType]);
+  // 성공·실패 배너는 잠깐 보여 주고 스스로 사라진다
+  useEffect(() => {
+    if (!rushWin) return;
+    const id = setTimeout(() => setRushWin(null), 4200);
+    return () => clearTimeout(id);
+  }, [rushWin]);
+  useEffect(() => {
+    if (!eliteMark) return;
+    const id = setTimeout(() => setEliteMark(null), 4200);
+    return () => clearTimeout(id);
+  }, [eliteMark]);
+
+  // ── 깊은 층 드래프트 격층 (2026-07-25)
+  // 사람형 실플레이의 아이템 수급은 층당 3.9개로, 밸런스를 맞출 때 쓴 '파밍런 최악 가정'
+  // (층당 2.6개)보다 1.5배 후했다. 그래서 **문제 구간에서만** 유입을 조인다 —
+  // DEEP_DRAFT_FROM 층부터는 두 층에 한 번만 돌파 드래프트가 열린다.
+  // 얕은 층(첫인상·튜토리얼 구간)의 리듬은 하나도 안 건드린다.
+  const DEEP_DRAFT_FROM = 30;
+  const draftSkipped = (from: number) => from >= DEEP_DRAFT_FROM && from % 2 === 1;
+  // 포털에서 내려가기 — 드래프트를 건너뛰는 층이면 곧장 다음 층의 벽 글귀로
+  const descend = () => {
+    if (!draftSkipped(floorNo)) {
+      setPhase('draft');
+      return;
+    }
+    advanceFloor();
+    setPhase('lore');
+  };
+  descendRef.current = descend;
+  // 층 이동 공통 처리 (드래프트 선택 뒤에도, 건너뛸 때도 같은 일이 일어나야 한다)
+  const advanceFloor = () => {
+    if (dangerFloor === floorNo) setDangerFloor(0); // 위험 계약 층을 떠난다 — 계약 종료
     setFloorNo((n) => n + 1);
     // ☕ '사소한 것들의 힘' — 새 층에 도착할 때마다 조금씩 회복된다
     if (powers.floorHeal > 0) {
       setHp((h) => Math.min(statsRef.current.maxHp, h + powers.floorHeal));
     }
+  };
+
+  const pickUpgrade = (u: Upgrade) => {
+    if (u.evo) {
+      // 진화 「합본」 — 잿팟 연출 (전설음 + 황금 잔광 + 햅틱 + 씬 대형 폭발)
+      sfx.legend();
+      sfx.unlock();
+      setGoldFlash((f) => f + 1);
+      buzz(60);
+      evoFxRef.current += 1;
+    } else {
+      sfx.pick();
+    }
+    gainUpgrade(u);
+    advanceFloor();
     setPhase('lore'); // 새 층에 도착하면 벽의 글귀부터
   };
 
@@ -949,7 +1443,22 @@ export default function App() {
     setArenaHp(hpNow);
     setArenaMax(max);
   };
-  const onArenaGem = (n: number) => setArenaGems(n);
+  const onArenaGem = (n: number) => {
+    setArenaGems(n);
+    // 마지막 보석(3개째)은 곧바로 클리어라 버프를 줘도 쓸 데가 없다 — 1·2개째에만 연다.
+    if (n >= 1 && n < 3) {
+      const seed = runId * 7919 + floorNoRef.current * 131 + arenaTry * 17 + n;
+      setArenaBuffPick({
+        gems: n,
+        choices: pickArenaBuffs(mulberry32(seed), arenaBuffs.map((b) => b.id)),
+      });
+    }
+  };
+  const pickArenaBuff = (u: Upgrade) => {
+    sfx.pick();
+    setArenaBuffs((prev) => [...prev, u]);
+    setArenaBuffPick(null);
+  };
   const onArenaDone = (cleared: boolean, gems: number) => {
     if (cleared) {
       // 보석 3개 완수 = 전설 보물 (아이템 3개 + 완전 회복)
@@ -1018,6 +1527,7 @@ export default function App() {
         picks.forEach((u) => (nb[u.id] = (nb[u.id] ?? 0) + 1));
         return nb;
       });
+      trackExpiring(picks);
       setMemRewards(picks);
       setGoldFlash((f) => f + 1);
       sfx.legend();
@@ -1041,6 +1551,7 @@ export default function App() {
         picks.forEach((u) => (nb[u.id] = (nb[u.id] ?? 0) + 1));
         return nb;
       });
+      trackExpiring(picks);
       setMemRewards(picks);
       setGoldFlash((f) => f + 1);
       sfx.legend();
@@ -1048,12 +1559,6 @@ export default function App() {
     } else {
       setPhase('run');
     }
-  };
-
-  const stayOnFloor = () => {
-    sfx.tap();
-    portalRetryRef.current += 1;
-    setPhase('run');
   };
 
   const buyUpgrade = (key: keyof Meta) => {
@@ -1123,12 +1628,34 @@ export default function App() {
     setPhase('run');
   };
 
+  // ── 무너지는 서가: 흔들면 보물 1개를 지금 받고, 층이 무너지는 동안 출구까지 달린다.
+  //    성공(제한 시간 안에 출구 도달) = 레어+ 보물 1개 + 코인 보너스 / 실패 = 낙석 피해.
+  //    받은 보물은 실패해도 회수하지 않는다 — 되돌리는 처벌은 UX가 나쁘고, 이 이벤트의
+  //    긴장은 '더 받을 수 있었는데'와 '얼마나 아플까'로 충분히 만들어진다.
+  const shakeCollapse = () => {
+    const pick = pickUpgrades(mulberry32(runVar * 613 + floorNo * 47 + 11), 1, build)[0];
+    gainUpgrade(pick);
+    collapseUsedRef.current += 1;
+    setGoldFlash((f) => f + 1);
+    sfx.treasure();
+    sfx.roar(); // 무너지는 굉음
+    buzz(45);
+    setRushLeft(RUSH_SECONDS);
+    setPhase('run');
+  };
+  const declineCollapse = () => {
+    sfx.tap();
+    collapseRetryRef.current += 1;
+    setPhase('run');
+  };
+
   // 죽으면 1층이 아니라 마지막으로 다녀온 마을(체크포인트)에서 부활 — 장비 유지·완전 회복.
   // 주민들이 맞아 주고, 거기서 다시 던전으로 내려간다. ('죽음=다시 쓰임' 세계관과 연결)
   const resumeFromCheckpoint = () => {
     sfx.tap();
     setFloorNo(checkpointFloor);
     setHp(stats.maxHp); // 부활 — 완전 회복 (스탯·빌드는 유지)
+    setDangerFloor(0); // 죽었으면 위험 계약도 사라진다
     setDoorRound(1);
     quizResultRef.current = null;
     setRunId((id) => id + 1); // 씬 강제 리마운트 (같은 층에서 죽어도 새로 시작)
@@ -1149,6 +1676,23 @@ export default function App() {
     },
     arena: startArena,
     jump: debugJump,
+    evolve: () => {
+      // 진화 시연 — 조합(멀티샷×2+연사×2)을 채우고 드래프트를 바로 연다 → 「쏟아지는 문장」 확정 등장
+      const multi = ALL_UPGRADES.find((u) => u.id === 'multi')!;
+      const rate = ALL_UPGRADES.find((u) => u.id === 'rate')!;
+      gainUpgrade(multi);
+      gainUpgrade(multi);
+      gainUpgrade(rate);
+      gainUpgrade(rate);
+      setPhase('draft');
+    },
+    nav: () => {
+      // 시연 길찾기용 — 미니맵 채널(프로덕션 포함)의 그리드·좌표 스냅샷
+      const ch = minimapRef.current;
+      return ch.cells
+        ? { cells: ch.cells, px: ch.px, py: ch.py, exitX: ch.exitX, exitY: ch.exitY }
+        : null;
+    },
     altar: () => {
       setAltarReward(null);
       setPhase('altar');
@@ -1184,6 +1728,7 @@ export default function App() {
     phase === 'title' ||
     phase === 'story' ||
     phase === 'shop' ||
+    phase === 'dex' ||
     (phase === 'town' && townMode === 'pre')
   );
   const inDungeonUi =
@@ -1195,12 +1740,15 @@ export default function App() {
 
   return (
     <div className={`app${forceRot === 90 ? ' force-cw' : forceRot === -90 ? ' force-ccw' : ''}`}>
-      {/* 잉크 전환 — key가 바뀔 때마다 애니메이션 재생 (pointer-events 없음, 조작 안 막음) */}
-      {inkSeq > 0 && <div className="ink-wipe" key={inkSeq} />}
+      {/* 잉크 전환 — key가 바뀔 때마다 애니메이션 재생 (pointer-events 없음, 조작 안 막음).
+          이 div와 아래 강등 배너·콤보 칩은 같은 부모의 keyed 형제 — 카운터 key는 반드시
+          접두사로 네임스페이스를 나눌 것 (맨 숫자끼리는 값이 겹치는 순간 중복 key 경고 =
+          콘솔 error라 스모크 게이트까지 걸린다. 실측: 잉크 seq × 콤보 seq 충돌) */}
+      {inkSeq > 0 && <div className="ink-wipe" key={`ink${inkSeq}`} />}
 
       {/* 자동 품질 강등 안내 (FPS 측정 결과 ⚡가벼움으로 전환됨) */}
       {gfxNotice > 0 && (
-        <div className="gfx-notice" key={gfxNotice}>
+        <div className="gfx-notice" key={`gfx${gfxNotice}`}>
           ⚡ 성능을 위해 그래픽을 '가벼움'으로 조절했어요 — HUD의 ⚡ 버튼으로 되돌릴 수 있어요
         </div>
       )}
@@ -1212,7 +1760,9 @@ export default function App() {
           // offsetSize: 강제 가로 회전(.force-cw/ccw) 시 getBoundingClientRect는 회전된
           // bbox(세로)를 돌려줘 캔버스가 잘못 재진다 — 레이아웃 크기(offsetWidth)로 측정
           resize={{ offsetSize: true }}
-          gl={{ powerPreference: 'high-performance' }}
+          // preserveDrawingBuffer는 디버그일 때만 — AI가 __d100shot()으로 실제 픽셀을 회수해
+          // 블룸·색·대비를 눈으로 튜닝하기 위한 것이고, 켜 두면 일반 플레이에 렌더 비용이 붙는다.
+          gl={{ powerPreference: 'high-performance', preserveDrawingBuffer: debugAllowed }}
         >
           <color attach="background" args={[canvasBg]} />
           <fog attach="fog" args={[canvasBg, fogNear, fogFar]} />
@@ -1222,6 +1772,8 @@ export default function App() {
             heroVariant={mode}
             minimapRef={minimapRef}
             lite={lite}
+            danger={dangerFloor === floorNo}
+            fork={branchOpen}
             seedOffset={runType === 'daily' ? dailyNum : 0}
             hidden={
               phase === 'doorrun' ||
@@ -1229,11 +1781,10 @@ export default function App() {
               phase === 'arenaover' ||
               phase === 'village'
             }
-            statsRef={statsRef}
+            statsRef={houseStatsRef}
             damageMulRef={damageMulRef}
             pausedRef={pausedRef}
             quizResultRef={quizResultRef}
-            portalRetryRef={portalRetryRef}
             homeRetryRef={homeRetryRef}
             homeUsedRef={homeUsedRef}
             altarRetryRef={altarRetryRef}
@@ -1241,6 +1792,10 @@ export default function App() {
             secretRetryRef={secretRetryRef}
             riftRetryRef={riftRetryRef}
             riftGoRef={riftGoRef}
+            collapseRetryRef={collapseRetryRef}
+            collapseUsedRef={collapseUsedRef}
+            rushRef={rushRef}
+            evoFxRef={evoFxRef}
             onDamage={onDamage}
             onHeal={onHeal}
             onKill={onKill}
@@ -1254,7 +1809,10 @@ export default function App() {
             onAltar={onAltar}
             onSecret={onSecret}
             onRift={onRift}
+            onCollapse={onCollapse}
+            onSurge={onSurge}
             onCoins={onCoins}
+            onHouseBuff={onHouseBuff}
           />
           {phase === 'doorrun' && (
             <DoorRunScene key={doorRound} quiz={quiz} heroVariant={mode} onDone={onDoorRunDone} />
@@ -1264,7 +1822,8 @@ export default function App() {
               key={arenaTry}
               floorNo={floorNo}
               lite={lite}
-              statsRef={statsRef}
+              statsRef={arenaStatsRef}
+              pausedRef={arenaPausedRef}
               onArenaHp={onArenaHp}
               onGem={onArenaGem}
               onDone={onArenaDone}
@@ -1277,6 +1836,8 @@ export default function App() {
               heroVariant={mode}
               pausedRef={villagePausedRef}
               onNear={onVillageNear}
+              onEnter={enterFromVillage}
+              autoEnter={!demoRunning}
             />
           )}
           {/* 포스트프로세싱 — emissive(포털·탄막·보물·보스)가 실제로 '빛나게'.
@@ -1293,10 +1854,22 @@ export default function App() {
       {/* 미니맵 — 절차 생성 던전을 눈으로 (탐사한 곳만 밝혀짐) */}
       {inDungeonUi && phase !== 'doorrun' && <MiniMap chRef={minimapRef} />}
 
-      {/* 처치 콤보 칩 — 3초 안에 이어서 처치하면 코인 배율 */}
+      {/* 처치 콤보 칩 — 3초 안에 이어서 처치하면 코인 배율 (key 접두사: 잉크 전환 주석 참조) */}
       {inDungeonUi && combo.n >= 2 && (
-        <div className="combo-chip" key={combo.seq}>
+        <div className="combo-chip" key={`cb${combo.seq}`}>
           🔥 {combo.n} 콤보{combo.mult > 1 ? ` · 코인 ×${combo.mult}` : ''}
+        </div>
+      )}
+
+      {/* 첫 판 조작 코치마크 — 1층에서 평생 한 번 (d100-coach) */}
+      {coachShow && phase === 'run' && floorNo === 1 && (
+        <div className="coach-chip">🕹️ 드래그(PC: WASD)로 이동 · ⚔️ 공격은 자동 조준 — 적 곁으로!</div>
+      )}
+
+      {/* 🤖 AI 사서 추월 토스트 — 판당 1회 (층이 오르는 순간이라 lore 위에도 뜬다) */}
+      {ghostNotice > 0 && ghostShown && (
+        <div key={`gh${ghostNotice}`} className="ghost-banner">
+          🤖 AI 사서의 기록({ghostShown.floor}층)을 넘어섰다 — 이 책을 가장 깊이 읽는 중!
         </div>
       )}
 
@@ -1312,6 +1885,9 @@ export default function App() {
           coins={coins}
           muted={muted}
           gfx={gfx}
+          danger={dangerFloor === floorNo}
+          ghostFloor={ghostShown?.floor ?? null}
+          ghostBeaten={ghostBeaten}
           onToggleMute={toggleMute}
           onToggleGfx={toggleGfx}
         />
@@ -1328,6 +1904,31 @@ export default function App() {
       {inDungeonUi && Object.keys(build).length > 0 && <BuildRow build={build} />}
       {/* 보스 체력바 — 마을(town/village)에서는 숨김 (숨은 DungeonScene이 보고해도 표시 안 함) */}
       {inDungeonUi && bossMax > 0 && bossHp > 0 && <BossBar hp={bossHp} max={bossMax} />}
+      {/* 역류 — 남은 시간 바 + 좁혀 오는 붉은 가장자리 (디버그 모드에선 플래시류 억제 규칙 적용) */}
+      {inDungeonUi && rushLeft > 0 && <RushBar left={rushLeft} total={RUSH_SECONDS} />}
+      {/* 「마지막 문단」 — 출구 앞 긴장 봉우리 (5초 버티면 포털이 열린다) */}
+      {inDungeonUi && surgeLeft > 0 && (
+        <>
+          <div className="surge-banner">✒️ 마지막 문단 — 사방에서 몰려온다! 뚫고 나가라</div>
+          {!debugAllowed && phase === 'run' && <div className="surge-vignette" />}
+        </>
+      )}
+      {!debugAllowed && rushLeft > 0 && phase === 'run' && <div className="rush-vignette" />}
+      {rushWin && (
+        <div key={`rw${rushWin.seq}`} className="ghost-banner">
+          📚 무너지기 전에 빠져나왔다! {rushWin.pick.icon} {rushWin.pick.name} · 코인 +30
+        </div>
+      )}
+      {eliteMark && (
+        <div key={`em${eliteMark.seq}`} className="ghost-banner">
+          🔥 수문장을 쓰러뜨렸다 — {ELITE_SIGNATURE.icon} {ELITE_SIGNATURE.name} 획득
+        </div>
+      )}
+      {rushFail > 0 && rushLeft <= 0 && (
+        <div key={`rf${rushFail}`} className="revive-banner">
+          💥 서가가 무너졌다 — 낙석에 휩쓸렸다
+        </div>
+      )}
 
       {/* ── 걸어다니는 마을 오버레이 ── */}
       {phase === 'village' && (
@@ -1382,13 +1983,29 @@ export default function App() {
           storySeen={storySeen}
           muted={muted}
           gfx={gfx}
+          dexPct={dexPct(dex)}
           dailyRecord={dailyBest?.date === todayKey() ? dailyBest : null}
           onToggleMute={toggleMute}
           onToggleGfx={toggleGfx}
+          onDex={() => {
+            sfx.tap();
+            setPhase('dex');
+          }}
           onStart={startAdventure}
+          onQuickStart={(m) => enterDungeon(m, 'normal')}
           onDaily={() => enterDungeon(undefined, 'daily')}
           onReplay={replayStory}
           onDemo={startDemo}
+        />
+      )}
+      {phase === 'dex' && (
+        <DexScreen
+          dex={dex}
+          claimed={dexClaimed}
+          onBack={() => {
+            sfx.tap();
+            setPhase('title');
+          }}
         />
       )}
       {phase === 'story' && (
@@ -1419,16 +2036,6 @@ export default function App() {
           onChoose={chooseTownOption}
         />
       )}
-      {phase === 'portal' && (
-        <PortalScreen
-          floorNo={floorNo}
-          onDescend={() => {
-            sfx.tap();
-            setPhase('draft');
-          }}
-          onStay={stayOnFloor}
-        />
-      )}
       {phase === 'homedoor' && <HomeDoorScreen onOpen={openHomeDoor} onSkip={skipHomeDoor} />}
       {phase === 'altar' && (
         <AltarScreen
@@ -1444,6 +2051,28 @@ export default function App() {
         />
       )}
       {phase === 'rift' && <RiftScreen onEnter={enterRift} onDecline={declineRift} />}
+      {phase === 'collapse' && (
+        <CollapseScreen seconds={RUSH_SECONDS} onShake={shakeCollapse} onDecline={declineCollapse} />
+      )}
+      {/* 아레나 임시 버프 2택 1 — phase는 'arena' 그대로 두고 오버레이만 얹는다
+          (phase를 바꾸면 GemArenaScene이 언마운트돼 진행 중이던 아레나가 통째로 날아간다) */}
+      {phase === 'arena' && arenaBuffPick && (
+        <ArenaBuffScreen
+          gems={arenaBuffPick.gems}
+          choices={arenaBuffPick.choices}
+          onPick={pickArenaBuff}
+        />
+      )}
+      {/* 몬스터 하우스 임시 버프 2택 1 — 아레나와 같은 훅, 'run' 자매 phase라 DungeonScene은
+          그대로 마운트된 채 pausedRef로만 멈춘다(언마운트 걱정 없음, 아레나와 다른 점). */}
+      {phase === 'housebuff' && houseBuffPick && (
+        <ArenaBuffScreen
+          variant="house"
+          gems={houseBuffPick.n}
+          choices={houseBuffPick.choices}
+          onPick={pickHouseBuff}
+        />
+      )}
       {phase === 'secretdoor' && (
         <SecretDoorScreen floorNo={floorNo} onJump={jumpSecret} onDecline={declineSecret} />
       )}
@@ -1512,6 +2141,7 @@ export default function App() {
               best,
               mode,
               cleared: true,
+              ghost: ghostShown?.floor,
               daily: runType === 'daily' ? todayKey() : undefined,
             });
           }}
@@ -1535,7 +2165,9 @@ export default function App() {
           }}
         />
       )}
-      {phase === 'draft' && <DraftScreen floorNo={floorNo} draft={draft} onPick={pickUpgrade} />}
+      {phase === 'draft' && (
+        <DraftScreen floorNo={floorNo} draft={draft} build={build} onPick={pickUpgrade} />
+      )}
       {phase === 'over' && (
         <OverScreen
           floorNo={floorNo}
@@ -1545,6 +2177,8 @@ export default function App() {
           lore={overLore}
           checkpointFloor={checkpointFloor}
           daily={runType === 'daily'}
+          ghostFloor={ghostShown?.floor ?? null}
+          ghostCause={ghostShown?.cause ? GHOST_CAUSE_TEXT[ghostShown.cause] : undefined}
           onResume={resumeFromCheckpoint}
           onRetry={() => enterDungeon()}
           onVillage={() => goVillage('enter')}
@@ -1557,6 +2191,7 @@ export default function App() {
               memMax: MEMORIES.length,
               best,
               mode,
+              ghost: ghostShown?.floor,
               daily: runType === 'daily' ? todayKey() : undefined,
             });
           }}

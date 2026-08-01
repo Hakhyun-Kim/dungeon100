@@ -10,6 +10,7 @@ export interface CardStats {
   mode: DungeonMode;
   cleared?: boolean;
   daily?: string; // 일일 던전 날짜 (예: 2026-07-19) — 같은 날 같은 맵 기록 인증
+  ghost?: number; // 🤖 이번 판을 먼저 읽은 AI 사서의 기록 (층)
 }
 
 function drawCard(s: CardStats): HTMLCanvasElement {
@@ -70,6 +71,8 @@ function drawCard(s: CardStats): HTMLCanvasElement {
     ['🏆 최고 기록', `${Math.max(s.best, s.floor)}층`],
     ['🚪 던전', s.mode === 'kids' ? '🎒 초등학교' : s.mode === 'adult' ? '🧠 어른' : '👹 몬스터'],
   ];
+  // 🤖 AI 사서와의 대결 결과 — 카드로 자랑할 거리
+  if (s.ghost != null) rows.push(['🤖 AI 사서', s.floor > s.ghost ? `${s.ghost}층 — 이겼다!` : `${s.ghost}층`]);
   x.font = `30px ${F}`;
   rows.forEach(([label, val], i) => {
     const y = 610 + i * 62;

@@ -4,7 +4,13 @@ import * as THREE from 'three';
 import type { Stats } from '../lib/upgrades';
 import { sfx } from '../lib/sound';
 import Hero from './Hero';
-import { useMoveInput } from './DungeonScene';
+import {
+  useMoveInput,
+  useResolveInput,
+  RESOLVE_KILLS,
+  RESOLVE_DASH_DURATION,
+  RESOLVE_DASH_SPEED,
+} from './DungeonScene';
 import { BlobShadow, getBlobShadowTexture, getFloorTexture } from './fx';
 
 // 몬스터 아레나 — 보물상자 미니게임의 '몬스터' 모드.
@@ -66,6 +72,7 @@ interface AShot {
   dz: number;
   left: number;
   pierce: number; // 남은 관통 횟수 (관통 서표)
+  bounce: number; // 남은 벽 반사 횟수 (진화 「종이 표창」 — 아레나 경계에 튕김)
   last: number; // 마지막으로 맞힌 적 인덱스 (관통탄 연속 타격 방지)
   alive: boolean;
 }
@@ -87,6 +94,7 @@ export default function GemArenaScene({
   floorNo,
   statsRef,
   lite = false,
+  pausedRef,
   onArenaHp,
   onGem,
   onDone,
@@ -94,11 +102,17 @@ export default function GemArenaScene({
   floorNo: number;
   statsRef: React.MutableRefObject<Stats>;
   lite?: boolean; // ⚡가벼움 모드 — 바닥 텍스처 생략
+  pausedRef?: React.MutableRefObject<boolean>; // 임시 버프 2택 1이 떠 있는 동안 정지
   onArenaHp: (hp: number, max: number) => void;
   onGem: (count: number) => void;
   onDone: (cleared: boolean, gems: number) => void;
 }) {
-  const input = useMoveInput();
+  const input = useMoveInput(pausedRef);
+  // ── 결의(무적 대시) — 던전과 같은 훅·상수 재사용(별개의 ref만 아레나 로컬로 둔다)
+  const resolveUiRef = useRef({ n: 0, ready: false });
+  const resolveTrigger = useResolveInput(pausedRef, resolveUiRef);
+  const resolveActiveRef = useRef(0);
+  const resolveDirRef = useRef({ x: 0, z: 1 });
   const charRef = useRef<THREE.Group>(null);
   const enemyMeshRef = useRef<THREE.InstancedMesh>(null);
   const enemyShadowRef = useRef<THREE.InstancedMesh>(null); // 적 발밑 블롭 섀도우
@@ -130,8 +144,9 @@ export default function GemArenaScene({
     })),
   );
   const shots = useRef<AShot[]>(
-    Array.from({ length: MAX_SHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, pierce: 0, last: -1, alive: false })),
+    Array.from({ length: MAX_SHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, pierce: 0, bounce: 0, last: -1, alive: false })),
   );
+  const fanCounter = useRef(0); // 진화 「쏟아지는 문장」 카운터
   const eshots = useRef<AEShot[]>(
     Array.from({ length: MAX_ESHOTS }, () => ({ x: 0, z: 0, dx: 0, dz: 0, left: 0, alive: false })),
   );
@@ -147,7 +162,30 @@ export default function GemArenaScene({
   const hp = useRef(ARENA_MAX_HP);
   const fireTimer = useRef(0);
   const spawnTimer = useRef(0);
-  const shake = useRef(0);
+  // ── 임팩트 파문 — 본체 던전과 같은 장치 (카메라 셰이크 대체, 2026-07-27).
+  // 아레나는 무리가 몰려오는 곳이라 명중이 더 촘촘하다 = 셰이크였다면 더 심하게 흔들렸다.
+  const MAX_RIPPLES = 12;
+  const rippleMeshRef = useRef<THREE.InstancedMesh>(null);
+  const ripples = useRef(
+    Array.from({ length: MAX_RIPPLES }, () => ({
+      x: 0, z: 0, ttl: 0, max: 1, r0: 0.4, r1: 1.6, alive: false,
+      color: new THREE.Color(),
+    })),
+  );
+  const rippleTmp = useMemo(() => new THREE.Color(), []);
+  const ripple = (x: number, z: number, power: number, color = '#ffd8a8') => {
+    let slot = ripples.current.find((r) => !r.alive);
+    if (!slot) slot = ripples.current.reduce((a, b) => (a.ttl <= b.ttl ? a : b));
+    const pw = Math.min(1.4, Math.max(0.15, power));
+    slot.x = x;
+    slot.z = z;
+    slot.max = 0.24 + pw * 0.28;
+    slot.ttl = slot.max;
+    slot.r0 = 0.3 + pw * 0.4;
+    slot.r1 = slot.r0 + 1.0 + pw * 2.4;
+    slot.color.set(color);
+    slot.alive = true;
+  };
   const doneCalled = useRef(false);
   const clearT = useRef(-1); // 클리어 후 잠깐 축하 → 종료
 
@@ -225,7 +263,12 @@ export default function GemArenaScene({
           {} as Record<string, number>,
         ),
         eshotsAlive: eshots.current.filter((s) => s.alive).length,
+        // 봇이 던전과 같은 방식으로 회피·길찾기를 하려면 좌표가 필요하다 (본체 __d100과 같은 형식)
+        eshots: eshots.current.filter((sh) => sh.alive).map((sh) => [sh.x, sh.z, sh.dx, sh.dz]),
+        enemiesPos: enemies.current.filter((e) => e.alive).map((e) => [e.x, e.z]),
+        radius: ARENA_R,
         cleared: clearT.current >= 0,
+        resolve: { n: resolveUiRef.current.n, ready: resolveUiRef.current.ready, active: +resolveActiveRef.current.toFixed(2) },
       }),
       collect: () => {
         // 가장 가까운 남은 보석 위치로 순간이동 (수집 판정은 다음 프레임)
@@ -254,6 +297,8 @@ export default function GemArenaScene({
     const stats = statsRef.current;
     const c = charRef.current;
     if (!c) return;
+    // 임시 버프 2택 1이 떠 있는 동안은 무리도 탄막도 멈춘다 (선택하는 사이 맞으면 억울하다)
+    if (pausedRef?.current) return;
     const bound = ARENA_R - 0.6;
 
     if (clearT.current >= 0) {
@@ -264,10 +309,33 @@ export default function GemArenaScene({
         onDone(true, 3);
       }
     } else if (!doneCalled.current) {
-      // ── 이동 (아레나 경계로 클램프)
+      // ── 결의(무적 대시) 발동 — 던전과 동일한 규칙, 경계는 아레나 클램프를 그대로 쓴다.
+      if (resolveActiveRef.current > 0) resolveActiveRef.current = Math.max(0, resolveActiveRef.current - dt);
+      if (resolveUiRef.current.ready && resolveTrigger.current) {
+        resolveTrigger.current = false;
+        resolveUiRef.current = { n: 0, ready: false };
+        resolveActiveRef.current = RESOLVE_DASH_DURATION;
+        const dd = input.current;
+        const dmag = Math.hypot(dd.x, dd.z);
+        resolveDirRef.current =
+          dmag > 0.01
+            ? { x: dd.x / dmag, z: dd.z / dmag }
+            : { x: Math.sin(c.rotation.y), z: Math.cos(c.rotation.y) };
+        sfx.resolve();
+        burst(c.position.x, 0.7, c.position.z, '#ffd166', 18, 2.6);
+      }
+      const dashingNow = resolveActiveRef.current > 0;
+
+      // ── 이동 (아레나 경계로 클램프) — 대시 중엔 입력 대신 고정 방향으로 고속 돌진
       const d = input.current;
       const mag = Math.hypot(d.x, d.z);
-      if (mag > 0.01) {
+      if (dashingNow) {
+        const rd = resolveDirRef.current;
+        c.position.x = THREE.MathUtils.clamp(c.position.x + rd.x * RESOLVE_DASH_SPEED * dt, -bound, bound);
+        c.position.z = THREE.MathUtils.clamp(c.position.z + rd.z * RESOLVE_DASH_SPEED * dt, -bound, bound);
+        c.rotation.y = Math.atan2(rd.x, rd.z);
+        c.position.y = 0.05;
+      } else if (mag > 0.01) {
         c.position.x = THREE.MathUtils.clamp(c.position.x + d.x * stats.speed * dt, -bound, bound);
         c.position.z = THREE.MathUtils.clamp(c.position.z + d.z * stats.speed * dt, -bound, bound);
         c.rotation.y = Math.atan2(d.x, d.z);
@@ -276,7 +344,8 @@ export default function GemArenaScene({
         c.position.y = 0;
       }
 
-      // ── 자동 조준 발사 (본체와 동일한 감각)
+      // ── 자동 조준 발사 (본체와 동일한 감각) — 대시 중엔 정지
+      if (dashingNow) fireTimer.current = Math.max(fireTimer.current, 0.02);
       fireTimer.current -= dt;
       if (fireTimer.current <= 0) {
         let best: AEnemy | null = null;
@@ -291,18 +360,28 @@ export default function GemArenaScene({
         }
         if (best) {
           const base = Math.atan2(best.x - c.position.x, best.z - c.position.z);
-          for (let s = 0; s < stats.shots; s++) {
+          // 진화 「쏟아지는 문장」 — N번째 공격은 부채꼴 9연발 (본체와 동일)
+          fanCounter.current++;
+          const isFan = stats.fanEvery > 0 && fanCounter.current % stats.fanEvery === 0;
+          const nShots = isFan ? 9 : stats.shots;
+          const spread = isFan ? 0.24 : 0.16;
+          for (let s = 0; s < nShots; s++) {
             const slot = shots.current.find((sh) => !sh.alive);
             if (!slot) break;
-            const ang = base + (s - (stats.shots - 1) / 2) * 0.16;
+            const ang = base + (s - (nShots - 1) / 2) * spread;
             slot.x = c.position.x;
             slot.z = c.position.z;
             slot.dx = Math.sin(ang);
             slot.dz = Math.cos(ang);
             slot.left = stats.range;
             slot.pierce = stats.pierce;
+            slot.bounce = stats.bounce;
             slot.last = -1;
             slot.alive = true;
+          }
+          if (isFan) {
+            burst(c.position.x, 0.85, c.position.z, '#ffd166', 8, 1.8);
+            sfx.pass();
           }
           fireTimer.current = 1 / stats.fireRate;
         }
@@ -312,11 +391,20 @@ export default function GemArenaScene({
       const killEnemy = (e: AEnemy, chain: boolean) => {
         e.alive = false;
         burst(e.x, 0.7, e.z, palette.base.getStyle(), 12, 2.0);
-        shake.current = Math.min(0.6, shake.current + 0.08);
+        ripple(e.x, e.z, 0.4, '#ffb020');
         sfx.kill();
         if (stats.lifesteal > 0 && hp.current > 0) {
           hp.current = Math.min(ARENA_MAX_HP, hp.current + stats.lifesteal);
           onArenaHp(hp.current, ARENA_MAX_HP);
+        }
+        // 결의 게이지 — 던전과 동일하게 처치마다 1씩(연쇄 폭발 포함)
+        const rs = resolveUiRef.current;
+        if (!rs.ready && rs.n < RESOLVE_KILLS) {
+          rs.n++;
+          if (rs.n >= RESOLVE_KILLS) {
+            rs.ready = true;
+            sfx.resolveReady();
+          }
         }
         if (chain && stats.boom > 0) {
           burst(e.x, 0.9, e.z, '#ff9a3d', 12, 2.2);
@@ -338,9 +426,23 @@ export default function GemArenaScene({
         sh.x += sh.dx * shotSpd * dt;
         sh.z += sh.dz * shotSpd * dt;
         sh.left -= shotSpd * dt;
-        if (sh.left <= 0 || Math.abs(sh.x) > ARENA_R || Math.abs(sh.z) > ARENA_R) {
+        if (sh.left <= 0) {
           sh.alive = false;
           continue;
+        }
+        // 진화 「종이 표창」 — 아레나 경계에 한 번 튕긴다
+        if (Math.abs(sh.x) > ARENA_R || Math.abs(sh.z) > ARENA_R) {
+          if (sh.bounce > 0) {
+            sh.bounce -= 1;
+            if (Math.abs(sh.x) > ARENA_R) sh.dx = -sh.dx;
+            if (Math.abs(sh.z) > ARENA_R) sh.dz = -sh.dz;
+            sh.x = THREE.MathUtils.clamp(sh.x, -ARENA_R, ARENA_R);
+            sh.z = THREE.MathUtils.clamp(sh.z, -ARENA_R, ARENA_R);
+            burst(sh.x, 0.75, sh.z, '#f4efe0', 2, 0.8);
+          } else {
+            sh.alive = false;
+            continue;
+          }
         }
         for (let ei = 0; ei < enemies.current.length; ei++) {
           const e = enemies.current[ei];
@@ -348,7 +450,8 @@ export default function GemArenaScene({
           if (ei === sh.last) continue;
           if (Math.hypot(e.x - sh.x, e.z - sh.z) < 0.62) {
             const crit = stats.crit > 0 && Math.random() < stats.crit;
-            e.hp -= stats.damage * (crit ? 2 : 1);
+            const adm = stats.damage * (crit ? 2 : 1);
+            e.hp -= adm;
             e.flash = 1;
             if (sh.pierce > 0) {
               sh.pierce -= 1;
@@ -356,8 +459,22 @@ export default function GemArenaScene({
             } else {
               sh.alive = false;
             }
-            sfx.hit();
+            if (crit) sfx.crit();
+            else sfx.hit();
             burst(e.x, 0.7, e.z, crit ? '#ff8a3d' : '#ffe08a', 4, 1.4);
+            // 진화 「마침표」 — 치명타 대폭발 (무리 상대라 특히 강력)
+            if (crit && stats.critBoom > 0) {
+              burst(e.x, 0.9, e.z, '#ff9a3d', 16, 2.4);
+              ripple(e.x, e.z, 1.0, '#ff9a3d');
+              for (const e2 of enemies.current) {
+                if (!e2.alive || e2 === e) continue;
+                if (Math.hypot(e2.x - e.x, e2.z - e.z) < 2.6) {
+                  e2.hp -= adm * 0.8;
+                  e2.flash = 1;
+                  if (e2.hp <= 0) killEnemy(e2, false);
+                }
+              }
+            }
             if (e.type !== 'tank') {
               // 탱커는 넉백 면역 — 밀어내기 배율 반영
               e.x = THREE.MathUtils.clamp(e.x + sh.dx * 0.4 * stats.knock, -bound, bound);
@@ -385,6 +502,11 @@ export default function GemArenaScene({
       // ── 적 AI (타입별) + 접촉 피해 — 본체 던전을 1층부터 미리 맛보게
       const espeed = 2.4 + Math.min(2.2, floorNo * 0.06);
       const hurtPlayer = (dmg: number) => {
+        // 결의 무적 대시 — 단일 함수라 던전과 마찬가지로 가드도 한 곳에만 둔다
+        if (resolveActiveRef.current > 0) {
+          burst(c.position.x, 0.9, c.position.z, '#ffd166', 5, 1.2);
+          return;
+        }
         // 잔상 회피·단단한 표지 — 본체와 동일하게 아레나에서도 적용
         if (stats.dodge > 0 && Math.random() < stats.dodge) {
           burst(c.position.x, 0.9, c.position.z, '#9fe8ff', 5, 1.2);
@@ -393,9 +515,26 @@ export default function GemArenaScene({
         const applied = Math.max(1, Math.round(dmg * (1 - stats.armor)));
         hp.current = Math.max(0, hp.current - applied);
         onArenaHp(hp.current, ARENA_MAX_HP);
-        shake.current = Math.min(0.6, shake.current + 0.26);
+        ripple(c.position.x, c.position.z, 0.6, '#ff5d6e');
         burst(c.position.x, 0.8, c.position.z, '#ff4d5e', 6, 1.6);
         sfx.hurt();
+        // 진화 「단단한 장정」 — 맞는 순간 충격파 (본체와 동일)
+        if (stats.shockwave > 0) {
+          burst(c.position.x, 0.6, c.position.z, '#ffd166', 14, 2.6);
+          for (const e2 of enemies.current) {
+            if (!e2.alive) continue;
+            const dd = Math.hypot(e2.x - c.position.x, e2.z - c.position.z);
+            if (dd < 3.2) {
+              e2.hp -= 10 + stats.thorns;
+              e2.flash = 1;
+              if (e2.type !== 'tank') {
+                e2.x = THREE.MathUtils.clamp(e2.x + ((e2.x - c.position.x) / (dd || 1)) * 2.2, -bound, bound);
+                e2.z = THREE.MathUtils.clamp(e2.z + ((e2.z - c.position.z) / (dd || 1)) * 2.2, -bound, bound);
+              }
+              if (e2.hp <= 0) killEnemy(e2, true);
+            }
+          }
+        }
         if (hp.current <= 0 && !doneCalled.current) {
           doneCalled.current = true;
           onDone(false, gemCount.current);
@@ -508,7 +647,7 @@ export default function GemArenaScene({
           gemCount.current += 1;
           burst(g.x, 1.0, g.z, '#8de0ff', 18, 2.2);
           burst(g.x, 1.0, g.z, '#ffffff', 8, 1.4);
-          shake.current = Math.min(0.6, shake.current + 0.15);
+          ripple(g.x, g.z, 1.0, '#8de0ff');
           onGem(gemCount.current);
           if (gemCount.current >= 3) {
             sfx.legend();
@@ -656,6 +795,33 @@ export default function GemArenaScene({
       if (pm.instanceColor) pm.instanceColor.needsUpdate = true;
     }
 
+    // ── 임팩트 파문 (본체 던전과 같은 규칙 — 맞은 자리에서 퍼졌다 사그라든다)
+    const rm = rippleMeshRef.current;
+    if (rm) {
+      ripples.current.forEach((rp, i) => {
+        if (rp.alive) {
+          rp.ttl -= dt;
+          if (rp.ttl <= 0) rp.alive = false;
+        }
+        if (rp.alive) {
+          const kk = rp.ttl / rp.max;
+          const r = rp.r0 + (rp.r1 - rp.r0) * (1 - kk * kk);
+          dummy.position.set(rp.x, 0.07, rp.z);
+          dummy.rotation.set(-Math.PI / 2, 0, 0);
+          dummy.scale.set(r, r, 1);
+          rm.setColorAt(i, rippleTmp.copy(rp.color).multiplyScalar(kk * kk));
+        } else {
+          dummy.position.set(0, -10, 0);
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.set(0.0001, 0.0001, 0.0001);
+        }
+        dummy.updateMatrix();
+        rm.setMatrixAt(i, dummy.matrix);
+      });
+      rm.instanceMatrix.needsUpdate = true;
+      if (rm.instanceColor) rm.instanceColor.needsUpdate = true;
+    }
+
     // ── 보석 연출 (빙글빙글 + 둥실둥실, 획득 시 숨김)
     gems.current.forEach((g, i) => {
       const gm = gemRefs.current[i];
@@ -669,14 +835,10 @@ export default function GemArenaScene({
       }
     });
 
-    // ── 카메라 (본체 던전과 같은 탑다운 + 셰이크)
+    // ── 카메라 (본체 던전과 같은 탑다운 — **흔들지 않는다**, 2026-07-27)
     const cam = frameState.camera;
     const k = 1 - Math.pow(0.001, dt);
-    shake.current = Math.max(0, shake.current - dt * 1.6);
     cam.position.lerp(new THREE.Vector3(c.position.x, 15.5, c.position.z + 9.5), k);
-    const s2 = shake.current * shake.current;
-    cam.position.x += (Math.random() - 0.5) * s2 * 1.6;
-    cam.position.z += (Math.random() - 0.5) * s2 * 1.6;
     cam.lookAt(c.position.x, 0, c.position.z);
   });
 
@@ -746,6 +908,16 @@ export default function GemArenaScene({
       <instancedMesh ref={eshotMeshRef} args={[undefined, undefined, MAX_ESHOTS]} frustumCulled={false}>
         <sphereGeometry args={[0.22, 8, 8]} />
         <meshStandardMaterial color="#ff3d5e" emissive="#a01030" emissiveIntensity={1.4} />
+      </instancedMesh>
+
+      {/* 임팩트 파문 — 카메라 셰이크 대신 바닥에 새기는 충격 링 */}
+      <instancedMesh
+        ref={rippleMeshRef}
+        args={[undefined, undefined, MAX_RIPPLES]}
+        frustumCulled={false}
+      >
+        <ringGeometry args={[0.82, 1, 30]} />
+        <meshBasicMaterial toneMapped={false} blending={THREE.AdditiveBlending} transparent depthWrite={false} />
       </instancedMesh>
 
       {/* 파티클 — additive로 빛나는 불꽃 */}

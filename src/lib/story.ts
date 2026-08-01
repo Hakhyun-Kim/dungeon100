@@ -503,17 +503,11 @@ export function entranceOptions(ctx: TownContext, floorNo: number): TownNode[] {
       },
     ];
   }
-  // visit / death — 하던 도전을 이어서 내려간다
-  return [
-    {
-      kind: 'choice',
-      prompt: `던전 입구다. ${floorNo}층으로 이어진 계단이 기다린다.`,
-      options: [
-        { label: `⚔️ 던전으로 내려간다 (${floorNo}층)`, action: 'return' },
-        { label: '🕯️ 마을을 더 둘러본다', action: 'close' },
-      ],
-    },
-  ];
+  // visit / death — **아무것도 묻지 않는다** (2026-07-27). 하던 도전을 이어서 내려가는 건
+  // 확인받을 일이 아니라서, 입구 아치에 몸을 넣는 순간 App이 곧장 던전으로 보낸다
+  // (던전 포털과 같은 규칙). 여기로 들어오는 경로 자체가 없으므로 빈 스크립트.
+  void floorNo;
+  return [];
 }
 
 // ── 층을 내려갈 때 벽에서 발견하는 글귀 (도착한 층 번호 기준)

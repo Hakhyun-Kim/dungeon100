@@ -1,0 +1,61 @@
+# ⚖️ 야간 밸런스 회귀 리그 — 매일 03:30 KST에 실제 봇(simBot)이 하드런 5판을 돌려
+# 사망 층 분포를 실측 기준선과 비교한다. 벗어나면(드리프트) GitHub 이슈를 열어 알린다.
+# "AI가 만들고, AI가 밤마다 검증한다."
+name: Nightly balance regression
+
+on:
+  schedule:
+    - cron: '30 18 * * *' # 18:30 UTC = 03:30 KST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: balance-night
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run regression (5 hard runs)
+        id: reg
+        run: |
+          set +e
+          npm run balance-regression
+          code=$?
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          if [ -f balance-report.json ]; then
+            { echo '## ⚖️ 밸런스 회귀 결과'; echo '```json'; cat balance-report.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          # 드리프트(2)는 이슈로 알리고 job은 성공 처리, 그 외 비정상(1)은 실패
+          if [ "$code" = "1" ]; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: balance-report
+          path: balance-report.json
+          if-no-files-found: ignore
+      - name: Open drift issue
+        if: steps.reg.outputs.exit == '2'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="⚖️ 밸런스 드리프트 감지 — 야간 회귀"
+          BODY="야간 하드런 분포가 기준선을 벗어났습니다. 실행 로그·아티팩트(balance-report.json) 확인: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --body "$BODY"
+          fi

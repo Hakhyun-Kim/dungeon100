@@ -227,6 +227,70 @@ body {
   }
 }
 
+/* ── 도감 「채워지는 책」 ── */
+.dex-screen {
+  background:
+    var(--paper),
+    radial-gradient(ellipse at 50% 20%, #3d2f1e 0%, #150f08 75%);
+}
+
+.dex-sec {
+  font-size: 15px;
+  color: #d8b98a;
+  margin-top: 4px;
+}
+
+.dex-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  max-width: 680px;
+}
+
+.dex-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 96px;
+  padding: 7px 4px;
+  background: rgba(20, 14, 8, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.dex-entry.found {
+  background: rgba(40, 28, 14, 0.7);
+  border-color: rgba(255, 209, 102, 0.45);
+}
+
+.dex-icon {
+  font-size: 22px;
+  filter: grayscale(1) opacity(0.5);
+}
+
+.dex-entry.found .dex-icon {
+  filter: none;
+}
+
+.dex-name {
+  font-size: 11px;
+  color: #7d6f56;
+  text-align: center;
+}
+
+.dex-entry.found .dex-name {
+  color: #ffe9b3;
+}
+
+.dex-milestones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
 /* ── 자동 품질 강등 안내 배너 ── */
 .gfx-notice {
   position: absolute;
@@ -261,6 +325,28 @@ body {
   100% {
     opacity: 0;
   }
+}
+
+/* 첫 판 조작 코치마크 — 1층에서 평생 한 번, 9초 (gfx-notice보다 한 줄 아래) */
+.coach-chip {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 88px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  pointer-events: none;
+  background: rgba(20, 12, 40, 0.9);
+  border: 1px solid rgba(201, 180, 255, 0.55);
+  border-radius: 999px;
+  padding: 9px 20px;
+  font-size: 15px;
+  color: #e8defc;
+  white-space: nowrap;
+  max-width: 94vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 0 18px rgba(143, 107, 255, 0.35);
+  animation: gfxNotice 9s ease-in-out forwards; /* 같은 페이드 곡선 재사용 */
 }
 
 /* ── 현재 빌드 표시 ── */
@@ -918,6 +1004,50 @@ body {
 }
 
 /* '돌아갈 곳' 부활 배너 */
+/* 🤖 AI 사서 — HUD 층 칩 안의 목표 표시 */
+.ghost-mark {
+  color: #b9aede;
+  opacity: 0.9;
+}
+
+.ghost-mark.beaten {
+  color: #ffd166;
+  text-shadow: 0 0 8px rgba(255, 209, 102, 0.6);
+}
+
+/* 🤖 AI 사서 추월 토스트 — 판당 1회 (넘어서는 순간) */
+.ghost-banner {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 46px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  pointer-events: none;
+  background: rgba(20, 12, 40, 0.92);
+  border: 1px solid rgba(255, 209, 102, 0.7);
+  border-radius: 999px;
+  padding: 9px 20px;
+  font-size: 15px;
+  color: #ffe9b3;
+  white-space: nowrap;
+  max-width: 94vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 0 22px rgba(255, 209, 102, 0.45);
+  animation: gfxNotice 4.2s ease-in-out forwards;
+}
+
+/* 게임오버 — AI 사서와의 비교 한 줄 */
+.ghost-line {
+  font-size: 14px;
+  color: #b9aede;
+}
+
+.ghost-line.win {
+  color: #ffd166;
+  text-shadow: 0 0 10px rgba(255, 209, 102, 0.4);
+}
+
 .revive-banner {
   position: absolute;
   top: 50%;
@@ -1264,6 +1394,39 @@ h2 {
   box-shadow: 0 0 16px rgba(255, 209, 102, 0.35);
 }
 
+/* ── 진화 「합본」 카드 — 조합 달성의 잿팟 (금-장미 그라데이션 테두리 + 맥동 광휘) ── */
+.card.evo {
+  border-color: transparent;
+  background:
+    var(--paper),
+    linear-gradient(180deg, #3d2a4a, #2a1c38) padding-box,
+    linear-gradient(135deg, #ffd166, #ff9ec4, #ffd166) border-box;
+  box-shadow: 0 0 22px rgba(255, 209, 102, 0.5), 0 0 40px rgba(255, 158, 196, 0.25);
+  animation: cardIn 0.32s cubic-bezier(0.2, 1.4, 0.4, 1) backwards, evoGlow 1.6s ease-in-out infinite;
+}
+
+.card.evo .card-name {
+  background: linear-gradient(90deg, #ffd166, #ffb3d1);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.card.evo .card-tag {
+  color: #ffd166;
+  border-color: rgba(255, 209, 102, 0.7);
+}
+
+@keyframes evoGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 22px rgba(255, 209, 102, 0.5), 0 0 40px rgba(255, 158, 196, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 209, 102, 0.75), 0 0 56px rgba(255, 158, 196, 0.4);
+  }
+}
+
 /* 전설 카드 — 금빛 광택이 주기적으로 스치고 지나간다 */
 .card.rarity-legendary::after {
   content: '';
@@ -1290,6 +1453,51 @@ h2 {
   border: 1px solid rgba(156, 143, 196, 0.45);
   border-radius: 999px;
   padding: 1px 8px;
+}
+
+/* 진화 조합 힌트 — 이 카드가 어느 합본의 재료인지 (첫 드래프트부터 목표가 보인다) */
+.evo-hint {
+  font-size: 11px;
+  color: #d9b3ff;
+  border: 1px dashed rgba(217, 179, 255, 0.5);
+  border-radius: 999px;
+  padding: 1px 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 이 카드를 집으면 합본 완성 — 금빛으로 두근거림 */
+.evo-hint.ready {
+  color: #ffd166;
+  border: 1px solid rgba(255, 209, 102, 0.8);
+  background: rgba(255, 209, 102, 0.12);
+  animation: evoHintPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes evoHintPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(255, 209, 102, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(255, 209, 102, 0.7);
+  }
+}
+
+/* 휘발되는 장 힌트 (2026-07-29) — .evo-hint와 같은 패턴, 다만 "곧 사라짐" 경고라
+   합본의 보라·금빛과 겹치지 않게 호박색 계열로 뒀다. */
+.expire-hint {
+  font-size: 11px;
+  color: #ffb066;
+  border: 1px dashed rgba(255, 176, 102, 0.55);
+  border-radius: 999px;
+  padding: 1px 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── 가상 조이스틱 — 터치 드래그 시각화 (useMoveInput이 DOM을 직접 구동) ── */
@@ -1426,4 +1634,216 @@ h2 {
 :root.low-h .choice-btn {
   font-size: 15px;
   padding: 9px 14px;
+}
+
+/* ── 역류 (무너지는 서가) — 제한 시간 안에 출구까지 ── */
+.rush-label {
+  color: #ffb38a;
+}
+
+.rush-bar {
+  background: linear-gradient(90deg, #ffa03d, #ff3d2e);
+  transition: width 0.1s linear;
+}
+
+/* 시간이 줄어들수록 화면 가장자리가 붉게 좁혀 온다 (조작은 안 막음) */
+.rush-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 44%, rgba(150, 40, 0, 0.55) 100%);
+  animation: rushPulse 0.85s ease-in-out infinite;
+}
+
+@keyframes rushPulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+/* ── 아레나 임시 버프 카드 — 판 전체를 바꾸는 드래프트와 시각적으로 구분 ── */
+.arena-buff-screen h2 {
+  color: #8de0ff;
+}
+
+.card.temp {
+  border-color: rgba(141, 224, 255, 0.6);
+  box-shadow: 0 0 14px rgba(90, 160, 255, 0.22);
+}
+
+.card.temp .card-tag {
+  background: rgba(20, 60, 90, 0.7);
+  color: #8de0ff;
+}
+
+/* ── 차지 샷 버튼 (2026-07-25) — 이동 스틱 반대쪽 엄지 자리.
+   자동 발사는 그대로 돌아가므로 이 버튼을 몰라도 예전처럼 플레이할 수 있다. */
+.charge-btn {
+  position: fixed;
+  right: max(18px, calc(env(safe-area-inset-right) + 14px));
+  bottom: max(84px, calc(env(safe-area-inset-bottom) + 76px));
+  z-index: 45;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 2px solid rgba(141, 224, 255, 0.55);
+  background: rgba(20, 40, 70, 0.42);
+  color: #8de0ff;
+  font-size: 26px;
+  line-height: 1;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform 0.08s ease-out, background 0.08s ease-out;
+}
+
+.charge-btn:active {
+  transform: scale(0.92);
+  background: rgba(60, 130, 200, 0.55);
+}
+
+/* 마우스만 쓰는 환경에서는 Space로 충분하니 숨긴다 */
+@media (hover: hover) and (pointer: fine) {
+  .charge-btn {
+    opacity: 0.45;
+  }
+}
+
+/* ── 찰나(시간 동결) 버튼 (2026-07-27) — 차지 버튼 바로 위, 같은 엄지 자리.
+   평소엔 처치 게이지(n/6)를 숫자로 보여주다가, 가득 차면 ❄️로 바뀌며 은은히 펄스한다. */
+.freeze-btn {
+  position: fixed;
+  right: max(18px, calc(env(safe-area-inset-right) + 14px));
+  bottom: max(164px, calc(env(safe-area-inset-bottom) + 156px));
+  z-index: 45;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid rgba(191, 243, 255, 0.35);
+  background: rgba(20, 40, 70, 0.32);
+  color: #bff3ff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.1;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  opacity: 0.5;
+  transition: opacity 0.2s ease-out, transform 0.08s ease-out, box-shadow 0.2s ease-out;
+}
+
+.freeze-btn.ready {
+  opacity: 1;
+  font-size: 24px;
+  border-color: #bff3ff;
+  background: rgba(40, 110, 160, 0.55);
+  animation: freezePulse 1.1s ease-in-out infinite;
+}
+
+.freeze-btn:active {
+  transform: scale(0.9);
+}
+
+@keyframes freezePulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(141, 224, 255, 0.5); }
+  50% { box-shadow: 0 0 24px rgba(141, 224, 255, 0.95); }
+}
+
+/* 마우스만 쓰는 환경에서는 F키로 충분하니 숨긴다 */
+@media (hover: hover) and (pointer: fine) {
+  .freeze-btn:not(.ready) {
+    opacity: 0.35;
+  }
+}
+
+/* ── 결의(무적 대시) 버튼 (2026-07-29) — 찰나 바로 위, 같은 엄지 자리 스택의 세 번째 칸.
+   찰나(❄️, 세계를 멈추는 자원)와 헷갈리지 않게 다른 색(금빛)·다른 아이콘(💨)·다른 위치를 쓴다.
+   던전에선 차지(84px)·찰나(164px) 위 244px, 아레나에선 차지가 없어 그 자리가 빈 채로 남는다
+   (버튼 위치를 씬마다 다시 계산하지 않고 항상 같은 자리에 고정 — 조작 기억이 씬 넘어 유지된다). */
+.resolve-btn {
+  position: fixed;
+  right: max(18px, calc(env(safe-area-inset-right) + 14px));
+  bottom: max(244px, calc(env(safe-area-inset-bottom) + 236px));
+  z-index: 45;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 209, 102, 0.35);
+  background: rgba(70, 50, 20, 0.32);
+  color: #ffd166;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.1;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  opacity: 0.5;
+  transition: opacity 0.2s ease-out, transform 0.08s ease-out, box-shadow 0.2s ease-out;
+}
+
+.resolve-btn.ready {
+  opacity: 1;
+  font-size: 24px;
+  border-color: #ffd166;
+  background: rgba(160, 110, 30, 0.55);
+  animation: resolvePulse 0.9s ease-in-out infinite;
+}
+
+.resolve-btn:active {
+  transform: scale(0.9);
+}
+
+@keyframes resolvePulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(255, 209, 102, 0.5); }
+  50% { box-shadow: 0 0 24px rgba(255, 209, 102, 0.95); }
+}
+
+/* 마우스만 쓰는 환경에서는 R키로 충분하니 숨긴다 */
+@media (hover: hover) and (pointer: fine) {
+  .resolve-btn:not(.ready) {
+    opacity: 0.35;
+  }
+}
+
+/* ── 「마지막 문단」 — 출구 앞 긴장 봉우리 (2026-07-25) ── */
+.surge-banner {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 42px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  pointer-events: none;
+  white-space: nowrap;
+  padding: 6px 18px;
+  border-radius: 999px;
+  background: rgba(60, 8, 20, 0.82);
+  border: 1px solid rgba(255, 61, 94, 0.8);
+  color: #ffb3c0;
+  font-size: 15px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  animation: surgePulse 0.7s ease-in-out infinite;
+}
+
+.surge-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 38%, rgba(120, 0, 30, 0.6) 100%);
+  animation: surgePulse 0.7s ease-in-out infinite;
+}
+
+@keyframes surgePulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
 }
