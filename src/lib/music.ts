@@ -21,6 +21,28 @@ let intensityTarget = 0;
 
 const F = (semi: number, base = 110) => base * Math.pow(2, semi / 12);
 
+let duckGainNode: GainNode | undefined;
+
+function getMusicBus(c: AudioContext): AudioNode {
+  if (!duckGainNode || duckGainNode.context !== c) {
+    duckGainNode = c.createGain();
+    duckGainNode.gain.value = 1;
+    duckGainNode.connect(masterBus(c));
+  }
+  return duckGainNode;
+}
+
+export function duckBgm(amount = 0.4, dur = 0.4) {
+  const c = getAc();
+  if (!c) return;
+  const busNode = getMusicBus(c) as GainNode;
+  const t = c.currentTime;
+  busNode.gain.cancelScheduledValues(t);
+  busNode.gain.setValueAtTime(busNode.gain.value, t);
+  busNode.gain.linearRampToValueAtTime(1 - amount, t + 0.04);
+  busNode.gain.exponentialRampToValueAtTime(1, t + dur);
+}
+
 function inst(
   c: AudioContext,
   freq: number,
@@ -37,7 +59,7 @@ function inst(
   g.gain.linearRampToValueAtTime(vol, t + 0.02);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g);
-  g.connect(masterBus(c)); // 효과음과 같은 버스 — 컴프레서가 합을 눌러 준다
+  g.connect(getMusicBus(c));
   o.start(t);
   o.stop(t + dur + 0.05);
 }
@@ -57,7 +79,7 @@ function hat(c: AudioContext, t: number, vol = 0.015) {
   g.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
   src.connect(f);
   f.connect(g);
-  g.connect(masterBus(c));
+  g.connect(getMusicBus(c));
   src.start(t);
 }
 
@@ -189,6 +211,9 @@ export const music = {
   // 0~1로 클램프해 저장 — tick()이 다음 스케줄부터 이 값으로 스무딩해 간다.
   setIntensity(x: number) {
     intensityTarget = Math.max(0, Math.min(1, x));
+  },
+  duck(amount = 0.4, dur = 0.4) {
+    duckBgm(amount, dur);
   },
   getIntensity: () => intensity, // DEV 검증용
 };

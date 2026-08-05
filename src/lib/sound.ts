@@ -6,6 +6,16 @@
 // 검사는 `npm run assets-check`(대장에 없는 파일·호스트면 배포가 멈춘다).
 
 let ctx: AudioContext | undefined;
+let masterFilter: BiquadFilterNode | undefined;
+let duckingFn: ((amt: number, dur: number) => void) | null = null;
+
+export function registerDucker(fn: (amt: number, dur: number) => void) {
+  duckingFn = fn;
+}
+
+function triggerDuck(amt = 0.35, dur = 0.35) {
+  if (duckingFn) duckingFn(amt, dur);
+}
 
 function ac(): AudioContext | null {
   try {
@@ -24,24 +34,38 @@ export function getAc(): AudioContext | null {
 }
 
 // ── 마스터 버스 — 모든 소리가 반드시 이 한 노드를 지난다 (효과음·BGM 공통).
-// 예전엔 전부 destination 직결이라 연사 히트 + BGM + 보스 포효가 겹치는 순간 합이 1을 넘어
-// 지직거렸다. 컴프레서가 봉우리만 눌러 주므로 개별 소리의 vol을 낮추지 않고도 정리된다.
 let bus: GainNode | undefined;
 export function masterBus(c: AudioContext): AudioNode {
   if (!bus || bus.context !== c) {
     const g = c.createGain();
     g.gain.value = 0.9;
+
+    const filter = c.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 20000;
+    filter.Q.value = 0.7;
+    masterFilter = filter;
+
     const comp = c.createDynamicsCompressor();
     comp.threshold.value = -14;
     comp.knee.value = 18;
     comp.ratio.value = 6;
     comp.attack.value = 0.004;
     comp.release.value = 0.18;
-    g.connect(comp);
+
+    g.connect(masterFilter);
+    masterFilter.connect(comp);
     comp.connect(c.destination);
     bus = g;
   }
   return bus;
+}
+
+export function updateAudioFlow(hpRatio = 1) {
+  const c = ac();
+  if (!c || !masterFilter) return;
+  const targetFreq = hpRatio < 0.3 ? 2400 + hpRatio * 16000 : 20000;
+  masterFilter.frequency.setTargetAtTime(targetFreq, c.currentTime, 0.2);
 }
 
 export const isMuted = () => {
@@ -83,6 +107,68 @@ function tone(
   o.stop(t0 + dur + 0.05);
 }
 
+// flowTone: 미끄러지는 피치(Smooth Pitch Bend Flow) + LFO 바이브라토 + Dynamic Filter Sweep
+export function flowTone(
+  c: AudioContext,
+  freqs: number[],
+  start = 0,
+  dur = 0.2,
+  type: OscillatorType = 'sine',
+  vol = 0.12,
+  opts: {
+    atk?: number;
+    vibratoFreq?: number;
+    vibratoDepth?: number;
+    filterSweep?: [number, number];
+    filterType?: BiquadFilterType;
+    filterQ?: number;
+  } = {},
+) {
+  if (!freqs.length) return;
+  const t0 = c.currentTime + start;
+  const o = c.createOscillator();
+  const g = c.createGain();
+  o.type = type;
+
+  const stepDur = dur / Math.max(1, freqs.length - 1);
+  o.frequency.setValueAtTime(freqs[0], t0);
+  for (let i = 1; i < freqs.length; i++) {
+    o.frequency.exponentialRampToValueAtTime(Math.max(20, freqs[i]), t0 + i * stepDur);
+  }
+
+  if (opts.vibratoFreq && opts.vibratoDepth) {
+    const lfo = c.createOscillator();
+    const lfoGain = c.createGain();
+    lfo.frequency.value = opts.vibratoFreq;
+    lfoGain.gain.value = opts.vibratoDepth;
+    lfo.connect(lfoGain);
+    lfoGain.connect(o.frequency);
+    lfo.start(t0);
+    lfo.stop(t0 + dur + 0.05);
+  }
+
+  const atk = opts.atk ?? 0.02;
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(vol, t0 + atk);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g);
+
+  let targetNode: AudioNode = g;
+  if (opts.filterSweep) {
+    const f = c.createBiquadFilter();
+    f.type = opts.filterType || 'lowpass';
+    f.Q.value = opts.filterQ || 2.0;
+    f.frequency.setValueAtTime(opts.filterSweep[0], t0);
+    f.frequency.exponentialRampToValueAtTime(Math.max(40, opts.filterSweep[1]), t0 + dur);
+    targetNode.connect(f);
+    targetNode = f;
+  }
+
+  targetNode.connect(masterBus(c));
+  o.start(t0);
+  o.stop(t0 + dur + 0.05);
+}
+
 // q = 밴드패스 첨예도. 높을수록 좁고 날카롭게(딱—), 낮을수록 넓고 묵직하게(퍽—) 들린다.
 function noise(c: AudioContext, start: number, dur: number, vol = 0.08, freq = 1200, q = 1) {
   const t0 = c.currentTime + start;
@@ -118,13 +204,12 @@ let lastHit = 0;
 export const sfx = {
   // UI 터치/대화 진행
   tap() {
-    play((c) => tone(c, 740, 0, 0.06, 'sine', 0.06));
+    play((c) => flowTone(c, [740, 880], 0, 0.05, 'sine', 0.06));
   },
   // 보상 카드 선택
   pick() {
     play((c) => {
-      tone(c, 523.25, 0, 0.1, 'triangle', 0.1);
-      tone(c, 783.99, 0.07, 0.14, 'triangle', 0.1);
+      flowTone(c, [523.25, 659.25, 783.99], 0, 0.18, 'triangle', 0.1, { filterSweep: [2000, 6000] });
     });
   },
   // 투사체 명중 (아주 짧은 틱 — Q를 높여 연사해도 뭉개지지 않게 또렷하게)
@@ -134,170 +219,152 @@ export const sfx = {
     lastHit = now;
     play((c) => noise(c, 0, 0.05, 0.05, 2400, 5));
   },
-  // 치명타 명중 — 평타와 '들어서' 구분되게 위에 밝은 핑을 하나 얹는다.
-  // 히트스톱(0.55)이 화면을 얼리는 그 순간에 소리도 같이 도드라져야 한 방이 무겁게 읽힌다.
+  // 치명타 명중 — 미끄러지는 피치 플로우 + BGM 순간 Ducking
   crit() {
     const now = performance.now();
     if (now - lastHit < 40) return;
     lastHit = now;
+    triggerDuck(0.25, 0.25);
     play((c) => {
       noise(c, 0, 0.06, 0.06, 3200, 9);
-      tone(c, 1567.98, 0.01, 0.1, 'triangle', 0.07, 2093);
+      flowTone(c, [1567.98, 2093, 2637], 0.01, 0.12, 'triangle', 0.07, { filterSweep: [6000, 2000] });
     });
   },
   // 처치 (뽁!)
   kill() {
     play((c) => {
-      tone(c, 320, 0, 0.12, 'square', 0.07, 140);
+      flowTone(c, [400, 220, 90], 0, 0.1, 'square', 0.07, { filterSweep: [2400, 600] });
       noise(c, 0, 0.1, 0.06, 900, 1.2);
     });
   },
   // 피격 (묵직하게 — Q를 낮춰 넓게 퍼지는 둔탁한 몸통)
   hurt() {
     play((c) => {
-      tone(c, 130, 0, 0.18, 'sine', 0.14, 70);
+      flowTone(c, [220, 130, 70], 0, 0.18, 'sine', 0.14);
       noise(c, 0, 0.12, 0.06, 300, 0.7);
     });
   },
   // 두 문 달리기 시작 (출발 신호)
   doorrun() {
     play((c) => {
-      tone(c, 392, 0, 0.09, 'square', 0.08);
-      tone(c, 523.25, 0.1, 0.12, 'square', 0.08);
+      flowTone(c, [392, 523.25, 659.25], 0, 0.18, 'square', 0.08, { filterSweep: [1500, 5000] });
     });
   },
-  // 정답 문 통과: 밝은 상승 아르페지오 (도-미-솔-도) — 두 문 러너와 같은 감각
+  // 정답 문 통과: 밝은 상승 아르페지오 (도-미-솔-도) 플로우
   pass() {
     play((c) => {
-      tone(c, 523.25, 0, 0.16);
-      tone(c, 659.25, 0.09, 0.16);
-      tone(c, 783.99, 0.18, 0.16);
-      tone(c, 1046.5, 0.27, 0.28, 'triangle', 0.14);
+      flowTone(c, [523.25, 659.25, 783.99, 1046.5, 1318.5], 0, 0.3, 'triangle', 0.12, { filterSweep: [2000, 7000] });
     });
   },
-  // 오답 충돌: 낮게 두 번 "뿌-붑" (기죽지 않게 부드럽게)
+  // 오답 충돌: 부드러운 하강 스위프
   crash() {
+    triggerDuck(0.3, 0.35);
     play((c) => {
-      tone(c, 220, 0, 0.18, 'sine', 0.1);
-      tone(c, 174.61, 0.16, 0.24, 'sine', 0.1);
+      flowTone(c, [262, 220, 174.61, 130], 0, 0.32, 'sine', 0.1, { filterSweep: [2000, 400] });
       noise(c, 0, 0.15, 0.07, 500);
     });
   },
   // 보물 획득 (금빛 반짝)
   treasure() {
     play((c) => {
-      tone(c, 1318.5, 0, 0.1, 'sine', 0.08);
-      tone(c, 1567.98, 0.08, 0.1, 'sine', 0.08);
-      tone(c, 2093, 0.16, 0.22, 'sine', 0.08);
+      flowTone(c, [1318.5, 1567.98, 2093, 2637], 0, 0.24, 'sine', 0.08, { vibratoFreq: 12, vibratoDepth: 25 });
     });
   },
-  // 전설의 보물 (긴 팡파르)
+  // 전설의 보물 (긴 팡파르 플로우)
   legend() {
+    triggerDuck(0.35, 0.5);
     play((c) => {
-      tone(c, 523.25, 0, 0.14);
-      tone(c, 659.25, 0.1, 0.14);
-      tone(c, 783.99, 0.2, 0.14);
-      tone(c, 1046.5, 0.3, 0.2, 'triangle', 0.14);
-      tone(c, 1318.5, 0.42, 0.34, 'triangle', 0.12);
-      tone(c, 2093, 0.5, 0.3, 'sine', 0.07);
+      flowTone(c, [523.25, 659.25, 783.99, 1046.5, 1318.5, 1568, 2093], 0, 0.55, 'triangle', 0.14, {
+        vibratoFreq: 10,
+        vibratoDepth: 30,
+        filterSweep: [1500, 8000],
+      });
     });
   },
   // 되찾은 기억 (따뜻한 차임)
   memory() {
     play((c) => {
-      tone(c, 523.25, 0, 0.5, 'sine', 0.07);
-      tone(c, 659.25, 0.12, 0.5, 'sine', 0.06);
-      tone(c, 987.77, 0.3, 0.7, 'sine', 0.05);
+      flowTone(c, [523.25, 659.25, 987.77, 1318.5], 0, 0.6, 'sine', 0.07);
     });
   },
   // 벽의 글귀 (낮게 신비롭게)
   lore() {
     play((c) => {
-      tone(c, 196, 0, 0.6, 'sine', 0.06);
-      tone(c, 246.94, 0.15, 0.6, 'sine', 0.05);
+      flowTone(c, [196, 246.94, 293.66], 0, 0.55, 'sine', 0.06);
     });
   },
   // 포털 (아래로 슝)
   portal() {
     play((c) => {
-      tone(c, 660, 0, 0.4, 'sawtooth', 0.05, 160);
+      flowTone(c, [660, 440, 260, 160], 0, 0.4, 'sawtooth', 0.05, { filterSweep: [3000, 500] });
       noise(c, 0, 0.35, 0.05, 700);
     });
   },
   // 마을 문 종소리 (뎅— 뎅—)
   bell() {
     play((c) => {
-      tone(c, 880, 0, 0.7, 'sine', 0.09);
-      tone(c, 1318.5, 0, 0.5, 'sine', 0.04);
-      tone(c, 880, 0.5, 0.9, 'sine', 0.07);
-      tone(c, 1318.5, 0.5, 0.6, 'sine', 0.03);
+      flowTone(c, [880, 1318.5], 0, 0.7, 'sine', 0.09);
+      flowTone(c, [880, 1318.5], 0.5, 0.9, 'sine', 0.07);
     });
   },
   // 선물 (반짝)
   gift() {
     play((c) => {
-      tone(c, 1046.5, 0, 0.1, 'sine', 0.08);
-      tone(c, 1568, 0.08, 0.18, 'sine', 0.08);
+      flowTone(c, [1046.5, 1568, 2093], 0, 0.2, 'sine', 0.08);
     });
   },
-  // 게임오버 (쓸쓸하게 세 음)
+  // 게임오버 (쓸쓸하게 하강 플로우)
   over() {
+    triggerDuck(0.45, 0.8);
     play((c) => {
-      tone(c, 392, 0, 0.25, 'sine', 0.1);
-      tone(c, 311.13, 0.22, 0.25, 'sine', 0.1);
-      tone(c, 233.08, 0.44, 0.5, 'sine', 0.1);
+      flowTone(c, [392, 311.13, 233.08, 174.61], 0, 0.65, 'sine', 0.1, { filterSweep: [1500, 300] });
     });
   },
   // 던전 입장 (모험 시작!)
   enter() {
     play((c) => {
-      tone(c, 392, 0, 0.12, 'triangle', 0.1);
-      tone(c, 523.25, 0.1, 0.12, 'triangle', 0.1);
-      tone(c, 659.25, 0.2, 0.24, 'triangle', 0.12);
+      flowTone(c, [392, 523.25, 659.25, 783.99], 0, 0.28, 'triangle', 0.12, { filterSweep: [1000, 5000] });
     });
   },
   // 위기의 심장박동 (쿵-쿵)
   heartbeat() {
     play((c) => {
-      tone(c, 58, 0, 0.12, 'sine', 0.16, 40);
-      tone(c, 52, 0.16, 0.14, 'sine', 0.12, 38);
+      flowTone(c, [80, 58, 40], 0, 0.12, 'sine', 0.16);
+      flowTone(c, [70, 52, 38], 0.16, 0.14, 'sine', 0.12);
     });
   },
   // 보스 등장 포효 (낮게 우르릉)
   roar() {
+    triggerDuck(0.5, 0.65);
     play((c) => {
-      tone(c, 90, 0, 0.7, 'sawtooth', 0.09, 55);
-      noise(c, 0, 0.5, 0.07, 220);
+      flowTone(c, [120, 90, 55, 35], 0, 0.75, 'sawtooth', 0.11, { filterSweep: [1500, 250] });
+      noise(c, 0, 0.55, 0.08, 220);
     });
   },
-  // 차지 완충 — "이제 놓아도 된다"를 귀로 알리는 신호.
-  // 발밑 링만으로는 전투 중에 안 보인다(시선은 무리에 가 있다) → 청각으로 옮긴 것.
+  // 차지 완충
   chargeReady() {
     play((c) => {
-      tone(c, 1046.5, 0, 0.07, 'triangle', 0.06);
-      tone(c, 1567.98, 0.06, 0.12, 'triangle', 0.06);
+      flowTone(c, [1046.5, 1567.98, 2093], 0, 0.12, 'triangle', 0.065, { filterSweep: [2000, 7000] });
     });
   },
-  // 차지 방출 — 세기(0.35~1)에 따라 굵어지는 한 방.
-  // 예전엔 문 통과 징글(pass)을 재활용해 '전투의 한 방'으로 안 들렸다.
+  // 차지 방출 — 세기(0.35~1)에 따라 굵어지는 한 방 + Ducking
   blast(power = 1) {
+    triggerDuck(0.3 + power * 0.15, 0.35);
     play((c) => {
       const v = 0.09 + power * 0.07;
-      tone(c, 520 + power * 220, 0, 0.26, 'sawtooth', v, 110);
+      flowTone(c, [520 + power * 220, 260, 110], 0, 0.28, 'sawtooth', v, { filterSweep: [1500 + power * 1500, 300] });
       noise(c, 0, 0.16, v * 0.7, 700 + power * 500, 0.6);
-      tone(c, 880, 0.02, 0.1, 'triangle', 0.05, 1318.5);
+      flowTone(c, [880, 1318.5, 1760], 0.02, 0.12, 'triangle', 0.05);
     });
   },
-  // 역류 카운트다운 — 마지막 몇 초에 한 번씩 (초침처럼)
+  // 역류 카운트다운
   countdown(urgent = false) {
-    play((c) => tone(c, urgent ? 1318.5 : 880, 0, 0.05, 'square', urgent ? 0.08 : 0.05));
+    play((c) => flowTone(c, [urgent ? 1318.5 : 880, urgent ? 1568 : 1046.5], 0, 0.05, 'square', urgent ? 0.08 : 0.05));
   },
   // 봉인 해제 (포털 열림)
   unlock() {
     play((c) => {
-      tone(c, 659.25, 0, 0.12, 'triangle', 0.1);
-      tone(c, 987.77, 0.1, 0.14, 'triangle', 0.1);
-      tone(c, 1318.5, 0.22, 0.3, 'sine', 0.09);
+      flowTone(c, [659.25, 987.77, 1318.5, 1760], 0, 0.35, 'sine', 0.09, { filterSweep: [1500, 6000] });
     });
   },
   // 찰나 게이지 완충 — 밝고 짧은 얼음 핑 ("이제 눌러도 된다")

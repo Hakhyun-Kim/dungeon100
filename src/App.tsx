@@ -31,8 +31,10 @@ import DexScreen from './ui/DexScreen';
 import { mulberry32 } from './lib/rng';
 import { isCaveFloor } from './lib/dungeon';
 import { useLocalStorage, suspendPersistence } from './lib/store';
-import { sfx, isMuted, setMuted } from './lib/sound';
+import { sfx, isMuted, setMuted, registerDucker, updateAudioFlow } from './lib/sound';
 import { music, deriveIntensity } from './lib/music';
+
+registerDucker((amt, dur) => music.duck(amt, dur));
 import { shareCard } from './lib/shareCard';
 import {
   MEMORIES,
@@ -1100,11 +1102,21 @@ export default function App() {
     sfx.hurt();
     buzz(30); // 모바일 진동 — 피격
     setFlash((f) => f + 1);
-    setHp((h) => Math.max(0, h - dmg));
+    setHp((h) => {
+      const nextHp = Math.max(0, h - dmg);
+      const maxHp = statsRef.current.maxHp || 1;
+      updateAudioFlow(nextHp / maxHp);
+      return nextHp;
+    });
   }, []);
   // 흡혈의 잉크 — 처치 시 회복 (씬이 호출)
   const onHeal = useCallback((amount: number) => {
-    setHp((h) => Math.min(statsRef.current.maxHp, h + amount));
+    setHp((h) => {
+      const maxHp = statsRef.current.maxHp || 1;
+      const nextHp = Math.min(maxHp, h + amount);
+      updateAudioFlow(nextHp / maxHp);
+      return nextHp;
+    });
   }, []);
   const onKill = useCallback(
     (bounty: number, kind?: string) => {
