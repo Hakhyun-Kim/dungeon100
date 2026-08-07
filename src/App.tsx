@@ -37,6 +37,15 @@ import { music, deriveIntensity } from './lib/music';
 registerDucker((amt, dur) => music.duck(amt, dur));
 import { shareCard } from './lib/shareCard';
 import {
+  initAnalytics,
+  trackProgression,
+  trackDraftPick,
+  trackRoomEvent,
+  trackBossEvent,
+  trackShopPurchase,
+  trackMinigame,
+} from './lib/analytics';
+import {
   MEMORIES,
   migrateCount,
   newlyCompletedSet,
@@ -138,6 +147,9 @@ const defaultGfx = (): 'high' | 'lite' =>
     : 'high';
 
 export default function App() {
+  useEffect(() => {
+    initAnalytics();
+  }, []);
   const [phase, setPhase] = useState<Phase>('title');
   const [floorNo, setFloorNo] = useState(1);
   // 잉크 전환 — 층 이동·사망·마을 진입 때 잉크가 번졌다 걷히는 연출 (seq가 바뀌면 재생)
@@ -396,6 +408,8 @@ export default function App() {
   phaseRef.current = phase;
   const modeRef = useRef(mode); // onChest(useCallback) 안에서 최신 모드 참조
   modeRef.current = mode;
+  const hpRef = useRef(hp);
+  hpRef.current = hp;
   const pausedRef = useRef(false);
   pausedRef.current = phase !== 'run' || debugOpen;
   // 아레나는 본체 빌드에 '이번 아레나 한정' 임시 버프를 얹은 사본으로 싸운다.
@@ -462,8 +476,10 @@ export default function App() {
       setPhase('over');
       if (floorNo > best) setBest(floorNo);
       recordDaily(floorNo);
-      setOverLore(getDeathLore(deaths)); // 죽을수록 위화감이 커진다
+      const lore = getDeathLore(deaths);
+      setOverLore(lore); // 죽을수록 위화감이 커진다
       setDeaths(deaths + 1);
+      trackProgression('Fail', modeRef.current || 'adult', floorNo, kills, lore);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hp, phase]);
@@ -781,6 +797,7 @@ export default function App() {
     }
     setRunId((id) => id + 1);
     setPhase('run');
+    trackProgression('Start', startMode || 'adult', 1);
   };
 
   // ── 자동 시연 (세이브 격리) — 시작 시 저장을 끄고, 나갈 때는 리로드로 원래 세이브 복귀
@@ -1181,9 +1198,11 @@ export default function App() {
       setRushWin({ pick, seq: rushWinSeqRef.current++ });
     }
     if (floorNoRef.current >= 100) {
+      trackProgression('Complete', modeRef.current || 'adult', 100, Math.round(hpRef.current));
       setPhase('ending');
       return;
     }
+    trackProgression('Complete', modeRef.current || 'adult', floorNoRef.current, Math.round(hpRef.current));
     // 포털에 몸을 넣었다 = 내려가겠다는 뜻. 굳이 다시 묻지 않는다 (2026-07-26).
     // 갈림길도 화면으로 묻지 않는다 (2026-07-27) — 어느 포털에 몸을 넣었는지가 곧 대답이다.
     // danger = 출구 곁의 붉은 포털(🔥 모험의 길)로 들어왔다는 뜻.
@@ -1205,6 +1224,7 @@ export default function App() {
   // 보스 처치 — 확정 보물 1개 + 회복 30 + 코인 25, 포털 봉인 해제
   const onBossDown = useCallback(() => {
     dexAdd('mobs', 'boss'); // 도감 — 페이지의 수호자
+    trackBossEvent('boss', floorNoRef.current, 'kill');
     const pick = pickUpgrades(mulberry32(quizSeedRef.current + 777), 1)[0];
     dexAdd('items', pick.id);
     const next = pick.apply(statsRef.current);
@@ -1415,6 +1435,7 @@ export default function App() {
       sfx.pick();
     }
     gainUpgrade(u);
+    trackDraftPick(u.id, floorNo);
     advanceFloor();
     setPhase('lore'); // 새 층에 도착하면 벽의 글귀부터
   };
@@ -1422,6 +1443,7 @@ export default function App() {
   // 두 문 달리기 결과 — 오답이면 그동안의 문도 전부 물거품 (빈손)
   // 단 🎓 '벼락치기'를 얻었다면 틀려도 아이템 1개는 건진다.
   const onDoorRunDone = (ok: boolean) => {
+    trackMinigame('doorrun', ok ? 'win' : 'fail', doorRound);
     if (!ok) {
       if (powers.consolation) {
         grantRewards(1);
@@ -1472,6 +1494,7 @@ export default function App() {
     setArenaBuffPick(null);
   };
   const onArenaDone = (cleared: boolean, gems: number) => {
+    trackMinigame('gemarena', cleared ? 'win' : 'fail', gems);
     if (cleared) {
       // 보석 3개 완수 = 전설 보물 (아이템 3개 + 완전 회복)
       grantRewards(MAX_DOOR_ROUND);
@@ -1485,6 +1508,7 @@ export default function App() {
   };
   const retryArena = () => {
     sfx.tap();
+    trackMinigame('gemarena', 'retry', arenaDeathGems);
     startArena();
   };
   const bailArena = () => {
@@ -1582,6 +1606,7 @@ export default function App() {
     }
     setCoins((c) => c - cost);
     setMeta({ ...meta, [key]: lv + 1 });
+    trackShopPurchase(key, cost);
     setGoldFlash((f) => f + 1);
     sfx.treasure();
   };
@@ -1620,22 +1645,26 @@ export default function App() {
   // ── 찢어진 페이지: 2개 층을 건너뛴다 (착지 충격 — 건너뛴 층의 보상도 없다)
   const jumpSecret = () => {
     sfx.portal();
+    trackRoomEvent('tear_page', 'accept');
     setFloorNo((n) => Math.min(100, n + 2));
     setHp((h) => Math.max(1, h - Math.round(stats.maxHp * 0.08))); // 착지 충격
     setPhase('lore'); // 새 층 도착 — 벽의 글귀부터 (드래프트 없음 = 건너뛴 대가)
   };
   const declineSecret = () => {
     sfx.tap();
+    trackRoomEvent('tear_page', 'decline');
     secretRetryRef.current += 1;
     setPhase('run');
   };
   // 두 갈래 틈 — 들어가면 씬이 반대편으로 순간이동시킨다 (연출·자비 포함)
   const enterRift = () => {
+    trackRoomEvent('rift', 'use');
     riftGoRef.current += 1;
     setPhase('run');
   };
   const declineRift = () => {
     sfx.tap();
+    trackRoomEvent('rift', 'decline');
     riftRetryRef.current += 1;
     setPhase('run');
   };
@@ -1648,6 +1677,7 @@ export default function App() {
     const pick = pickUpgrades(mulberry32(runVar * 613 + floorNo * 47 + 11), 1, build)[0];
     gainUpgrade(pick);
     collapseUsedRef.current += 1;
+    trackRoomEvent('bookshelf', 'shake');
     setGoldFlash((f) => f + 1);
     sfx.treasure();
     sfx.roar(); // 무너지는 굉음
@@ -1657,6 +1687,7 @@ export default function App() {
   };
   const declineCollapse = () => {
     sfx.tap();
+    trackRoomEvent('bookshelf', 'decline');
     collapseRetryRef.current += 1;
     setPhase('run');
   };

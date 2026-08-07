@@ -77,6 +77,7 @@
 |---|---|---|---|
 | @react-three/fiber | 8.18.0 | MIT | 런타임 번들 |
 | @react-three/postprocessing | 2.19.1 | MIT | 런타임 번들 |
+| gameanalytics | 5.0.0 | MIT | 런타임 번들 |
 | react | 18.3.1 | MIT | 런타임 번들 |
 | react-dom | 18.3.1 | MIT | 런타임 번들 |
 | three | 0.185.1 | MIT | 런타임 번들 |

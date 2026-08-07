@@ -85,6 +85,8 @@
   - `ArenaBuffScreen.tsx`(아레나 임시 버프 2택 1 — phase는 'arena' 유지, 오버레이만 얹음).
   - `FloorPrompts.tsx`(마을 문·제단·찢어진 페이지·두 갈래 틈·무너지는 서가 — **포털 확인 화면은 없다**, 2026-07-27) / `ChestScreens.tsx`(보물 결과·아레나 재도전) / `LoreScreens.tsx`(벽의 글귀·흔적·기억·기억 완성).
   - `DebugPanel.tsx`(Shift+D 층 이동) / `DemoOverlay.tsx`(시연 자막·종료·끝 화면).
+- `src/lib/gaKeys.ts` — **GameAnalytics 키 설정 파일** (`GA_KEYS.gameKey`, `GA_KEYS.secretKey`). 키 직접 기입 또는 환경 변수 폴백.
+- `src/lib/analytics.ts` — **GameAnalytics (GA) 텔레메트리 파사드** (`gaKeys.ts` / `VITE_GA_*`). 층 진행·드래프트·방 이벤트·보스전·능력 사용·대장간 트래킹. 봇/시연/스모크 자동 차단.
 - `src/lib/arenaBuffs.ts` — **아레나 임시 버프** 10종(ARENA_BUFFS)·2택 뽑기(`pickArenaBuffs`)·적용(`applyArenaBuffs`). id는 `ab_` 접두사로 UPGRADES와 절대 안 겹치게 — 본체 build·진화 조합·도감에 섞이면 안 되는 값이다. **2026-07-27부터 몬스터 하우스도 같은 풀·같은 함수를 공유**(App의 `houseStatsRef` — 「이번 층 한정」으로 스코프만 다름, `ArenaBuffScreen`에 `variant` prop 추가).
 - `src/lib/meta.ts` — 대장간 영구 강화 데이터·공식 (Meta·SHOP_ITEMS·shopCost·metaSpeed).
 - `src/lib/ghost.ts` — **🤖 AI 사서 고스트** (2026-07-24). 시뮬봇 실측 분포로 보정한 추상 층별 시뮬레이션(순수 함수 `ghostRun(seed)` → 사망 층+사유) — 판마다 '먼저 읽은 AI'의 기록이 목표로 붙고, 일일 던전은 날짜 시드라 모두 같은 사서와 경쟁. 상수 변경 시 분포 재측정: DEV `__d100app.ghostDist(n)` (기준 p10 4·중앙 8·p90 13·최대 ~30).

@@ -45,6 +45,9 @@ jobs:
             git push origin main
           fi
       - name: Build
+        env:
+          VITE_GA_GAME_KEY: ${{ secrets.VITE_GA_GAME_KEY || secrets.GA_GAME_KEY }}
+          VITE_GA_SECRET_KEY: ${{ secrets.VITE_GA_SECRET_KEY || secrets.GA_SECRET_KEY }}
         run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

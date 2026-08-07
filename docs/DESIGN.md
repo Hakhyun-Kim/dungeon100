@@ -279,3 +279,4 @@
 - 층 전환은 씬 컴포넌트 key 리마운트 (Canvas는 유지 → WebGL 컨텍스트 재생성 없음).
 - 시뮬레이션은 useFrame 안에서 ref 기반 (React 상태는 HUD 이벤트만 — 피해/처치/층 이동).
 - localStorage 키(전부 `d100-` 접두사): best(최고 층)·story(인트로)·mem(기억)·muted(음소거)·coins(코인)·meta(영구 강화)·deaths(사망 횟수)·traces(본 흔적 층)·girl(소녀 만남).
+- **GameAnalytics 텔레메트리 (`src/lib/analytics.ts`)**: `VITE_GA_GAME_KEY`/`VITE_GA_SECRET_KEY` 환경 변수로 작동. 층 진행(Start/Complete/Fail), 드래프트 Card Pick, 방 이벤트 반응, 보스전, 찰나/결의 능력 사용, 대장간 재화 소진 트래킹. 자동 시연(Demo) 및 밸런스 시뮬봇(SimBot) 구동 시 데이터 수집 자동 차단.

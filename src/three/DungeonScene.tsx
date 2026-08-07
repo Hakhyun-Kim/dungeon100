@@ -26,6 +26,7 @@ import { music } from '../lib/music';
 import Hero, { type HeroVariant } from './Hero';
 import { BlobShadow, getBlobShadowTexture, getFloorTexture, getWallTexture } from './fx';
 import type { MiniMapChannel } from '../ui/MiniMap';
+import { trackAbilityUse } from '../lib/analytics';
 
 // 셀 좌표 → 결정적 0..1 해시 (타일 색 변주·가짜 AO용 — 시드 고정이라 같은 층은 항상 같은 무늬)
 const cellHash = (x: number, y: number, s: number) => {
@@ -1290,6 +1291,7 @@ function DungeonScene({
         resolveTrigger.current = false;
         resolveUiRef.current = { n: 0, ready: false };
         resolveActiveRef.current = RESOLVE_DASH_DURATION;
+        trackAbilityUse('resolve');
         const dd = input.current;
         const dmag = Math.hypot(dd.x, dd.z);
         resolveDirRef.current =
@@ -1576,6 +1578,7 @@ function DungeonScene({
         freezeTrigger.current = false;
         freezeUiRef.current = { n: 0, ready: false };
         freezeActiveRef.current = FREEZE_DURATION;
+        trackAbilityUse('freeze');
         sfx.freeze();
         burst(p.position.x, 1.0, p.position.z, '#bff3ff', 26, 3.0);
         // 저항하는 정예 — 수문장은 찰나에 얼지 않는다. 발동 순간 정예 자리에 붉은 균열을

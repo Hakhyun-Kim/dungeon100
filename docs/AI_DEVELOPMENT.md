@@ -244,6 +244,17 @@ claude mcp add gamedev-playbook -- npx -y github:Hakhyun-Kim/agentic-gamedev-pla
 
 서버도 DB도 없이 매일 바뀌는 경쟁 상대가 생기고, **밸런스를 바꾸면 그 기록도 자동으로 따라옵니다.**
 
+### 8.2 배포 전 라이브 유저 데이터 수집 — GameAnalytics 텔레메트리 파이프라인
+
+개발 중 봇 실주행과 CI가 내부 검증용 데이터라면, **배포 후 실제 플레이어 데이터**는 게임을 지속적으로 개선하기 위한 필수 장치입니다.
+
+- **GameAnalytics (GA) 통합 (`src/lib/analytics.ts`)**: Vite 환경 변수(`VITE_GA_GAME_KEY`/`VITE_GA_SECRET_KEY`)에 따라 배포 웹 환경에서 자동으로 초기화됩니다. GitHub Repository Secrets (`VITE_GA_GAME_KEY`, `VITE_GA_SECRET_KEY` 또는 `GA_GAME_KEY`, `GA_SECRET_KEY`)를 등록하면 `deploy-pages.yml` 및 `daily-ghost.yml`의 `npm run build` 시점에 자동으로 주입됩니다. 키가 없는 개발/CI 환경에서는 에러 없이 수집 모의(Quiet Mock) 모드로 안전하게 동작합니다.
+- **텔레메트리 데이터 격리 규칙 (★ 핵심 규율)**: SimBot(밸런스 시뮬봇), Demo(상시 자동 시연), `rafshim`(헤드리스 스모크) 등 자동화 스크립트 실행 중에는 `isTelemetryAllowed()`가 `false`를 반환해 **실제 유저 지표가 오염되지 않도록 완벽히 격리**합니다.
+- **체계적인 이벤트 설계**:
+  - `Progression`: 층별 진입(`Start`) / 클리어(`Complete`) / 사망(`Fail` & 사망 로어/사유)
+  - `Design`: 드래프트 카드 선택률(`draft:pick:<id>`), 방 이벤트 반응(`room_event:<event>:<action>`), 보스 처치(`boss:kill`), 특수 능력 사용(`ability:freeze`, `ability:resolve`), 미니게임 승률(`minigame:<type>:<result>`)
+  - `Resource`: 대장간 영구 강화 재화 소비 (`coins` sink)
+
 ---
 
 ## 9. 데이터가 판단을 뒤집은 순간 — 실측 4건
