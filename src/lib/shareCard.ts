@@ -87,7 +87,7 @@ function drawCard(s: CardStats): HTMLCanvasElement {
   x.textAlign = 'center';
   x.font = `24px ${F}`;
   x.fillStyle = '#8d7fc0';
-  x.fillText('hakhyun-kim.github.io/dungeon100', W / 2, H - 60);
+  x.fillText('dungeon100.metah.dev', W / 2, H - 60);
 
   return c;
 }

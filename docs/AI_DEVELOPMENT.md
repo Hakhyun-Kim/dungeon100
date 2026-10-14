@@ -6,9 +6,9 @@
 『백층 던전』은 장르 선정부터 배포까지 전 과정을 AI와의 대화로 만든 3D 로그라이크입니다.
 이 문서는 "AI를 썼다"는 주장 대신 **저장소에서 직접 확인할 수 있는 장치와 실측치**로 그 과정을 설명합니다.
 
-- 🎮 플레이: https://hakhyun-kim.github.io/dungeon100/ (설치·로그인 없음)
+- 🎮 플레이: https://dungeon100.metah.dev/ (설치·로그인 없음)
 - 🎬 게임을 직접 할 시간이 없다면: 타이틀의 **「🎬 자동 시연 보기」** (자막 포함 약 2분, 상시)
-- 📖 개발 일지(커밋·대화 기반 차트): https://hakhyun-kim.github.io/dungeon100/journal.html
+- 📖 개발 일지(커밋·대화 기반 차트): https://dungeon100.metah.dev/journal.html
 
 ---
 
@@ -16,13 +16,13 @@
 
 | 질문 | 답 | 저장소에서 확인하는 법 |
 |---|---|---|
-| 코드는 누가 썼나 | 전량 Claude Code 페어 세션 (2026-07-11 ~ 08-01) | [개발 일지](https://hakhyun-kim.github.io/dungeon100/journal.html) — 일별 증감·누적 성장·카테고리 랭킹 차트 |
+| 코드는 누가 썼나 | 전량 Claude Code 페어 세션 (2026-07-11 ~ 08-01) | [개발 일지](https://dungeon100.metah.dev/journal.html) — 일별 증감·누적 성장·카테고리 랭킹 차트 |
 | 규모 | 게임 소스 **47파일 13,666줄** + 자동화 스크립트 997줄 | `src/`, `scripts/` |
 | 이미지·오디오·3D 파일은 | **게임에 들어가는 리소스 파일 0건**(문서용 스크린샷 제외). 지오메트리·캔버스 텍스처·Web Audio 합성(효과음 28 레시피·BGM 5트랙) | [`docs/assets.json`](assets.json) · `npm run assets-check` |
 | 난이도는 누가 맞췄나 | 봇이 실제 게임을 자동 플레이해 **사망 층 분포**로 튜닝 | `npm run balance-regression` · [`scripts/balance-baseline.json`](../scripts/balance-baseline.json) |
 | 회귀는 어떻게 막나 | 푸시마다 스모크(배포 게이트) + 매일 03:30 밸런스 회귀 + 매일 00:15 봇 실주행 | [`.github/workflows/`](../.github/workflows) |
 | 플레이 중에 보이는 증거 | HUD의 **🤖 AI 사서** — 매일 새벽 봇이 오늘의 던전을 실제로 플레이한 기록 | [`public/ghost/`](../public/ghost) (날짜별 JSON) |
-| 이 방식은 재사용 가능한가 | 방법론을 **Claude Code 플러그인 + MCP 서버**로 추출해 공개. 장르가 다른 세 게임에서 검증 | [agentic-gamedev-playbook](https://github.com/Hakhyun-Kim/agentic-gamedev-playbook) (→ 7장) |
+| 이 방식은 재사용 가능한가 | 방법론을 **Claude Code 플러그인 + MCP 서버**로 추출해 공개. 장르가 다른 세 게임에서 검증 | agentic-gamedev-playbook (→ 7장) |
 
 **AI가 한 일** — 장르 선정·시스템 설계·전 코드·스토리 집필(인트로/대사/글귀/엔딩)·절차 생성 사운드와 그래픽·자동 플레이 봇·CI·문서.
 **사람이 한 일** — 재미의 방향 제시, 증상 보고("멀미가 난다", "여기가 지루하다"), 채택 기준(3-Gate) 고정, 톤 검수, 실기기 최종 확인.
@@ -184,15 +184,12 @@ npm run assets-check   # 리소스 규칙을 코드가 지킨다
 
 이 게임에서 얻은 규칙들 — "봇 프로필을 기준선용과 사람형으로 나눠라", "긴장을 사망률로 재지 마라", "생성기를 갈아 끼울 땐 난수 스트림을 분리하라" — 은 대화가 끝나면 사라집니다. 그래서 **에이전트가 필요할 때 조회할 수 있는 형태**로 저장소 밖에 뽑아 두고, 공개 배포했습니다.
 
-> 📦 **[agentic-gamedev-playbook](https://github.com/Hakhyun-Kim/agentic-gamedev-playbook)** — v1.21.0 · MIT · **런타임 의존성 0** · 15개 장
+> 📦 **agentic-gamedev-playbook** — v1.21.0 · MIT · **런타임 의존성 0** · 15개 장
 > 「AI가 만들고 AI가 검증하는」 게임 개발 방법론을 **Claude Code 스킬 + MCP 서버** 한 벌로 묶은 것.
 
 ```bash
-# ① 플러그인(스킬 + MCP 서버)으로 설치
+# 플러그인(스킬 + MCP 서버)으로 설치
 /plugin install agentic-gamedev@agentic-gamedev-playbook
-
-# ② MCP 서버만 단독 연결
-claude mcp add gamedev-playbook -- npx -y github:Hakhyun-Kim/agentic-gamedev-playbook
 ```
 
 | 형태 | 제공하는 것 | 언제 물리나 |
@@ -384,6 +381,6 @@ __d100sim.start({ runs: 3, profile: 'human', maxFloor: 25 })   // 사람형 프�
 | [`CLAUDE.md`](../CLAUDE.md) | AI의 상시 컨텍스트 — 구조·원칙·완료 노트(왜 그렇게 했는지) |
 | [`docs/DESIGN.md`](DESIGN.md) | 설계·로드맵·시스템 상세·절차 생성 확장 안전 규칙 |
 | [`docs/ASSETS.md`](ASSETS.md) | 리소스 반입 규칙과 원장 |
-| [개발 일지](https://hakhyun-kim.github.io/dungeon100/journal.html) | 커밋·실제 대화 기반 차트 — 지시하는 방식이 어떻게 달라졌는가 |
-| 📦 [agentic-gamedev-playbook](https://github.com/Hakhyun-Kim/agentic-gamedev-playbook) | 이 방법론을 장르 무관하게 일반화한 **공개 플레이북 + Claude Code 플러그인 + MCP 서버** (v1.21.0 · MIT · 15개 장 · 의존성 0). `/plugin install agentic-gamedev@agentic-gamedev-playbook` |
-| [두 문 러너](https://github.com/Hakhyun-Kim/door-runner) | 자매작(원작). 보물상자 미니게임 「두 문 달리기」로 이 게임에 통합 |
+| [개발 일지](https://dungeon100.metah.dev/journal.html) | 커밋·실제 대화 기반 차트 — 지시하는 방식이 어떻게 달라졌는가 |
+| 📦 agentic-gamedev-playbook | 이 방법론을 장르 무관하게 일반화한 **공개 플레이북 + Claude Code 플러그인 + MCP 서버** (v1.21.0 · MIT · 15개 장 · 의존성 0). `/plugin install agentic-gamedev@agentic-gamedev-playbook` |
+| 두 문 러너 | 자매작(원작). 보물상자 미니게임 「두 문 달리기」로 이 게임에 통합 |
